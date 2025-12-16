@@ -74,11 +74,13 @@ export const Dashboard = () => {
         )}
 
         {/* Rankings Grid */}
-        {rankings && rankings.length > 0 && (
+        {rankings && rankings.filter(r => r.value !== null && r.value !== undefined).length > 0 && (
           <div className="grid gap-4 md:grid-cols-2 mb-8">
-            {rankings.map((ranking, index) => (
-              <RankingCard key={`${ranking.category}-${index}`} ranking={ranking} />
-            ))}
+            {rankings
+              .filter(r => r.value !== null && r.value !== undefined)
+              .map((ranking, index) => (
+                <RankingCard key={`${ranking.category}-${index}`} ranking={ranking} />
+              ))}
           </div>
         )}
 
