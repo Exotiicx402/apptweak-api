@@ -29,16 +29,27 @@ export const Dashboard = () => {
 
     setIsSyncing(true);
     try {
-      // Format data for the sheet: Date, Sports Rank
-      const formattedData = historyData.map(point => [point.date, point.rank]);
+      // Format data to match sheet columns: Date, App ID, Category, Category Name, Rank, Chart Type, Country, Device
+      const formattedData = historyData
+        .filter(point => point.rank !== null)
+        .map(point => [
+          point.date,
+          "6648798962",
+          point.category,
+          point.categoryName,
+          point.rank,
+          "free",
+          "us",
+          "iphone"
+        ]);
 
-      const { data, error } = await supabase.functions.invoke('sync-to-sheets', {
+      const { error } = await supabase.functions.invoke('sync-to-sheets', {
         body: { data: formattedData }
       });
 
       if (error) throw error;
       
-      toast.success("Data synced to Google Sheets!");
+      toast.success(`Synced ${formattedData.length} rows to Google Sheets!`);
     } catch (err) {
       console.error("Sync error:", err);
       toast.error(err instanceof Error ? err.message : "Failed to sync to sheets");
