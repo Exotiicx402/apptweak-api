@@ -11,10 +11,11 @@ serve(async (req) => {
   }
 
   try {
-    const { data, sheetWebAppUrl } = await req.json();
+    const { data } = await req.json();
     
+    const sheetWebAppUrl = Deno.env.get('GOOGLE_SHEETS_WEB_APP_URL');
     if (!sheetWebAppUrl) {
-      throw new Error('Sheet Web App URL is required');
+      throw new Error('GOOGLE_SHEETS_WEB_APP_URL not configured');
     }
 
     if (!data || !Array.isArray(data)) {
