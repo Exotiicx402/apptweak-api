@@ -53,7 +53,7 @@ export const useAppTweakRankingHistory = () => {
       for (const ranking of rankings) {
         for (const value of ranking.value) {
           // Only include "All" category and "free" chart type for simplicity
-          if (value.category === "0" && value.chart_type === "free") {
+          if (value.category === "6004" && value.chart_type === "free") {
             chartData.push({
               date: value.fetch_date,
               rank: value.rank,
