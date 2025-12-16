@@ -1,24 +1,54 @@
-import { RefreshCw, AlertCircle } from "lucide-react";
+import { RefreshCw, AlertCircle, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
+import { useAppTweakRankingHistory } from "@/hooks/useAppTweakRankingHistory";
 import { RankingCard } from "./RankingCard";
 import { TopChartsTable } from "./TopChartsTable";
 import { RankingHistoryChart } from "./RankingHistoryChart";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export const Dashboard = () => {
   const queryClient = useQueryClient();
   const { data: rankings, isLoading, error, isFetching } = useAppTweakRanking();
+  const { data: historyData } = useAppTweakRankingHistory();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleRefresh = () => {
-    // Invalidate all apptweak queries to refetch with current dates
     queryClient.invalidateQueries({ queryKey: ["apptweak-ranking"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-ranking-history"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-top-charts"] });
   };
 
+  const handleSyncToSheets = async () => {
+    if (!historyData || historyData.length === 0) {
+      toast.error("No ranking history data to sync");
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      // Format data for the sheet: Date, Sports Rank
+      const formattedData = historyData.map(point => [point.date, point.rank]);
+
+      const { data, error } = await supabase.functions.invoke('sync-to-sheets', {
+        body: { data: formattedData }
+      });
+
+      if (error) throw error;
+      
+      toast.success("Data synced to Google Sheets!");
+    } catch (err) {
+      console.error("Sync error:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to sync to sheets");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Gradient glow effect */}
       <div 
         className="fixed inset-0 pointer-events-none"
         style={{
@@ -27,8 +57,6 @@ export const Dashboard = () => {
       />
 
       <div className="relative max-w-4xl mx-auto px-6 py-12">
-
-        {/* Status Bar */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <div className="pulse-dot" />
@@ -36,17 +64,26 @@ export const Dashboard = () => {
               Live data from AppTweak API
             </span>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={isFetching}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary hover:bg-secondary/80 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSyncToSheets}
+              disabled={isSyncing || !historyData}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <Upload className={`w-4 h-4 ${isSyncing ? "animate-pulse" : ""}`} />
+              {isSyncing ? "Syncing..." : "Sync to Sheets"}
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={isFetching}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary hover:bg-secondary/80 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
         </div>
 
-        {/* Error State */}
         {error && (
           <div className="mb-6 p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3 animate-fade-in">
             <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
@@ -59,7 +96,6 @@ export const Dashboard = () => {
           </div>
         )}
 
-        {/* Loading State */}
         {isLoading && (
           <div className="grid gap-4 md:grid-cols-2 mb-8">
             {[1, 2, 3, 4].map((i) => (
@@ -71,7 +107,6 @@ export const Dashboard = () => {
           </div>
         )}
 
-        {/* Rankings Grid */}
         {rankings && rankings.filter(r => r.value !== null && r.value !== undefined).length > 0 && (
           <div className="grid gap-4 md:grid-cols-2 mb-8">
             {rankings
@@ -82,7 +117,6 @@ export const Dashboard = () => {
           </div>
         )}
 
-        {/* No Rankings */}
         {rankings && rankings.length === 0 && (
           <div className="mb-8 p-8 rounded-xl bg-card border border-border text-center">
             <p className="text-muted-foreground">
@@ -91,18 +125,14 @@ export const Dashboard = () => {
           </div>
         )}
 
-        {/* Ranking History Chart */}
         <div className="mb-8">
           <RankingHistoryChart />
         </div>
 
-        {/* Top Charts Section */}
         <div className="mb-8">
           <TopChartsTable />
         </div>
 
-
-        {/* Footer */}
         <div className="mt-12 pt-6 border-t border-border">
           <p className="text-xs text-muted-foreground text-center">
             Data provided by AppTweak API • App ID: 6648798962
