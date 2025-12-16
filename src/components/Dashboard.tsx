@@ -2,6 +2,7 @@ import { RefreshCw, AlertCircle, Smartphone } from "lucide-react";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
 import { RankingCard } from "./RankingCard";
 import { CurlDisplay } from "./CurlDisplay";
+import { TopChartsTable } from "./TopChartsTable";
 
 export const Dashboard = () => {
   const { data: rankings, isLoading, error, refetch, isFetching } = useAppTweakRanking();
@@ -92,6 +93,11 @@ export const Dashboard = () => {
             </p>
           </div>
         )}
+
+        {/* Top Charts Section */}
+        <div className="mb-8">
+          <TopChartsTable />
+        </div>
 
         {/* Curl Display */}
         <div className="mt-8">
