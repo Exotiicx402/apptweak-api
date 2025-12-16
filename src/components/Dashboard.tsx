@@ -1,11 +1,20 @@
 import { RefreshCw, AlertCircle } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
 import { RankingCard } from "./RankingCard";
 import { TopChartsTable } from "./TopChartsTable";
 import { RankingHistoryChart } from "./RankingHistoryChart";
 
 export const Dashboard = () => {
-  const { data: rankings, isLoading, error, refetch, isFetching } = useAppTweakRanking();
+  const queryClient = useQueryClient();
+  const { data: rankings, isLoading, error, isFetching } = useAppTweakRanking();
+
+  const handleRefresh = () => {
+    // Invalidate all apptweak queries to refetch with current dates
+    queryClient.invalidateQueries({ queryKey: ["apptweak-ranking"] });
+    queryClient.invalidateQueries({ queryKey: ["apptweak-ranking-history"] });
+    queryClient.invalidateQueries({ queryKey: ["apptweak-top-charts"] });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -28,7 +37,7 @@ export const Dashboard = () => {
             </span>
           </div>
           <button
-            onClick={() => refetch()}
+            onClick={handleRefresh}
             disabled={isFetching}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary hover:bg-secondary/80 rounded-lg transition-colors disabled:opacity-50"
           >
