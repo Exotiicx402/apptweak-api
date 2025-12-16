@@ -1,7 +1,7 @@
 import { useAppTweakTopCharts } from '@/hooks/useAppTweakTopCharts';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trophy } from 'lucide-react';
+import { Trophy, ExternalLink } from 'lucide-react';
 
 const POLYMARKET_APP_ID = '6648798962';
 
@@ -55,8 +55,16 @@ export const TopChartsTable = () => {
                   <TableCell className="font-medium">
                     #{app.rank}
                   </TableCell>
-                  <TableCell className={app.id === POLYMARKET_APP_ID ? 'font-semibold text-primary' : ''}>
-                    {app.id}
+                  <TableCell>
+                    <a 
+                      href={`https://apps.apple.com/us/app/id${app.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center gap-1 hover:underline ${app.id === POLYMARKET_APP_ID ? 'font-semibold text-primary' : 'text-foreground hover:text-primary'}`}
+                    >
+                      {app.id}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                     {app.id === POLYMARKET_APP_ID && (
                       <span className="ml-2 text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">
                         Polymarket
