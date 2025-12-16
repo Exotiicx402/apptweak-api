@@ -35,7 +35,7 @@ export const TopChartsTable = () => {
           <TableHeader>
             <TableRow>
               <TableHead className="w-16">Rank</TableHead>
-              <TableHead>App ID</TableHead>
+              <TableHead>App</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -43,7 +43,12 @@ export const TopChartsTable = () => {
               Array.from({ length: 10 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell><Skeleton className="h-4 w-8" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-lg" />
+                      <Skeleton className="h-4 w-32" />
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))
             ) : data?.apps.length ? (
@@ -60,16 +65,29 @@ export const TopChartsTable = () => {
                       href={`https://apps.apple.com/us/app/id${app.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-1 hover:underline ${app.id === POLYMARKET_APP_ID ? 'font-semibold text-primary' : 'text-foreground hover:text-primary'}`}
+                      className={`inline-flex items-center gap-3 hover:opacity-80 transition-opacity ${app.id === POLYMARKET_APP_ID ? 'font-semibold' : ''}`}
                     >
-                      {app.id}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                    {app.id === POLYMARKET_APP_ID && (
-                      <span className="ml-2 text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">
-                        Polymarket
+                      {app.icon ? (
+                        <img 
+                          src={app.icon} 
+                          alt={app.title}
+                          className="h-10 w-10 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                          <span className="text-xs text-muted-foreground">?</span>
+                        </div>
+                      )}
+                      <span className={app.id === POLYMARKET_APP_ID ? 'text-primary' : 'text-foreground'}>
+                        {app.title}
                       </span>
-                    )}
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      {app.id === POLYMARKET_APP_ID && (
+                        <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">
+                          Polymarket
+                        </span>
+                      )}
+                    </a>
                   </TableCell>
                 </TableRow>
               ))
