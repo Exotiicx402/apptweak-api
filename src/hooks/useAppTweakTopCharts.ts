@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 export interface TopChartApp {
   id: string;
   rank: number;
+  title: string;
+  icon: string;
 }
 
 export interface TopChartsResponse {
@@ -32,8 +34,10 @@ export const useAppTweakTopCharts = (
         throw new Error(error.message);
       }
 
-      // Parse the response - the API returns app IDs in the result
+      // Parse the response
       const result = data?.result;
+      const metadata = data?.metadata || {};
+      
       if (!result) {
         return { apps: [], category, categoryName: 'Sports', date: new Date().toISOString() };
       }
@@ -45,10 +49,16 @@ export const useAppTweakTopCharts = (
         return { apps: [], category, categoryName: 'Sports', date: new Date().toISOString() };
       }
 
-      const apps: TopChartApp[] = freeData.value.map((appId: number, index: number) => ({
-        id: String(appId),
-        rank: index + 1,
-      }));
+      const apps: TopChartApp[] = freeData.value.map((appId: number, index: number) => {
+        const id = String(appId);
+        const appMetadata = metadata[id];
+        return {
+          id,
+          rank: index + 1,
+          title: appMetadata?.title || `App ${id}`,
+          icon: appMetadata?.icon || '',
+        };
+      });
 
       return {
         apps,
