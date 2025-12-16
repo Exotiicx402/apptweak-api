@@ -2,3 +2,6 @@ project_id = "agususzieosizftucxxq"
 
 [functions.apptweak-ranking]
 verify_jwt = false
+
+[functions.apptweak-top-charts]
+verify_jwt = false
