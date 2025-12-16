@@ -40,12 +40,13 @@ export const useAppTweakTopCharts = (
 
       // The API returns results keyed by category
       const categoryData = result[category];
-      if (!categoryData?.free) {
+      const freeData = categoryData?.free;
+      if (!freeData?.value) {
         return { apps: [], category, categoryName: 'Sports', date: new Date().toISOString() };
       }
 
-      const apps: TopChartApp[] = categoryData.free.map((appId: string, index: number) => ({
-        id: appId,
+      const apps: TopChartApp[] = freeData.value.map((appId: number, index: number) => ({
+        id: String(appId),
         rank: index + 1,
       }));
 
@@ -53,7 +54,7 @@ export const useAppTweakTopCharts = (
         apps,
         category,
         categoryName: 'Sports',
-        date: categoryData.date || new Date().toISOString(),
+        date: freeData.date || new Date().toISOString(),
       };
     },
     refetchInterval: 5 * 60 * 1000,
