@@ -1,4 +1,4 @@
-import { RefreshCw, AlertCircle, Smartphone } from "lucide-react";
+import { RefreshCw, AlertCircle } from "lucide-react";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
 import { RankingCard } from "./RankingCard";
 import { TopChartsTable } from "./TopChartsTable";
@@ -18,18 +18,6 @@ export const Dashboard = () => {
       />
 
       <div className="relative max-w-4xl mx-auto px-6 py-12">
-        {/* Header */}
-        <div className="mb-10">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Smartphone className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Polymarket</h1>
-              <p className="text-sm text-muted-foreground">App Store Rankings Dashboard</p>
-            </div>
-          </div>
-        </div>
 
         {/* Status Bar */}
         <div className="flex items-center justify-between mb-6">
