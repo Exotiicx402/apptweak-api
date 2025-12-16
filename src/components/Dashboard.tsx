@@ -1,7 +1,6 @@
 import { RefreshCw, AlertCircle, Smartphone } from "lucide-react";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
 import { RankingCard } from "./RankingCard";
-import { CurlDisplay } from "./CurlDisplay";
 import { TopChartsTable } from "./TopChartsTable";
 import { RankingHistoryChart } from "./RankingHistoryChart";
 
@@ -105,11 +104,6 @@ export const Dashboard = () => {
           <TopChartsTable />
         </div>
 
-        {/* Curl Display */}
-        <div className="mt-8">
-          <h2 className="text-lg font-semibold mb-4">API Request</h2>
-          <CurlDisplay />
-        </div>
 
         {/* Footer */}
         <div className="mt-12 pt-6 border-t border-border">
