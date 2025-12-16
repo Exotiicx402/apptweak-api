@@ -95,14 +95,14 @@ export const Dashboard = () => {
           </div>
         )}
 
-        {/* Top Charts Section */}
-        <div className="mb-8">
-          <TopChartsTable />
-        </div>
-
         {/* Ranking History Chart */}
         <div className="mb-8">
           <RankingHistoryChart />
+        </div>
+
+        {/* Top Charts Section */}
+        <div className="mb-8">
+          <TopChartsTable />
         </div>
 
         {/* Curl Display */}
