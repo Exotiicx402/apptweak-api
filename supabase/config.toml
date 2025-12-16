@@ -1,1 +1,4 @@
 project_id = "agususzieosizftucxxq"
+
+[functions.apptweak-ranking]
+verify_jwt = false

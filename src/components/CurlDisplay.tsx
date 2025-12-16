@@ -52,7 +52,7 @@ export const CurlDisplay = () => {
             <span className="text-amber-400">'accept: application/json'</span> \{"\n"}
             {"  "}
             <span className="text-muted-foreground">--header</span>{" "}
-            <span className="text-amber-400">'x-apptweak-key: BuK3a1Gkzb6IhUw5Y2JDMPBjVy4'</span>
+            <span className="text-amber-400">'x-apptweak-key: YOUR_API_KEY'</span>
           </code>
         </pre>
       </div>
