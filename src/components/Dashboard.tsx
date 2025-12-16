@@ -3,6 +3,7 @@ import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
 import { RankingCard } from "./RankingCard";
 import { CurlDisplay } from "./CurlDisplay";
 import { TopChartsTable } from "./TopChartsTable";
+import { RankingHistoryChart } from "./RankingHistoryChart";
 
 export const Dashboard = () => {
   const { data: rankings, isLoading, error, refetch, isFetching } = useAppTweakRanking();
@@ -97,6 +98,11 @@ export const Dashboard = () => {
         {/* Top Charts Section */}
         <div className="mb-8">
           <TopChartsTable />
+        </div>
+
+        {/* Ranking History Chart */}
+        <div className="mb-8">
+          <RankingHistoryChart />
         </div>
 
         {/* Curl Display */}

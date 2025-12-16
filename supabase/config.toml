@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.apptweak-top-charts]
 verify_jwt = false
+
+[functions.apptweak-ranking-history]
+verify_jwt = false
