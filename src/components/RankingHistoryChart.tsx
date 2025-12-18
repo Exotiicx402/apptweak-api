@@ -31,7 +31,7 @@ export const RankingHistoryChart = () => {
     <div className="rounded-xl bg-card border border-border p-6">
       <div className="flex items-center gap-2 mb-6">
         <TrendingUp className="w-5 h-5 text-primary" />
-        <h2 className="text-lg font-semibold">Ranking History (Sports - Free)</h2>
+        <h2 className="text-lg font-semibold">Polymarket - Ranking History (Sports - Free)</h2>
       </div>
       
       <div className="h-64">
