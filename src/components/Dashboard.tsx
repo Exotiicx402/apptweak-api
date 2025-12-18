@@ -152,8 +152,12 @@ export const Dashboard = () => {
           </div>
         )}
 
-        <div className="mb-12">
+        <div className="mb-8">
           <RankingHistoryChart />
+        </div>
+
+        <div className="mb-12">
+          <DownloadsHistoryChart appId="6648798962" appName="Polymarket" />
         </div>
 
         {/* Victory+ Section */}
