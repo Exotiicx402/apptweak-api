@@ -7,6 +7,7 @@ import { RankingCard } from "./RankingCard";
 import { TopChartsTable } from "./TopChartsTable";
 import { RankingHistoryChart } from "./RankingHistoryChart";
 import { DownloadsCard } from "./DownloadsCard";
+import { DownloadsHistoryChart } from "./DownloadsHistoryChart";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -21,6 +22,7 @@ export const Dashboard = () => {
     queryClient.invalidateQueries({ queryKey: ["apptweak-ranking-history"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-top-charts"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-metrics"] });
+    queryClient.invalidateQueries({ queryKey: ["apptweak-metrics-history"] });
   };
 
   const handleSyncToSheets = async () => {
@@ -140,6 +142,10 @@ export const Dashboard = () => {
 
         <div className="mb-8">
           <DownloadsCard appId="6477230809" appName="Victory+" />
+        </div>
+
+        <div className="mb-8">
+          <DownloadsHistoryChart appId="6477230809" appName="Victory+" />
         </div>
 
         <div className="mb-8">
