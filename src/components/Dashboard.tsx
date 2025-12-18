@@ -141,15 +141,15 @@ export const Dashboard = () => {
         )}
 
         <div className="mb-8">
+          <RankingHistoryChart />
+        </div>
+
+        <div className="mb-8">
           <DownloadsCard appId="6477230809" appName="Victory+" />
         </div>
 
         <div className="mb-8">
           <DownloadsHistoryChart appId="6477230809" appName="Victory+" />
-        </div>
-
-        <div className="mb-8">
-          <RankingHistoryChart />
         </div>
 
         <div className="mb-8">
