@@ -1,6 +1,7 @@
-import { RefreshCw, AlertCircle, Upload } from "lucide-react";
+import { RefreshCw, AlertCircle, Upload, Database } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
 import { useAppTweakRankingHistory } from "@/hooks/useAppTweakRankingHistory";
 import { RankingCard } from "./RankingCard";
@@ -85,6 +86,13 @@ export const Dashboard = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              to="/unity-sync"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
+            >
+              <Database className="w-4 h-4" />
+              Unity Sync
+            </Link>
             <button
               onClick={handleSyncToSheets}
               disabled={isSyncing || !historyData}
