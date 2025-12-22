@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.sync-to-sheets]
 verify_jwt = false
+
+[functions.unity-to-bigquery]
+verify_jwt = false
