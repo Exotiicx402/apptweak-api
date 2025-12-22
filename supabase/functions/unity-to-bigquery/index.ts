@@ -55,10 +55,9 @@ async function fetchUnityData(date: string): Promise<any[]> {
 
   const basicAuth = btoa(`${keyId}:${secretKey}`);
   
-  // Unity API requires end date to be after start date, so we use next day
-  const startDate = new Date(date);
-  const endDate = new Date(date);
-  endDate.setDate(endDate.getDate() + 1);
+  // Unity API requires end date to be after start date, so we use next day (UTC)
+  const endDate = new Date(`${date}T00:00:00.000Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
   const endDateStr = endDate.toISOString().split('T')[0];
   
   const params = new URLSearchParams({
@@ -66,10 +65,15 @@ async function fetchUnityData(date: string): Promise<any[]> {
     end: endDateStr,
     scale: 'day',
     format: 'json',
-    appIds: '6648798962',
     metrics: 'starts,views,clicks,installs,spend,cpi,ctr,cvr,ecpm,d0AdRevenue,d1AdRevenue,d3AdRevenue,d7AdRevenue,d14AdRevenue,d0TotalRoas,d1TotalRoas,d3TotalRoas,d7TotalRoas,d14TotalRoas,d0Retained,d1Retained,d3Retained,d7Retained,d14Retained,d0RetentionRate,d1RetentionRate,d3RetentionRate,d7RetentionRate,d14RetentionRate',
     breakdowns: 'campaign,country,platform,creativePackType',
   });
+
+  // Optional filters (set these as environment variables if you want to restrict the query)
+  const gameIds = Deno.env.get('UNITY_GAME_IDS');
+  const appIds = Deno.env.get('UNITY_APP_IDS');
+  if (gameIds) params.set('gameIds', gameIds);
+  if (appIds) params.set('appIds', appIds);
 
   const url = `https://services.api.unity.com/advertise/stats/v2/organizations/${orgId}/reports/acquisitions?${params}`;
   
@@ -109,7 +113,9 @@ function transformData(unityData: any[], targetDate: string): any[] {
   const fetchedAt = new Date().toISOString();
   
   return unityData.map(row => ({
-    date: targetDate,
+    // Per Unity Stats API v2, timestamp is always included in the response.
+    // Fallback to the requested date at UTC midnight if needed.
+    timestamp: row.timestamp || row.date || `${targetDate}T00:00:00.000Z`,
     campaign_id: row.campaignId || '',
     campaign_name: row.campaignName || '',
     country: row.country || '',
@@ -150,7 +156,7 @@ function transformData(unityData: any[], targetDate: string): any[] {
 
 // Generate insert ID for deduplication
 function generateInsertId(row: any): string {
-  const key = `${row.date}-${row.campaign_id}-${row.country}-${row.platform}-${row.creative_pack_type}`;
+  const key = `${row.timestamp}-${row.campaign_id}-${row.country}-${row.platform}-${row.creative_pack_type}`;
   // Simple hash function
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
