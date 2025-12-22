@@ -74,6 +74,8 @@ async function fetchUnityData(date: string): Promise<any[]> {
   const url = `https://services.api.unity.com/advertise/stats/v2/organizations/${orgId}/reports/acquisitions?${params}`;
   
   console.log(`Fetching Unity data for date: ${date}`);
+  console.log(`Full URL: ${url}`);
+  console.log(`Using org: ${orgId}, date range: ${date} to ${endDateStr}`);
   
   const response = await fetch(url, {
     headers: {
@@ -82,8 +84,13 @@ async function fetchUnityData(date: string): Promise<any[]> {
     },
   });
 
+  console.log(`Unity API response status: ${response.status}`);
+
   if (response.status === 204) {
-    console.log('No data available (204)');
+    console.log('No data available (204) - This could mean:');
+    console.log('  1. No campaigns ran on this date');
+    console.log('  2. The appId is incorrect');
+    console.log('  3. Data is not yet available (usually 24-48h delay)');
     return [];
   }
 
