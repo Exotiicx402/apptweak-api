@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { CronJobStatus } from "@/components/CronJobStatus";
 
 interface SyncResult {
   success: boolean;
@@ -209,13 +210,9 @@ export default function UnitySync() {
           </Card>
         )}
 
-        {/* Schedule Info */}
-        <div className="mt-8 p-4 rounded-lg bg-muted/50 border border-border">
-          <h3 className="font-medium mb-2">Automated Schedule</h3>
-          <p className="text-sm text-muted-foreground">
-            This sync runs automatically every hour at minute 0 via a cron job.
-            Use the manual controls above to trigger syncs on-demand or backfill historical data.
-          </p>
+        {/* Cron Job Status */}
+        <div className="mt-8">
+          <CronJobStatus />
         </div>
       </div>
     </div>
