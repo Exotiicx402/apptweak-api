@@ -108,14 +108,24 @@ async function fetchUnityData(date: string): Promise<any[]> {
   return result.data || [];
 }
 
+// Format date to BigQuery TIMESTAMP format: YYYY-MM-DD HH:MM:SS
+function formatTimestamp(dateStr: string): string {
+  // If already has time component, parse and format
+  if (dateStr.includes('T') || dateStr.includes(' ')) {
+    const d = new Date(dateStr);
+    return d.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+  }
+  // If just a date (YYYY-MM-DD), add midnight time
+  return `${dateStr} 00:00:00`;
+}
+
 // Transform Unity data to BigQuery schema
 function transformData(unityData: any[], targetDate: string): any[] {
-  const fetchedAt = new Date().toISOString();
+  const fetchedAt = new Date().toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
   
   return unityData.map(row => ({
-    // Per Unity Stats API v2, timestamp is always included in the response.
-    // Fallback to the requested date at UTC midnight if needed.
-    timestamp: row.timestamp || row.date || `${targetDate}T00:00:00.000Z`,
+    // Format timestamp for BigQuery (YYYY-MM-DD HH:MM:SS)
+    timestamp: formatTimestamp(row.timestamp || row.date || targetDate),
     campaign_id: row.campaignId || '',
     campaign_name: row.campaignName || '',
     country: row.country || '',
