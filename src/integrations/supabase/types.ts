@@ -34,6 +34,10 @@ export type Database = {
           schedule: string
         }[]
       }
+      update_cron_schedule: {
+        Args: { p_jobid: number; p_schedule: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
