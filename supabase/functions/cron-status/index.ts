@@ -17,13 +17,17 @@ serve(async (req: Request) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    console.log('Calling get_cron_job_status RPC...');
+    
     // Call the database function to get cron job status
     const { data: jobs, error } = await supabase.rpc('get_cron_job_status');
     
     if (error) {
-      console.error('Error fetching cron status:', error);
-      throw error;
+      console.error('RPC error:', error);
+      throw new Error(`Failed to fetch cron status: ${error.message}`);
     }
+
+    console.log('Cron jobs fetched:', jobs?.length || 0);
 
     // Transform to expected format
     const formattedJobs = (jobs || []).map((job: any) => ({
