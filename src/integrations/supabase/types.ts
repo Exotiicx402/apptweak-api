@@ -20,7 +20,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_cron_job_status: {
+        Args: never
+        Returns: {
+          active: boolean
+          jobid: number
+          jobname: string
+          last_run_end: string
+          last_run_message: string
+          last_run_start: string
+          last_run_status: string
+          nodename: string
+          schedule: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
