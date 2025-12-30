@@ -7,8 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CronJobStatus } from "@/components/CronJobStatus";
-
 interface SyncResult {
   success: boolean;
   message?: string;
@@ -246,10 +244,6 @@ export default function UnitySync() {
           </Card>
         )}
 
-        {/* Cron Job Status */}
-        <div className="mt-8">
-          <CronJobStatus />
-        </div>
       </div>
     </div>
   );
