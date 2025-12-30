@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Play, Loader2, CheckCircle, XCircle, Calendar } from "lucide-react";
+import { ArrowLeft, Play, Loader2, CheckCircle, XCircle, Calendar, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -60,7 +60,10 @@ export default function UnitySync() {
     handleRunSync(customDate);
   };
 
-  // Calculate yesterday's date for display
+  // Calculate today's and yesterday's dates for display
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -90,20 +93,20 @@ export default function UnitySync() {
           </p>
         </div>
 
-        {/* Run Now Card */}
-        <Card className="mb-6">
+        {/* Sync Today Card */}
+        <Card className="mb-6 border-primary/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Play className="w-5 h-5" />
-              Run Sync Now
+              <Zap className="w-5 h-5 text-primary" />
+              Sync Today's Data
             </CardTitle>
             <CardDescription>
-              Fetch yesterday's data ({yesterdayStr}) and insert into BigQuery
+              Fetch today's data ({todayStr}) — may be partial or incomplete
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button 
-              onClick={() => handleRunSync()} 
+              onClick={() => handleRunSync(todayStr)} 
               disabled={isRunning}
               className="w-full"
             >
@@ -114,8 +117,41 @@ export default function UnitySync() {
                 </>
               ) : (
                 <>
+                  <Zap className="w-4 h-4 mr-2" />
+                  Sync Today
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Sync Yesterday Card */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Play className="w-5 h-5" />
+              Sync Yesterday's Data
+            </CardTitle>
+            <CardDescription>
+              Fetch yesterday's data ({yesterdayStr}) — complete day's data
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              onClick={() => handleRunSync(yesterdayStr)} 
+              disabled={isRunning}
+              variant="secondary"
+              className="w-full"
+            >
+              {isRunning ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Running...
+                </>
+              ) : (
+                <>
                   <Play className="w-4 h-4 mr-2" />
-                  Run Sync for Yesterday
+                  Sync Yesterday
                 </>
               )}
             </Button>

@@ -7,7 +7,6 @@ import { useAppTweakRankingHistory } from "@/hooks/useAppTweakRankingHistory";
 import { RankingCard } from "./RankingCard";
 import { TopChartsTable } from "./TopChartsTable";
 import { RankingHistoryChart } from "./RankingHistoryChart";
-import { DownloadsCard } from "./DownloadsCard";
 import { DownloadsHistoryChart } from "./DownloadsHistoryChart";
 import { AppSectionHeader } from "./AppSectionHeader";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,7 +14,6 @@ import { toast } from "sonner";
 
 // App Store icon URLs
 const POLYMARKET_ICON = "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/a8/b2/d2/a8b2d29c-9278-62d8-348e-a04ac433ebde/AppIcon1-0-1x_U007ephone-0-1-0-sRGB-85-220-0.png/100x100bb.jpg";
-const VICTORY_PLUS_ICON = "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ea/6e/71/ea6e7171-44c0-77d6-0523-e83934c2814f/AppIcon-1x_U007epad-0-1-0-85-220-0.png/100x100bb.jpg";
 
 export const Dashboard = () => {
   const queryClient = useQueryClient();
@@ -166,21 +164,6 @@ export const Dashboard = () => {
 
         <div className="mb-12">
           <DownloadsHistoryChart appId="6648798962" appName="Polymarket" />
-        </div>
-
-        {/* Victory+ Section */}
-        <AppSectionHeader 
-          appName="Victory+" 
-          appId="6477230809" 
-          iconUrl={VICTORY_PLUS_ICON}
-        />
-
-        <div className="mb-8">
-          <DownloadsCard appId="6477230809" appName="Victory+" />
-        </div>
-
-        <div className="mb-12">
-          <DownloadsHistoryChart appId="6477230809" appName="Victory+" />
         </div>
 
         {/* Top Charts Section */}
