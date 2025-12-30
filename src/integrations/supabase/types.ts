@@ -14,7 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      app_downloads_history: {
+        Row: {
+          app_id: string
+          country: string | null
+          created_at: string | null
+          date: string
+          device: string | null
+          downloads: number | null
+          id: string
+        }
+        Insert: {
+          app_id: string
+          country?: string | null
+          created_at?: string | null
+          date: string
+          device?: string | null
+          downloads?: number | null
+          id?: string
+        }
+        Update: {
+          app_id?: string
+          country?: string | null
+          created_at?: string | null
+          date?: string
+          device?: string | null
+          downloads?: number | null
+          id?: string
+        }
+        Relationships: []
+      }
+      app_metadata: {
+        Row: {
+          app_id: string
+          icon: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          app_id: string
+          icon?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          app_id?: string
+          icon?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      app_rankings_history: {
+        Row: {
+          app_id: string
+          category: string
+          category_name: string | null
+          chart_type: string | null
+          country: string | null
+          created_at: string | null
+          date: string
+          device: string | null
+          id: string
+          rank: number | null
+        }
+        Insert: {
+          app_id: string
+          category: string
+          category_name?: string | null
+          chart_type?: string | null
+          country?: string | null
+          created_at?: string | null
+          date: string
+          device?: string | null
+          id?: string
+          rank?: number | null
+        }
+        Update: {
+          app_id?: string
+          category?: string
+          category_name?: string | null
+          chart_type?: string | null
+          country?: string | null
+          created_at?: string | null
+          date?: string
+          device?: string | null
+          id?: string
+          rank?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
