@@ -1,12 +1,12 @@
 import { RefreshCw, AlertCircle, Settings } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
 import { RankingCard } from "./RankingCard";
 import { TopChartsTable } from "./TopChartsTable";
 import { RankingHistoryChart } from "./RankingHistoryChart";
 import { DownloadsHistoryChart } from "./DownloadsHistoryChart";
+import { CompetitorDownloadsChart } from "./CompetitorDownloadsChart";
 import { AppSectionHeader } from "./AppSectionHeader";
 
 // App Store icon URLs
@@ -22,6 +22,7 @@ export const Dashboard = () => {
     queryClient.invalidateQueries({ queryKey: ["apptweak-top-charts"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-metrics"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-metrics-history"] });
+    queryClient.invalidateQueries({ queryKey: ["competitor-downloads-history"] });
   };
 
   return (
@@ -112,8 +113,12 @@ export const Dashboard = () => {
           <RankingHistoryChart />
         </div>
 
-        <div className="mb-12">
+        <div className="mb-8">
           <DownloadsHistoryChart appId="6648798962" appName="Polymarket" />
+        </div>
+
+        <div className="mb-12">
+          <CompetitorDownloadsChart />
         </div>
 
         {/* Top Charts Section */}
