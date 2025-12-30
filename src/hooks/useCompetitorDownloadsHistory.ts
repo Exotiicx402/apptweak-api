@@ -22,10 +22,10 @@ export interface CompetitorApp {
 }
 
 export const COMPETITOR_APPS: CompetitorApp[] = [
-  { id: "6648798962", name: "Polymarket", color: "hsl(180, 70%, 45%)" }, // Teal - Our app
+  { id: "6648798962", name: "Polymarket", color: "hsl(224, 100%, 59%)" }, // Blue - Our app
   { id: "1514665962", name: "Underdog", color: "hsl(38, 92%, 50%)" }, // Orange
   { id: "1375031369", name: "DraftKings", color: "hsl(142, 71%, 45%)" }, // Green
-  { id: "1413721906", name: "FanDuel", color: "hsl(224, 100%, 59%)" }, // Blue
+  { id: "1413721906", name: "FanDuel", color: "hsl(0, 0%, 15%)" }, // Black
   { id: "1437843273", name: "PrizePicks", color: "hsl(262, 83%, 58%)" }, // Purple
   { id: "294056623", name: "Fox Sports", color: "hsl(0, 84%, 60%)" }, // Red
 ];
