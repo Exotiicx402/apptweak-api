@@ -6,45 +6,40 @@
 
 @layer base {
   :root {
-    --background: 220 20% 6%;
-    --foreground: 210 20% 95%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
 
-    --card: 220 18% 10%;
-    --card-foreground: 210 20% 95%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
 
-    --popover: 220 18% 10%;
-    --popover-foreground: 210 20% 95%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
 
-    --primary: 160 84% 40%;
-    --primary-foreground: 220 20% 6%;
+    --primary: 224 100% 59%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 16% 16%;
-    --secondary-foreground: 210 20% 90%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 0 0% 9%;
 
-    --muted: 220 14% 14%;
-    --muted-foreground: 215 16% 55%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
 
-    --accent: 160 84% 40%;
-    --accent-foreground: 220 20% 6%;
+    --accent: 224 100% 59%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
-    --destructive-foreground: 210 20% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 16% 18%;
-    --input: 220 16% 18%;
-    --ring: 160 84% 40%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 224 100% 59%;
 
     --radius: 0.75rem;
 
     --font-sans: 'Inter', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
-    --gradient-glow: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(160 84% 40% / 0.15), transparent);
-  }
-
-  .dark {
-    --background: 220 20% 6%;
-    --foreground: 210 20% 95%;
+    --gradient-glow: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(224 100% 59% / 0.15), transparent);
   }
 }
 
@@ -65,12 +60,9 @@
 
 @layer components {
   .glow-card {
-    @apply relative overflow-hidden;
-    background: linear-gradient(
-      135deg,
-      hsl(var(--card)) 0%,
-      hsl(220 18% 12%) 100%
-    );
+    @apply relative overflow-hidden border border-border;
+    background: hsl(var(--card));
+    box-shadow: 0 1px 3px hsl(224 100% 59% / 0.1);
   }
 
   .glow-card::before {
@@ -79,30 +71,26 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 1px;
+    height: 2px;
     background: linear-gradient(
       90deg,
       transparent,
-      hsl(var(--primary) / 0.5),
+      hsl(var(--primary) / 0.6),
       transparent
     );
   }
 
   .code-block {
     @apply bg-muted rounded-lg p-4 font-mono text-sm overflow-x-auto;
-    background: linear-gradient(
-      180deg,
-      hsl(220 20% 8%) 0%,
-      hsl(220 18% 6%) 100%
-    );
+    background: hsl(220 14% 96%);
   }
 
   .metric-value {
     @apply text-5xl font-bold tracking-tight;
     background: linear-gradient(
       135deg,
-      hsl(var(--primary)) 0%,
-      hsl(160 70% 55%) 100%
+      hsl(224 100% 59%) 0%,
+      hsl(224 100% 70%) 100%
     );
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
