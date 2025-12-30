@@ -1,16 +1,13 @@
-import { RefreshCw, AlertCircle, Upload, Database } from "lucide-react";
+import { RefreshCw, AlertCircle, Settings } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
-import { useAppTweakRankingHistory } from "@/hooks/useAppTweakRankingHistory";
 import { RankingCard } from "./RankingCard";
 import { TopChartsTable } from "./TopChartsTable";
 import { RankingHistoryChart } from "./RankingHistoryChart";
 import { DownloadsHistoryChart } from "./DownloadsHistoryChart";
 import { AppSectionHeader } from "./AppSectionHeader";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 
 // App Store icon URLs
 const POLYMARKET_ICON = "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/a8/b2/d2/a8b2d29c-9278-62d8-348e-a04ac433ebde/AppIcon1-0-1x_U007ephone-0-1-0-sRGB-85-220-0.png/100x100bb.jpg";
@@ -18,8 +15,6 @@ const POLYMARKET_ICON = "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/a
 export const Dashboard = () => {
   const queryClient = useQueryClient();
   const { data: rankings, isLoading, error, isFetching } = useAppTweakRanking();
-  const { data: historyData } = useAppTweakRankingHistory();
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ["apptweak-ranking"] });
@@ -27,43 +22,6 @@ export const Dashboard = () => {
     queryClient.invalidateQueries({ queryKey: ["apptweak-top-charts"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-metrics"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-metrics-history"] });
-  };
-
-  const handleSyncToSheets = async () => {
-    if (!historyData || historyData.length === 0) {
-      toast.error("No ranking history data to sync");
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      // Format data to match sheet columns: Date, App ID, Category, Category Name, Rank, Chart Type, Country, Device
-      const formattedData = historyData
-        .filter(point => point.rank !== null)
-        .map(point => [
-          point.date,
-          "6648798962",
-          point.category,
-          point.categoryName,
-          point.rank,
-          "free",
-          "us",
-          "iphone"
-        ]);
-
-      const { error } = await supabase.functions.invoke('sync-to-sheets', {
-        body: { data: formattedData }
-      });
-
-      if (error) throw error;
-      
-      toast.success(`Synced ${formattedData.length} rows to Google Sheets!`);
-    } catch (err) {
-      console.error("Sync error:", err);
-      toast.error(err instanceof Error ? err.message : "Failed to sync to sheets");
-    } finally {
-      setIsSyncing(false);
-    }
   };
 
   return (
@@ -85,20 +43,12 @@ export const Dashboard = () => {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              to="/unity-sync"
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
+              to="/controls"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors"
             >
-              <Database className="w-4 h-4" />
-              Unity Sync
+              <Settings className="w-4 h-4" />
+              Controls
             </Link>
-            <button
-              onClick={handleSyncToSheets}
-              disabled={isSyncing || !historyData}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50"
-            >
-              <Upload className={`w-4 h-4 ${isSyncing ? "animate-pulse" : ""}`} />
-              {isSyncing ? "Syncing..." : "Sync to Sheets"}
-            </button>
             <button
               onClick={handleRefresh}
               disabled={isFetching}
