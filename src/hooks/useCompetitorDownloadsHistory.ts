@@ -22,11 +22,11 @@ export interface CompetitorApp {
 }
 
 export const COMPETITOR_APPS: CompetitorApp[] = [
-  { id: "1514665962", name: "Underdog", color: "hsl(224, 100%, 59%)" }, // Primary blue
+  { id: "1514665962", name: "Underdog", color: "hsl(38, 92%, 50%)" }, // Orange
   { id: "1375031369", name: "DraftKings", color: "hsl(142, 71%, 45%)" }, // Green
-  { id: "1413721906", name: "FanDuel", color: "hsl(38, 92%, 50%)" }, // Orange
+  { id: "1413721906", name: "FanDuel", color: "hsl(224, 100%, 59%)" }, // Blue
   { id: "1437843273", name: "PrizePicks", color: "hsl(262, 83%, 58%)" }, // Purple
-  { id: "555376968", name: "ESPN Fantasy", color: "hsl(0, 84%, 60%)" }, // Red
+  { id: "294056623", name: "Fox Sports", color: "hsl(0, 84%, 60%)" }, // Red
 ];
 
 export interface CompetitorDownloadsPoint {
