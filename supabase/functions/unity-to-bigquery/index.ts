@@ -187,15 +187,49 @@ function generateInsertId(row: any): string {
   return Math.abs(hash).toString(36);
 }
 
-// MERGE data into BigQuery (upsert - prevents duplicates)
-async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<{ inserted: number; updated: number }> {
-  const projectId = Deno.env.get('BQ_PROJECT_ID');
-  const datasetId = Deno.env.get('BQ_DATASET_ID');
-  const tableId = Deno.env.get('BQ_TABLE_ID');
+// Resolve BigQuery identifiers from env vars.
+// Accepts any of:
+// - BQ_TABLE_ID = "table"
+// - BQ_TABLE_ID = "dataset.table"
+// - BQ_TABLE_ID = "project.dataset.table"
+// And similarly for BQ_DATASET_ID.
+function resolveBigQueryTarget(): { projectId: string; datasetId: string; tableId: string } {
+  let projectId = (Deno.env.get('BQ_PROJECT_ID') || '').trim();
+  let datasetId = (Deno.env.get('BQ_DATASET_ID') || '').trim();
+  let tableId = (Deno.env.get('BQ_TABLE_ID') || '').trim();
 
   if (!projectId || !datasetId || !tableId) {
     throw new Error('Missing BigQuery configuration');
   }
+
+  // If tableId includes dataset/project, prefer parsing from it
+  const tableParts = tableId.split('.').filter(Boolean);
+  if (tableParts.length === 3) {
+    projectId = tableParts[0];
+    datasetId = tableParts[1];
+    tableId = tableParts[2];
+  } else if (tableParts.length === 2) {
+    datasetId = tableParts[0];
+    tableId = tableParts[1];
+  }
+
+  // If datasetId includes project, parse it
+  const dsParts = datasetId.split('.').filter(Boolean);
+  if (dsParts.length === 2) {
+    projectId = dsParts[0];
+    datasetId = dsParts[1];
+  } else if (dsParts.length > 2) {
+    // Guard against accidentally pasting "dataset.project.dataset" etc.
+    datasetId = dsParts[dsParts.length - 1];
+  }
+
+  console.log(`BigQuery target resolved: ${projectId}.${datasetId}.${tableId}`);
+  return { projectId, datasetId, tableId };
+}
+
+// MERGE data into BigQuery (upsert - prevents duplicates)
+async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<{ inserted: number; updated: number }> {
+  const { projectId, datasetId, tableId } = resolveBigQueryTarget();
 
   // Build VALUES clause for all rows
   const valuesClause = rows.map(row => `(
