@@ -187,16 +187,90 @@ function generateInsertId(row: any): string {
   return Math.abs(hash).toString(36);
 }
 
-// Delete existing data for a specific date to prevent duplicates
-async function deleteExistingData(targetDate: string, accessToken: string): Promise<number> {
+// MERGE data into BigQuery (upsert - prevents duplicates)
+async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<{ inserted: number; updated: number }> {
   const projectId = Deno.env.get('BQ_PROJECT_ID');
   const datasetId = Deno.env.get('BQ_DATASET_ID');
   const tableId = Deno.env.get('BQ_TABLE_ID');
 
-  const query = `DELETE FROM \`${projectId}.${datasetId}.${tableId}\` WHERE DATE(timestamp) = '${targetDate}'`;
-  
-  console.log(`Deleting existing data for ${targetDate}...`);
-  
+  if (!projectId || !datasetId || !tableId) {
+    throw new Error('Missing BigQuery configuration');
+  }
+
+  // Build VALUES clause for all rows
+  const valuesClause = rows.map(row => `(
+    TIMESTAMP '${row.timestamp}',
+    '${row.campaign_id}',
+    '${(row.campaign_name || '').replace(/'/g, "\\'")}',
+    '${row.country}',
+    '${row.platform}',
+    '${row.creative_pack_type}',
+    ${row.starts}, ${row.views}, ${row.clicks}, ${row.installs},
+    ${row.spend}, ${row.cpi}, ${row.ctr}, ${row.cvr}, ${row.ecpm},
+    ${row.d0_ad_revenue}, ${row.d0_total_roas}, ${row.d0_retained}, ${row.d0_retention_rate},
+    ${row.d1_ad_revenue}, ${row.d1_total_roas}, ${row.d1_retained}, ${row.d1_retention_rate},
+    ${row.d3_ad_revenue}, ${row.d3_total_roas}, ${row.d3_retained}, ${row.d3_retention_rate},
+    ${row.d7_ad_revenue}, ${row.d7_total_roas}, ${row.d7_retained}, ${row.d7_retention_rate},
+    ${row.d14_ad_revenue}, ${row.d14_total_roas}, ${row.d14_retained}, ${row.d14_retention_rate},
+    TIMESTAMP '${row.fetched_at}'
+  )`).join(',\n');
+
+  const mergeQuery = `
+    MERGE \`${projectId}.${datasetId}.${tableId}\` AS target
+    USING (
+      SELECT * FROM UNNEST([
+        STRUCT<
+          timestamp TIMESTAMP, campaign_id STRING, campaign_name STRING, country STRING, platform STRING, creative_pack_type STRING,
+          starts INT64, views INT64, clicks INT64, installs INT64,
+          spend FLOAT64, cpi FLOAT64, ctr FLOAT64, cvr FLOAT64, ecpm FLOAT64,
+          d0_ad_revenue FLOAT64, d0_total_roas FLOAT64, d0_retained INT64, d0_retention_rate FLOAT64,
+          d1_ad_revenue FLOAT64, d1_total_roas FLOAT64, d1_retained INT64, d1_retention_rate FLOAT64,
+          d3_ad_revenue FLOAT64, d3_total_roas FLOAT64, d3_retained INT64, d3_retention_rate FLOAT64,
+          d7_ad_revenue FLOAT64, d7_total_roas FLOAT64, d7_retained INT64, d7_retention_rate FLOAT64,
+          d14_ad_revenue FLOAT64, d14_total_roas FLOAT64, d14_retained INT64, d14_retention_rate FLOAT64,
+          fetched_at TIMESTAMP
+        >
+        ${valuesClause}
+      ])
+    ) AS source
+    ON target.timestamp = source.timestamp 
+       AND target.campaign_id = source.campaign_id 
+       AND target.country = source.country 
+       AND target.platform = source.platform 
+       AND target.creative_pack_type = source.creative_pack_type
+    WHEN MATCHED THEN UPDATE SET
+      campaign_name = source.campaign_name,
+      starts = source.starts, views = source.views, clicks = source.clicks, installs = source.installs,
+      spend = source.spend, cpi = source.cpi, ctr = source.ctr, cvr = source.cvr, ecpm = source.ecpm,
+      d0_ad_revenue = source.d0_ad_revenue, d0_total_roas = source.d0_total_roas, d0_retained = source.d0_retained, d0_retention_rate = source.d0_retention_rate,
+      d1_ad_revenue = source.d1_ad_revenue, d1_total_roas = source.d1_total_roas, d1_retained = source.d1_retained, d1_retention_rate = source.d1_retention_rate,
+      d3_ad_revenue = source.d3_ad_revenue, d3_total_roas = source.d3_total_roas, d3_retained = source.d3_retained, d3_retention_rate = source.d3_retention_rate,
+      d7_ad_revenue = source.d7_ad_revenue, d7_total_roas = source.d7_total_roas, d7_retained = source.d7_retained, d7_retention_rate = source.d7_retention_rate,
+      d14_ad_revenue = source.d14_ad_revenue, d14_total_roas = source.d14_total_roas, d14_retained = source.d14_retained, d14_retention_rate = source.d14_retention_rate,
+      fetched_at = source.fetched_at
+    WHEN NOT MATCHED THEN INSERT (
+      timestamp, campaign_id, campaign_name, country, platform, creative_pack_type,
+      starts, views, clicks, installs, spend, cpi, ctr, cvr, ecpm,
+      d0_ad_revenue, d0_total_roas, d0_retained, d0_retention_rate,
+      d1_ad_revenue, d1_total_roas, d1_retained, d1_retention_rate,
+      d3_ad_revenue, d3_total_roas, d3_retained, d3_retention_rate,
+      d7_ad_revenue, d7_total_roas, d7_retained, d7_retention_rate,
+      d14_ad_revenue, d14_total_roas, d14_retained, d14_retention_rate,
+      fetched_at
+    ) VALUES (
+      source.timestamp, source.campaign_id, source.campaign_name, source.country, source.platform, source.creative_pack_type,
+      source.starts, source.views, source.clicks, source.installs, source.spend, source.cpi, source.ctr, source.cvr, source.ecpm,
+      source.d0_ad_revenue, source.d0_total_roas, source.d0_retained, source.d0_retention_rate,
+      source.d1_ad_revenue, source.d1_total_roas, source.d1_retained, source.d1_retention_rate,
+      source.d3_ad_revenue, source.d3_total_roas, source.d3_retained, source.d3_retention_rate,
+      source.d7_ad_revenue, source.d7_total_roas, source.d7_retained, source.d7_retention_rate,
+      source.d14_ad_revenue, source.d14_total_roas, source.d14_retained, source.d14_retention_rate,
+      source.fetched_at
+    )
+  `;
+
+  console.log(`Executing MERGE for ${rows.length} rows into BigQuery`);
+
   const response = await fetch(
     `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
     {
@@ -206,70 +280,26 @@ async function deleteExistingData(targetDate: string, accessToken: string): Prom
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ 
-        query, 
+        query: mergeQuery, 
         useLegacySql: false,
-        timeoutMs: 30000,
+        timeoutMs: 60000,
       }),
     }
   );
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error('Failed to delete existing data:', error);
-    // Don't throw - we'll proceed with insert anyway
-    return 0;
-  }
-
-  const result = await response.json();
-  const deletedRows = result.numDmlAffectedRows ? parseInt(result.numDmlAffectedRows) : 0;
-  console.log(`Deleted ${deletedRows} existing rows for ${targetDate}`);
-  return deletedRows;
-}
-
-// Insert data into BigQuery
-async function insertToBigQuery(rows: any[], accessToken: string): Promise<void> {
-  const projectId = Deno.env.get('BQ_PROJECT_ID');
-  const datasetId = Deno.env.get('BQ_DATASET_ID');
-  const tableId = Deno.env.get('BQ_TABLE_ID');
-
-  if (!projectId || !datasetId || !tableId) {
-    throw new Error('Missing BigQuery configuration');
-  }
-
-  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/datasets/${datasetId}/tables/${tableId}/insertAll`;
-
-  const requestBody = {
-    rows: rows.map(row => ({
-      insertId: generateInsertId(row),
-      json: row,
-    })),
-  };
-
-  console.log(`Inserting ${rows.length} rows to BigQuery`);
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
     const errorText = await response.text();
-    console.error('BigQuery insert error:', response.status, errorText);
-    throw new Error(`BigQuery insert failed: ${response.status} - ${errorText}`);
+    console.error('BigQuery MERGE error:', response.status, errorText);
+    throw new Error(`BigQuery MERGE failed: ${response.status} - ${errorText}`);
   }
 
   const result = await response.json();
   
-  if (result.insertErrors && result.insertErrors.length > 0) {
-    console.error('BigQuery insert errors:', JSON.stringify(result.insertErrors));
-    throw new Error(`BigQuery insert had ${result.insertErrors.length} errors`);
-  }
-
-  console.log('BigQuery insert successful');
+  // Parse DML stats
+  const affectedRows = result.numDmlAffectedRows ? parseInt(result.numDmlAffectedRows) : rows.length;
+  console.log(`BigQuery MERGE successful: ${affectedRows} rows affected`);
+  
+  return { inserted: affectedRows, updated: 0 }; // BigQuery doesn't separate insert vs update counts
 }
 
 serve(async (req: Request) => {
@@ -322,11 +352,8 @@ serve(async (req: Request) => {
     // Get OAuth access token
     const accessToken = await getAccessToken();
 
-    // Delete existing data for this date first (prevents duplicates on re-sync)
-    const deletedRows = await deleteExistingData(targetDate, accessToken);
-
-    // Insert fresh data to BigQuery
-    await insertToBigQuery(transformedData, accessToken);
+    // MERGE data into BigQuery (upsert - prevents duplicates)
+    const mergeResult = await mergeIntoBigQuery(transformedData, accessToken);
 
     const duration = Date.now() - startTime;
     console.log(`=== Sync completed in ${duration}ms ===`);
@@ -334,10 +361,9 @@ serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Successfully synced ${transformedData.length} rows (deleted ${deletedRows} old rows first)`,
+        message: `Successfully synced ${transformedData.length} rows (${mergeResult.inserted} affected)`,
         date: targetDate,
-        rowsInserted: transformedData.length,
-        rowsDeleted: deletedRows,
+        rowsAffected: mergeResult.inserted,
         durationMs: duration,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
