@@ -105,6 +105,16 @@ async function fetchUnityData(date: string): Promise<any[]> {
   }
 
   const result = await response.json();
+  
+  // Log raw data sample for debugging
+  console.log(`Unity API returned ${result.data?.length || 0} rows`);
+  if (result.data && result.data.length > 0) {
+    console.log(`Sample row (first):`, JSON.stringify(result.data[0], null, 2));
+    // Log spend values to verify they're correct from Unity
+    const totalSpend = result.data.reduce((sum: number, row: any) => sum + (row.spend || 0), 0);
+    console.log(`Total spend from Unity API: $${totalSpend.toFixed(2)}`);
+  }
+  
   return result.data || [];
 }
 
@@ -175,6 +185,45 @@ function generateInsertId(row: any): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(36);
+}
+
+// Delete existing data for a specific date to prevent duplicates
+async function deleteExistingData(targetDate: string, accessToken: string): Promise<number> {
+  const projectId = Deno.env.get('BQ_PROJECT_ID');
+  const datasetId = Deno.env.get('BQ_DATASET_ID');
+  const tableId = Deno.env.get('BQ_TABLE_ID');
+
+  const query = `DELETE FROM \`${projectId}.${datasetId}.${tableId}\` WHERE DATE(timestamp) = '${targetDate}'`;
+  
+  console.log(`Deleting existing data for ${targetDate}...`);
+  
+  const response = await fetch(
+    `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        query, 
+        useLegacySql: false,
+        timeoutMs: 30000,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('Failed to delete existing data:', error);
+    // Don't throw - we'll proceed with insert anyway
+    return 0;
+  }
+
+  const result = await response.json();
+  const deletedRows = result.numDmlAffectedRows ? parseInt(result.numDmlAffectedRows) : 0;
+  console.log(`Deleted ${deletedRows} existing rows for ${targetDate}`);
+  return deletedRows;
 }
 
 // Insert data into BigQuery
@@ -273,7 +322,10 @@ serve(async (req: Request) => {
     // Get OAuth access token
     const accessToken = await getAccessToken();
 
-    // Insert to BigQuery
+    // Delete existing data for this date first (prevents duplicates on re-sync)
+    const deletedRows = await deleteExistingData(targetDate, accessToken);
+
+    // Insert fresh data to BigQuery
     await insertToBigQuery(transformedData, accessToken);
 
     const duration = Date.now() - startTime;
@@ -282,9 +334,10 @@ serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Successfully synced ${transformedData.length} rows`,
+        message: `Successfully synced ${transformedData.length} rows (deleted ${deletedRows} old rows first)`,
         date: targetDate,
         rowsInserted: transformedData.length,
+        rowsDeleted: deletedRows,
         durationMs: duration,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
