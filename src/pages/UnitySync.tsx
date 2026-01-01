@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Play, Loader2, CheckCircle, XCircle, Calendar, Zap, Eye, X } from "lucide-react";
+import { ArrowLeft, Play, Loader2, CheckCircle, XCircle, Calendar, Zap, Eye, X, CalendarRange } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useUnityPreview } from "@/hooks/useUnityPreview";
@@ -19,12 +20,38 @@ interface SyncResult {
   durationMs?: number;
 }
 
+interface BackfillProgress {
+  isRunning: boolean;
+  currentDate: string;
+  completed: number;
+  total: number;
+  totalRows: number;
+  results: Array<{
+    date: string;
+    success: boolean;
+    rows?: number;
+    error?: string;
+  }>;
+}
+
 export default function UnitySync() {
   const [isRunning, setIsRunning] = useState(false);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const [customDate, setCustomDate] = useState("");
   const [previewDate, setPreviewDate] = useState("");
   const { isLoading: isPreviewLoading, result: previewResult, fetchPreview, clearPreview } = useUnityPreview();
+
+  // Backfill state
+  const [backfillStartDate, setBackfillStartDate] = useState("");
+  const [backfillEndDate, setBackfillEndDate] = useState("");
+  const [backfillProgress, setBackfillProgress] = useState<BackfillProgress>({
+    isRunning: false,
+    currentDate: "",
+    completed: 0,
+    total: 0,
+    totalRows: 0,
+    results: [],
+  });
 
   const handleRunSync = async (date?: string) => {
     setIsRunning(true);
@@ -80,6 +107,173 @@ export default function UnitySync() {
     handlePreview(previewDate);
   };
 
+  // Generate array of dates between start and end (inclusive)
+  const getDateRange = (start: string, end: string): string[] => {
+    const dates: string[] = [];
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    
+    if (startDate > endDate) return dates;
+    
+    const current = new Date(startDate);
+    while (current <= endDate) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const handleBackfill = async () => {
+    if (!backfillStartDate || !backfillEndDate) {
+      toast.error("Please select both start and end dates");
+      return;
+    }
+
+    const dates = getDateRange(backfillStartDate, backfillEndDate);
+    if (dates.length === 0) {
+      toast.error("Start date must be before or equal to end date");
+      return;
+    }
+
+    if (dates.length > 365) {
+      toast.error("Maximum range is 365 days");
+      return;
+    }
+
+    setBackfillProgress({
+      isRunning: true,
+      currentDate: dates[0],
+      completed: 0,
+      total: dates.length,
+      totalRows: 0,
+      results: [],
+    });
+
+    const results: BackfillProgress['results'] = [];
+    let totalRows = 0;
+
+    for (let i = 0; i < dates.length; i++) {
+      const date = dates[i];
+      
+      setBackfillProgress(prev => ({
+        ...prev,
+        currentDate: date,
+        completed: i,
+      }));
+
+      try {
+        const { data, error } = await supabase.functions.invoke('unity-to-bigquery', {
+          body: { date },
+        });
+
+        if (error) throw error;
+
+        const rows = data.rowsInserted || 0;
+        totalRows += rows;
+        results.push({ date, success: data.success, rows, error: data.error });
+        
+        setBackfillProgress(prev => ({
+          ...prev,
+          totalRows,
+          results: [...results],
+        }));
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "Unknown error";
+        results.push({ date, success: false, error: errorMsg });
+        
+        setBackfillProgress(prev => ({
+          ...prev,
+          results: [...results],
+        }));
+      }
+    }
+
+    setBackfillProgress(prev => ({
+      ...prev,
+      isRunning: false,
+      completed: dates.length,
+      currentDate: "",
+    }));
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    if (failCount === 0) {
+      toast.success(`Backfill complete: ${successCount} days, ${totalRows.toLocaleString()} rows`);
+    } else {
+      toast.warning(`Backfill complete: ${successCount} succeeded, ${failCount} failed`);
+    }
+  };
+
+  const retryFailedDates = async () => {
+    const failedDates = backfillProgress.results.filter(r => !r.success).map(r => r.date);
+    if (failedDates.length === 0) return;
+
+    setBackfillProgress(prev => ({
+      ...prev,
+      isRunning: true,
+      completed: 0,
+      total: failedDates.length,
+      currentDate: failedDates[0],
+    }));
+
+    let totalRows = backfillProgress.totalRows;
+    const updatedResults = [...backfillProgress.results];
+
+    for (let i = 0; i < failedDates.length; i++) {
+      const date = failedDates[i];
+      
+      setBackfillProgress(prev => ({
+        ...prev,
+        currentDate: date,
+        completed: i,
+      }));
+
+      try {
+        const { data, error } = await supabase.functions.invoke('unity-to-bigquery', {
+          body: { date },
+        });
+
+        if (error) throw error;
+
+        const rows = data.rowsInserted || 0;
+        totalRows += rows;
+        
+        const idx = updatedResults.findIndex(r => r.date === date);
+        if (idx !== -1) {
+          updatedResults[idx] = { date, success: data.success, rows, error: data.error };
+        }
+        
+        setBackfillProgress(prev => ({
+          ...prev,
+          totalRows,
+          results: [...updatedResults],
+        }));
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "Unknown error";
+        const idx = updatedResults.findIndex(r => r.date === date);
+        if (idx !== -1) {
+          updatedResults[idx] = { date, success: false, error: errorMsg };
+        }
+      }
+    }
+
+    setBackfillProgress(prev => ({
+      ...prev,
+      isRunning: false,
+      completed: failedDates.length,
+      currentDate: "",
+      results: updatedResults,
+    }));
+
+    const stillFailed = updatedResults.filter(r => !r.success).length;
+    if (stillFailed === 0) {
+      toast.success("All retries successful!");
+    } else {
+      toast.warning(`${stillFailed} dates still failed`);
+    }
+  };
+
   // Calculate today's and yesterday's dates for display
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
@@ -87,6 +281,9 @@ export default function UnitySync() {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  const failedCount = backfillProgress.results.filter(r => !r.success).length;
+  const successCount = backfillProgress.results.filter(r => r.success).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -127,7 +324,7 @@ export default function UnitySync() {
           <CardContent>
             <Button 
               onClick={() => handleRunSync(todayStr)} 
-              disabled={isRunning}
+              disabled={isRunning || backfillProgress.isRunning}
               className="w-full"
             >
               {isRunning ? (
@@ -159,7 +356,7 @@ export default function UnitySync() {
           <CardContent>
             <Button 
               onClick={() => handleRunSync(yesterdayStr)} 
-              disabled={isRunning}
+              disabled={isRunning || backfillProgress.isRunning}
               variant="secondary"
               className="w-full"
             >
@@ -199,12 +396,12 @@ export default function UnitySync() {
                   value={customDate}
                   onChange={(e) => setCustomDate(e.target.value)}
                   placeholder="YYYY-MM-DD"
-                  disabled={isRunning}
+                  disabled={isRunning || backfillProgress.isRunning}
                 />
               </div>
               <Button 
                 onClick={handleCustomDateSync} 
-                disabled={isRunning || !customDate}
+                disabled={isRunning || backfillProgress.isRunning || !customDate}
                 variant="secondary"
               >
                 {isRunning ? (
@@ -214,6 +411,129 @@ export default function UnitySync() {
                 )}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Backfill Date Range Card */}
+        <Card className="mb-6 border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarRange className="w-5 h-5 text-primary" />
+              Backfill Date Range
+            </CardTitle>
+            <CardDescription>
+              Sync multiple days at once (processed sequentially)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="backfillStart" className="text-xs text-muted-foreground mb-1 block">Start Date</Label>
+                <Input
+                  id="backfillStart"
+                  type="date"
+                  value={backfillStartDate}
+                  onChange={(e) => setBackfillStartDate(e.target.value)}
+                  disabled={backfillProgress.isRunning || isRunning}
+                />
+              </div>
+              <div>
+                <Label htmlFor="backfillEnd" className="text-xs text-muted-foreground mb-1 block">End Date</Label>
+                <Input
+                  id="backfillEnd"
+                  type="date"
+                  value={backfillEndDate}
+                  onChange={(e) => setBackfillEndDate(e.target.value)}
+                  disabled={backfillProgress.isRunning || isRunning}
+                />
+              </div>
+            </div>
+
+            <Button 
+              onClick={handleBackfill} 
+              disabled={backfillProgress.isRunning || isRunning || !backfillStartDate || !backfillEndDate}
+              className="w-full"
+            >
+              {backfillProgress.isRunning ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Running Backfill...
+                </>
+              ) : (
+                <>
+                  <CalendarRange className="w-4 h-4 mr-2" />
+                  Run Backfill
+                </>
+              )}
+            </Button>
+
+            {/* Progress indicator */}
+            {backfillProgress.isRunning && (
+              <div className="space-y-2 pt-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Processing: <span className="text-foreground font-medium">{backfillProgress.currentDate}</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    {backfillProgress.completed + 1} of {backfillProgress.total}
+                  </span>
+                </div>
+                <Progress value={(backfillProgress.completed / backfillProgress.total) * 100} />
+                <div className="text-sm text-muted-foreground">
+                  Rows synced: <span className="text-foreground font-medium">{backfillProgress.totalRows.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Results summary */}
+            {!backfillProgress.isRunning && backfillProgress.results.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-4 text-sm">
+                  <div className="flex items-center gap-1">
+                    <CheckCircle className="w-4 h-4 text-primary" />
+                    <span>{successCount} succeeded</span>
+                  </div>
+                  {failedCount > 0 && (
+                    <div className="flex items-center gap-1 text-destructive">
+                      <XCircle className="w-4 h-4" />
+                      <span>{failedCount} failed</span>
+                    </div>
+                  )}
+                  <div className="text-muted-foreground">
+                    {backfillProgress.totalRows.toLocaleString()} total rows
+                  </div>
+                </div>
+
+                {failedCount > 0 && (
+                  <>
+                    <div className="text-sm space-y-1">
+                      {backfillProgress.results
+                        .filter(r => !r.success)
+                        .slice(0, 5)
+                        .map(r => (
+                          <div key={r.date} className="flex items-start gap-2 text-destructive/80">
+                            <XCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                            <span>{r.date}: {r.error}</span>
+                          </div>
+                        ))}
+                      {failedCount > 5 && (
+                        <div className="text-muted-foreground text-xs">
+                          ...and {failedCount - 5} more
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      onClick={retryFailedDates}
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                    >
+                      Retry Failed Dates ({failedCount})
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -232,7 +552,7 @@ export default function UnitySync() {
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 onClick={() => handlePreview(yesterdayStr)}
-                disabled={isPreviewLoading}
+                disabled={isPreviewLoading || backfillProgress.isRunning}
                 variant="outline"
                 className="flex-1"
               >
@@ -248,11 +568,11 @@ export default function UnitySync() {
                   type="date"
                   value={previewDate}
                   onChange={(e) => setPreviewDate(e.target.value)}
-                  disabled={isPreviewLoading}
+                  disabled={isPreviewLoading || backfillProgress.isRunning}
                 />
                 <Button
                   onClick={handlePreviewCustomDate}
-                  disabled={isPreviewLoading || !previewDate}
+                  disabled={isPreviewLoading || backfillProgress.isRunning || !previewDate}
                   variant="outline"
                 >
                   {isPreviewLoading ? (
@@ -274,7 +594,7 @@ export default function UnitySync() {
               <div className="flex gap-2">
                 <Button
                   onClick={() => handleRunSync(previewResult.date)}
-                  disabled={isRunning || previewResult.data.length === 0}
+                  disabled={isRunning || backfillProgress.isRunning || previewResult.data.length === 0}
                   size="sm"
                 >
                   {isRunning ? (
