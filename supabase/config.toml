@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.unity-to-bigquery]
 verify_jwt = false
+
+[functions.unity-preview]
+verify_jwt = false
