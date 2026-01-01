@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Play, Loader2, CheckCircle, XCircle, Calendar, Zap } from "lucide-react";
+import { ArrowLeft, Play, Loader2, CheckCircle, XCircle, Calendar, Zap, Eye, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useUnityPreview } from "@/hooks/useUnityPreview";
+import UnityDataPreview from "@/components/UnityDataPreview";
+
 interface SyncResult {
   success: boolean;
   message?: string;
@@ -20,6 +23,8 @@ export default function UnitySync() {
   const [isRunning, setIsRunning] = useState(false);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const [customDate, setCustomDate] = useState("");
+  const [previewDate, setPreviewDate] = useState("");
+  const { isLoading: isPreviewLoading, result: previewResult, fetchPreview, clearPreview } = useUnityPreview();
 
   const handleRunSync = async (date?: string) => {
     setIsRunning(true);
@@ -56,6 +61,23 @@ export default function UnitySync() {
       return;
     }
     handleRunSync(customDate);
+  };
+
+  const handlePreview = async (date: string) => {
+    try {
+      await fetchPreview(date);
+      toast.success("Preview loaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load preview");
+    }
+  };
+
+  const handlePreviewCustomDate = () => {
+    if (!previewDate) {
+      toast.error("Please select a date to preview");
+      return;
+    }
+    handlePreview(previewDate);
   };
 
   // Calculate today's and yesterday's dates for display
@@ -194,6 +216,86 @@ export default function UnitySync() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Preview Data Card */}
+        <Card className="mb-6 border-dashed">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Preview Data
+            </CardTitle>
+            <CardDescription>
+              See what data will be synced before sending to BigQuery
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                onClick={() => handlePreview(yesterdayStr)}
+                disabled={isPreviewLoading}
+                variant="outline"
+                className="flex-1"
+              >
+                {isPreviewLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Eye className="w-4 h-4 mr-2" />
+                )}
+                Preview Yesterday
+              </Button>
+              <div className="flex gap-2 flex-1">
+                <Input
+                  type="date"
+                  value={previewDate}
+                  onChange={(e) => setPreviewDate(e.target.value)}
+                  disabled={isPreviewLoading}
+                />
+                <Button
+                  onClick={handlePreviewCustomDate}
+                  disabled={isPreviewLoading || !previewDate}
+                  variant="outline"
+                >
+                  {isPreviewLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Preview"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Preview Results */}
+        {previewResult && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Data Preview</h2>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleRunSync(previewResult.date)}
+                  disabled={isRunning || previewResult.data.length === 0}
+                  size="sm"
+                >
+                  {isRunning ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-2" />
+                  )}
+                  Sync This Data
+                </Button>
+                <Button
+                  onClick={clearPreview}
+                  variant="ghost"
+                  size="sm"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            <UnityDataPreview result={previewResult} />
+          </div>
+        )}
 
         {/* Last Result Card */}
         {lastResult && (
