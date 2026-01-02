@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.unity-preview]
 verify_jwt = false
+
+[functions.appsflyer-ssot]
+verify_jwt = false
