@@ -1,4 +1,4 @@
-import { RefreshCw, AlertCircle, Settings } from "lucide-react";
+import { RefreshCw, AlertCircle, Settings, Database, BarChart3 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
@@ -7,6 +7,7 @@ import { TopChartsTable } from "./TopChartsTable";
 import { RankingHistoryChart } from "./RankingHistoryChart";
 import { DownloadsHistoryChart } from "./DownloadsHistoryChart";
 import { CompetitorDownloadsChart } from "./CompetitorDownloadsChart";
+import { AppsFlyerDownloadsChart } from "./AppsFlyerDownloadsChart";
 import { AppSectionHeader } from "./AppSectionHeader";
 
 // App Store icon URLs
@@ -23,6 +24,7 @@ export const Dashboard = () => {
     queryClient.invalidateQueries({ queryKey: ["apptweak-metrics"] });
     queryClient.invalidateQueries({ queryKey: ["apptweak-metrics-history"] });
     queryClient.invalidateQueries({ queryKey: ["competitor-downloads-history"] });
+    queryClient.invalidateQueries({ queryKey: ["appsflyer-downloads"] });
   };
 
   return (
@@ -113,8 +115,22 @@ export const Dashboard = () => {
           <RankingHistoryChart />
         </div>
 
+        {/* AppTweak Data Section */}
         <div className="mb-8">
-          <DownloadsHistoryChart appId="6648798962" appName="Polymarket" />
+          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            AppTweak Data
+          </h3>
+          <DownloadsHistoryChart appId="6648798962" appName="Polymarket" dataSource="AppTweak" />
+        </div>
+
+        {/* AppsFlyer SSOT Section */}
+        <div className="mb-8">
+          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+            <Database className="w-4 h-4" />
+            AppsFlyer SSOT
+          </h3>
+          <AppsFlyerDownloadsChart appName="Polymarket" />
         </div>
 
         <div className="mb-12">

@@ -1,18 +1,16 @@
 import { Download } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { useAppTweakMetricsHistory } from "@/hooks/useAppTweakMetricsHistory";
+import { useAppsFlyerDownloads } from "@/hooks/useAppsFlyerDownloads";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 
-interface DownloadsHistoryChartProps {
-  appId: string;
+interface AppsFlyerDownloadsChartProps {
   appName: string;
-  dataSource?: string;
 }
 
-export const DownloadsHistoryChart = ({ appId, appName, dataSource = "AppTweak" }: DownloadsHistoryChartProps) => {
-  const { data: historyData, isLoading, error } = useAppTweakMetricsHistory(appId, 7);
+export const AppsFlyerDownloadsChart = ({ appName }: AppsFlyerDownloadsChartProps) => {
+  const { data: historyData, isLoading, error } = useAppsFlyerDownloads(7);
 
   if (isLoading) {
     return (
@@ -29,9 +27,11 @@ export const DownloadsHistoryChart = ({ appId, appName, dataSource = "AppTweak" 
         <div className="flex items-center gap-2 mb-4">
           <Download className="w-5 h-5 text-primary" />
           <h3 className="font-semibold text-foreground">{appName} - Downloads (Last 7 Days)</h3>
-          <Badge variant="outline" className="ml-2 text-xs">{dataSource}</Badge>
+          <Badge variant="outline" className="ml-2 text-xs">AppsFlyer</Badge>
         </div>
-        <p className="text-sm text-muted-foreground">No downloads history available</p>
+        <p className="text-sm text-muted-foreground">
+          {error ? `Error: ${error.message}` : "No downloads history available"}
+        </p>
       </div>
     );
   }
@@ -52,7 +52,7 @@ export const DownloadsHistoryChart = ({ appId, appName, dataSource = "AppTweak" 
           <div className="flex items-center gap-2">
             <Download className="w-5 h-5 text-primary" />
             <h3 className="font-semibold text-foreground">{appName} - Downloads (Last 7 Days)</h3>
-            <Badge variant="outline" className="text-xs">{dataSource}</Badge>
+            <Badge variant="outline" className="text-xs">AppsFlyer</Badge>
           </div>
           <div className="flex items-center gap-4 text-sm">
             <div className="text-muted-foreground">
@@ -95,10 +95,10 @@ export const DownloadsHistoryChart = ({ appId, appName, dataSource = "AppTweak" 
               <Line
                 type="monotone"
                 dataKey="downloads"
-                stroke="hsl(var(--primary))"
+                stroke="hsl(var(--chart-2))"
                 strokeWidth={2}
-                dot={{ fill: "hsl(var(--primary))", strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, fill: "hsl(var(--primary))" }}
+                dot={{ fill: "hsl(var(--chart-2))", strokeWidth: 2, r: 4 }}
+                activeDot={{ r: 6, fill: "hsl(var(--chart-2))" }}
               />
             </LineChart>
           </ResponsiveContainer>
