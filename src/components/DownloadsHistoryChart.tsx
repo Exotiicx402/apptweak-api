@@ -1,12 +1,14 @@
-import { TrendingUp, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useAppTweakMetricsHistory } from "@/hooks/useAppTweakMetricsHistory";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 
 interface DownloadsHistoryChartProps {
   appId: string;
   appName: string;
+  dataSource?: string;
 }
 
 export const DownloadsHistoryChart = ({ appId, appName }: DownloadsHistoryChartProps) => {
