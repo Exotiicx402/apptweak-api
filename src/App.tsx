@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import UnitySync from "./pages/UnitySync";
 import Controls from "./pages/Controls";
+import SnapchatSync from "./pages/SnapchatSync";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/unity-sync" element={<UnitySync />} />
           <Route path="/controls" element={<Controls />} />
+          <Route path="/snapchat-sync" element={<SnapchatSync />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.appsflyer-ssot]
 verify_jwt = false
+
+[functions.snapchat-to-bigquery]
+verify_jwt = false
