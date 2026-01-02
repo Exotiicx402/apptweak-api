@@ -34,17 +34,14 @@ serve(async (req) => {
 
     console.log(`Fetching AppsFlyer SSOT iOS data for ${APPSFLYER_APP_ID} from ${startDate} to ${endDate}`);
 
-    // AppsFlyer Master Aggregated SSOT API endpoint for iOS
-    // Using master-agg-data which is the Single Source of Truth
-    const url = `https://hq1.appsflyer.com/api/master-agg-data/v4/app/${APPSFLYER_APP_ID}`;
+    // AppsFlyer Pull API - geo_by_date_report is the SSOT for aggregated installs
+    // The app ID prefix 'id' indicates iOS App Store app
+    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${APPSFLYER_APP_ID}/geo_by_date_report/v5`;
     
     const params = new URLSearchParams({
       from: startDate,
       to: endDate,
       timezone: 'UTC',
-      groupings: 'date',
-      kpis: 'installs',
-      format: 'csv',
     });
 
     console.log(`Calling AppsFlyer API: ${url}?${params.toString()}`);
