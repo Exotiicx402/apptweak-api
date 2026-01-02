@@ -32,10 +32,11 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Fetching AppsFlyer SSOT data for ${APPSFLYER_APP_ID} from ${startDate} to ${endDate}`);
+    console.log(`Fetching AppsFlyer SSOT iOS data for ${APPSFLYER_APP_ID} from ${startDate} to ${endDate}`);
 
-    // AppsFlyer SSOT API endpoint for aggregated data
-    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${APPSFLYER_APP_ID}/geo_by_date_report/v5`;
+    // AppsFlyer Master Aggregated SSOT API endpoint for iOS
+    // Using master-agg-data which is the Single Source of Truth
+    const url = `https://hq1.appsflyer.com/api/master-agg-data/v4/app/${APPSFLYER_APP_ID}`;
     
     const params = new URLSearchParams({
       from: startDate,
@@ -43,6 +44,7 @@ serve(async (req) => {
       timezone: 'UTC',
       groupings: 'date',
       kpis: 'installs',
+      format: 'csv',
     });
 
     console.log(`Calling AppsFlyer API: ${url}?${params.toString()}`);
