@@ -99,8 +99,11 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
   }
 
   // Convert date to start and end timestamps (full day in UTC)
+  // End time must be at the beginning of an hour per Snapchat API requirements
   const startTime = `${date}T00:00:00.000Z`;
-  const endTime = `${date}T23:59:59.999Z`;
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + 1);
+  const endTime = `${nextDate.toISOString().split('T')[0]}T00:00:00.000Z`;
 
   console.log(`Fetching Snapchat stats for ad account ${adAccountId} on ${date}`);
 
