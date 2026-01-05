@@ -18,8 +18,13 @@ function getTodayDate(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-// Exchange refresh token for access token
-async function getSnapchatAccessToken(): Promise<string> {
+// Helper function to sleep for a given number of milliseconds
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Exchange refresh token for access token with retry logic for rate limiting
+async function getSnapchatAccessToken(maxRetries = 3): Promise<string> {
   const clientId = Deno.env.get('SNAPCHAT_CLIENT_ID');
   const clientSecret = Deno.env.get('SNAPCHAT_CLIENT_SECRET');
   const refreshToken = Deno.env.get('SNAPCHAT_REFRESH_TOKEN');
@@ -28,30 +33,52 @@ async function getSnapchatAccessToken(): Promise<string> {
     throw new Error('Missing Snapchat OAuth credentials');
   }
 
-  console.log('Exchanging Snapchat refresh token for access token...');
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`Exchanging Snapchat refresh token for access token (attempt ${attempt}/${maxRetries})...`);
 
-  const response = await fetch('https://accounts.snapchat.com/login/oauth2/access_token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-    }),
-  });
+    try {
+      const response = await fetch('https://accounts.snapchat.com/login/oauth2/access_token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+        }),
+      });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Snapchat token error:', errorText);
-    throw new Error(`Failed to get Snapchat access token: ${response.status} ${errorText}`);
+      if (response.status === 429) {
+        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.warn(`Rate limited by Snapchat API (429). Waiting ${waitTime}ms before retry...`);
+        await sleep(waitTime);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Snapchat token error:', errorText);
+        throw new Error(`Failed to get Snapchat access token: ${response.status} ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('Successfully obtained Snapchat access token');
+      return data.access_token;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < maxRetries) {
+        const waitTime = Math.pow(2, attempt) * 1000;
+        console.warn(`Token request failed. Waiting ${waitTime}ms before retry...`);
+        await sleep(waitTime);
+      }
+    }
   }
 
-  const data = await response.json();
-  console.log('Successfully obtained Snapchat access token');
-  return data.access_token;
+  throw lastError || new Error('Failed to get Snapchat access token after retries');
 }
 
 // Get Google access token for BigQuery
