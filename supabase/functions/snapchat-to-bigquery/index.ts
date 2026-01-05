@@ -136,21 +136,39 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
   // Extract timeseries stats from the response
   const stats: any[] = [];
   
-  if (data.timeseries_stats) {
-    for (const timeseriesStat of data.timeseries_stats) {
-      const campaignId = timeseriesStat.id || 'unknown';
-      const campaignName = timeseriesStat.name || 'Unknown Campaign';
+  // Log the response structure for debugging
+  console.log(`Response keys: ${Object.keys(data).join(', ')}`);
+
+  if (data.timeseries_stats && Array.isArray(data.timeseries_stats)) {
+    for (const wrapper of data.timeseries_stats) {
+      // Check sub-request status
+      if (wrapper.sub_request_status !== 'success') {
+        console.warn(`Sub-request failed: ${wrapper.sub_request_status}`);
+        continue;
+      }
       
-      if (timeseriesStat.timeseries) {
+      // Access the nested timeseries_stat object (singular)
+      const timeseriesStat = wrapper.timeseries_stat;
+      if (!timeseriesStat) {
+        console.warn('No timeseries_stat found in wrapper');
+        continue;
+      }
+      
+      const campaignId = timeseriesStat.id || 'unknown';
+      const campaignType = timeseriesStat.type || 'UNKNOWN';
+      
+      console.log(`Processing ${campaignType} ${campaignId}`);
+      
+      if (timeseriesStat.timeseries && Array.isArray(timeseriesStat.timeseries)) {
         for (const hourData of timeseriesStat.timeseries) {
           stats.push({
             timestamp: hourData.start_time,
             campaign_id: campaignId,
-            campaign_name: campaignName,
+            campaign_name: campaignId, // API doesn't return name in stats response
             impressions: hourData.stats?.impressions || 0,
             swipes: hourData.stats?.swipes || 0,
             spend_micros: hourData.stats?.spend || 0,
-            spend: (hourData.stats?.spend || 0) / 1000000, // Convert micros to currency
+            spend: (hourData.stats?.spend || 0) / 1000000,
             video_views: hourData.stats?.video_views || 0,
             screen_time_millis: hourData.stats?.screen_time_millis || 0,
             quartile_1: hourData.stats?.quartile_1 || 0,
@@ -162,6 +180,8 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
             conversion_purchases_value: hourData.stats?.conversion_purchases_value || 0,
           });
         }
+      } else {
+        console.warn(`No timeseries array found for campaign ${campaignId}`);
       }
     }
   }
