@@ -193,10 +193,13 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
     throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
   }
 
-  const startTime = `${date}T00:00:00.000Z`;
-  const nextDate = new Date(`${date}T00:00:00.000Z`);
-  nextDate.setUTCDate(nextDate.getUTCDate() + 1);
-  const endTime = nextDate.toISOString().split('.')[0] + '.000Z';
+  // Use Pacific Time (UTC-8) to match Snapchat ad account timezone
+  const startTime = `${date}T00:00:00.000-08:00`;
+  const nextDate = new Date(`${date}T00:00:00.000-08:00`);
+  nextDate.setDate(nextDate.getDate() + 1);
+  const endTime = `${nextDate.toISOString().split('T')[0]}T00:00:00.000-08:00`;
+  
+  console.log(`Querying date range: ${startTime} to ${endTime} (Pacific Time)`);
 
   console.log(`Fetching Snapchat stats for ad account ${adAccountId} on ${date}`);
 
@@ -206,7 +209,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
-  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,conversion_purchases,conversion_purchases_value');
+  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,ios_installs,android_installs,conversion_skan_app_installs,conversion_purchases,conversion_purchases_value');
 
   const response = await fetch(url.toString(), {
     method: 'GET',
@@ -259,7 +262,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
               quartile_2: hourData.stats?.quartile_2 || 0,
               quartile_3: hourData.stats?.quartile_3 || 0,
               view_completion: hourData.stats?.view_completion || 0,
-              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0),
+              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0) + (hourData.stats?.conversion_skan_app_installs || 0),
               conversion_purchases: hourData.stats?.conversion_purchases || 0,
               conversion_purchases_value: hourData.stats?.conversion_purchases_value || 0,
             });
