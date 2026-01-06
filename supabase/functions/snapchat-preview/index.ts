@@ -407,9 +407,10 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
-  // Attribution windows to match Ads Manager settings
+  // Attribution windows to match Ads Manager settings (validated via diagnostics)
   url.searchParams.set('swipe_up_attribution_window', '7_DAY');
   url.searchParams.set('view_attribution_window', '1_DAY');
+  url.searchParams.set('action_report_time', 'impression');
   // Fetch installs via total_installs (matches Ads Manager "Installs")
   url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,ios_installs,android_installs,conversion_purchases,conversion_purchases_value');
 
