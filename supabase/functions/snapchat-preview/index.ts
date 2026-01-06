@@ -259,7 +259,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
               quartile_2: hourData.stats?.quartile_2 || 0,
               quartile_3: hourData.stats?.quartile_3 || 0,
               view_completion: hourData.stats?.view_completion || 0,
-              total_installs: hourData.stats?.total_installs || 0,
+              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0),
               conversion_purchases: hourData.stats?.conversion_purchases || 0,
               conversion_purchases_value: hourData.stats?.conversion_purchases_value || 0,
             });

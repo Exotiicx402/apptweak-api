@@ -369,7 +369,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
               impressions: impressions,
               swipes: swipes,
               spend: (hourData.stats?.spend || 0) / 1000000,
-              total_installs: hourData.stats?.total_installs || 0,
+              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0),
               android_installs: hourData.stats?.android_installs || 0,
               ios_installs: hourData.stats?.ios_installs || 0,
               screen_time_millis: screenTimeMillis,
