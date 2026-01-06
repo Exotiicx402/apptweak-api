@@ -64,7 +64,7 @@ function getTimeZoneOffsetMs(utcDate: Date, timeZone: string): number {
 
 function getUtcMsForZonedMidnight(dateStr: string, timeZone: string): number {
   const { year, month, day } = parseYmd(dateStr);
-  // Treat “YYYY-MM-DD 00:00:00” as a *local* time in the ad account timezone.
+  // Treat "YYYY-MM-DD 00:00:00" as a *local* time in the ad account timezone.
   const localMidnightAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
 
   let utcMs = localMidnightAsUtc;
@@ -282,7 +282,10 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
-  // Fetch installs via total_installs (matches Ads Manager “Installs”)
+  // Attribution windows to match Ads Manager settings
+  url.searchParams.set('swipe_up_attribution_window', '7_DAY');
+  url.searchParams.set('view_attribution_window', '1_DAY');
+  // Fetch installs via total_installs (matches Ads Manager "Installs")
   url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,ios_installs,android_installs,conversion_purchases,conversion_purchases_value');
 
   console.log(`API URL: ${url.toString()}`);

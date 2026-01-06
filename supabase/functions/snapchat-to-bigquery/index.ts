@@ -264,6 +264,9 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
   url.searchParams.set('omit_empty', 'false');
   url.searchParams.set('limit', '200');
   url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,conversion_purchases,conversion_purchases_value');
+  // Attribution windows to match Ads Manager settings
+  url.searchParams.set('swipe_up_attribution_window', '7_DAY');
+  url.searchParams.set('view_attribution_window', '1_DAY');
 
   console.log(`Calling Snapchat API: ${url.toString()}`);
 
