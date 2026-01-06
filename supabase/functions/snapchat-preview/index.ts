@@ -1,0 +1,248 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+type CachedOAuthToken = { token: string; expiresAtMs: number };
+let snapchatTokenCache: CachedOAuthToken | null = null;
+
+function getYesterdayDate(): string {
+  const yesterday = new Date();
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  return yesterday.toISOString().split('T')[0];
+}
+
+async function getSnapchatAccessToken(): Promise<string> {
+  const clientId = Deno.env.get('SNAPCHAT_CLIENT_ID');
+  const clientSecret = Deno.env.get('SNAPCHAT_CLIENT_SECRET');
+  const refreshToken = Deno.env.get('SNAPCHAT_REFRESH_TOKEN');
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error('Missing Snapchat OAuth credentials');
+  }
+
+  if (snapchatTokenCache && Date.now() < snapchatTokenCache.expiresAtMs - 60_000) {
+    console.log('Reusing cached Snapchat access token');
+    return snapchatTokenCache.token;
+  }
+
+  console.log('Exchanging Snapchat refresh token for access token...');
+
+  const response = await fetch('https://accounts.snapchat.com/login/oauth2/access_token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to get Snapchat access token: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const expiresInSec = Number(data.expires_in ?? 3600);
+  snapchatTokenCache = {
+    token: data.access_token,
+    expiresAtMs: Date.now() + expiresInSec * 1000,
+  };
+  console.log('Successfully obtained Snapchat access token');
+  return data.access_token;
+}
+
+async function fetchSnapchatStats(accessToken: string, date: string): Promise<any[]> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+
+  if (!adAccountId) {
+    throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
+  }
+
+  const startTime = `${date}T00:00:00.000Z`;
+  const nextDate = new Date(`${date}T00:00:00.000Z`);
+  nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+  const endTime = nextDate.toISOString().split('.')[0] + '.000Z';
+
+  console.log(`Fetching Snapchat stats for ad account ${adAccountId} on ${date}`);
+
+  const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
+  url.searchParams.set('granularity', 'HOUR');
+  url.searchParams.set('breakdown', 'campaign');
+  url.searchParams.set('start_time', startTime);
+  url.searchParams.set('end_time', endTime);
+  url.searchParams.set('omit_empty', 'false');
+  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,conversion_purchases,conversion_purchases_value');
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Snapchat API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const stats: any[] = [];
+
+  if (Array.isArray(data.timeseries_stats)) {
+    for (const wrapper of data.timeseries_stats) {
+      const timeseriesStat = wrapper?.timeseries_stat;
+      if (!timeseriesStat) continue;
+
+      const breakdownStats = timeseriesStat.breakdown_stats;
+      if (!breakdownStats?.campaign || !Array.isArray(breakdownStats.campaign)) continue;
+
+      for (const campaign of breakdownStats.campaign) {
+        const campaignId = campaign.id || 'unknown';
+        const timeseries = campaign.timeseries;
+
+        if (Array.isArray(timeseries)) {
+          for (const hourData of timeseries) {
+            stats.push({
+              timestamp: hourData.start_time,
+              campaign_id: campaignId,
+              campaign_name: campaignId,
+              impressions: hourData.stats?.impressions || 0,
+              swipes: hourData.stats?.swipes || 0,
+              spend: (hourData.stats?.spend || 0) / 1000000,
+              video_views: hourData.stats?.video_views || 0,
+              screen_time_millis: hourData.stats?.screen_time_millis || 0,
+              quartile_1: hourData.stats?.quartile_1 || 0,
+              quartile_2: hourData.stats?.quartile_2 || 0,
+              quartile_3: hourData.stats?.quartile_3 || 0,
+              view_completion: hourData.stats?.view_completion || 0,
+              total_installs: hourData.stats?.total_installs || 0,
+              conversion_purchases: hourData.stats?.conversion_purchases || 0,
+              conversion_purchases_value: hourData.stats?.conversion_purchases_value || 0,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  console.log(`Extracted ${stats.length} hourly stat records`);
+  return stats;
+}
+
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const startTime = Date.now();
+
+  try {
+    let targetDate = getYesterdayDate();
+
+    if (req.method === 'POST') {
+      try {
+        const body = await req.json();
+        if (body.date) {
+          targetDate = body.date;
+        }
+      } catch {
+        // No body or invalid JSON, use default date
+      }
+    }
+
+    console.log(`=== Snapchat Preview Started ===`);
+    console.log(`Target date: ${targetDate}`);
+
+    const accessToken = await getSnapchatAccessToken();
+    const snapchatData = await fetchSnapchatStats(accessToken, targetDate);
+
+    if (snapchatData.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: [],
+          summary: {
+            totalSpend: 0,
+            totalImpressions: 0,
+            totalSwipes: 0,
+            totalInstalls: 0,
+            avgCpi: 0,
+            rowCount: 0,
+            campaigns: [],
+          },
+          date: targetDate,
+          durationMs: Date.now() - startTime,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Calculate summary statistics
+    const totalSpend = snapchatData.reduce((sum, row) => sum + (row.spend || 0), 0);
+    const totalImpressions = snapchatData.reduce((sum, row) => sum + (row.impressions || 0), 0);
+    const totalSwipes = snapchatData.reduce((sum, row) => sum + (row.swipes || 0), 0);
+    const totalInstalls = snapchatData.reduce((sum, row) => sum + (row.total_installs || 0), 0);
+    const avgCpi = totalInstalls > 0 ? totalSpend / totalInstalls : 0;
+
+    // Get spend by campaign
+    const campaignSpend: Record<string, { spend: number; installs: number; impressions: number }> = {};
+    snapchatData.forEach(row => {
+      const key = row.campaign_id || 'Unknown';
+      if (!campaignSpend[key]) {
+        campaignSpend[key] = { spend: 0, installs: 0, impressions: 0 };
+      }
+      campaignSpend[key].spend += row.spend || 0;
+      campaignSpend[key].installs += row.total_installs || 0;
+      campaignSpend[key].impressions += row.impressions || 0;
+    });
+
+    const summary = {
+      totalSpend,
+      totalImpressions,
+      totalSwipes,
+      totalInstalls,
+      avgCpi,
+      rowCount: snapchatData.length,
+      campaigns: Object.entries(campaignSpend)
+        .map(([id, data]) => ({ id, ...data }))
+        .sort((a, b) => b.spend - a.spend),
+    };
+
+    const duration = Date.now() - startTime;
+    console.log(`=== Preview completed in ${duration}ms with ${snapchatData.length} rows ===`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: snapchatData,
+        summary,
+        date: targetDate,
+        durationMs: duration,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Preview failed:', error);
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: duration,
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
+  }
+});

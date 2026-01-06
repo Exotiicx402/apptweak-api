@@ -188,14 +188,6 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
 
   if (Array.isArray(data.timeseries_stats)) {
     for (const wrapper of data.timeseries_stats) {
-      // Check sub-request status (Snapchat sometimes returns "SUCCESS")
-      const subStatusRaw = wrapper?.sub_request_status;
-      const subStatus = typeof subStatusRaw === 'string' ? subStatusRaw.toLowerCase() : '';
-      if (subStatus && subStatus !== 'success') {
-        console.warn(`Sub-request failed: ${subStatusRaw}`);
-        continue;
-      }
-
       // Access the nested timeseries_stat object (singular)
       const timeseriesStat = wrapper?.timeseries_stat;
       if (!timeseriesStat) {
@@ -203,37 +195,47 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
         continue;
       }
 
-      const campaignId = timeseriesStat.id || 'unknown';
-      const campaignType = timeseriesStat.type || 'UNKNOWN';
-
-      console.log(`Processing ${campaignType} ${campaignId}`);
-
-      const timeseries = timeseriesStat.timeseries;
-      if (Array.isArray(timeseries)) {
-        for (const hourData of timeseries) {
-          stats.push({
-            timestamp: hourData.start_time,
-            campaign_id: campaignId,
-            campaign_name: campaignId, // API doesn't return name in stats response
-            impressions: hourData.stats?.impressions || 0,
-            swipes: hourData.stats?.swipes || 0,
-            spend_micros: hourData.stats?.spend || 0,
-            spend: (hourData.stats?.spend || 0) / 1000000,
-            video_views: hourData.stats?.video_views || 0,
-            screen_time_millis: hourData.stats?.screen_time_millis || 0,
-            quartile_1: hourData.stats?.quartile_1 || 0,
-            quartile_2: hourData.stats?.quartile_2 || 0,
-            quartile_3: hourData.stats?.quartile_3 || 0,
-            view_completion: hourData.stats?.view_completion || 0,
-            total_installs: hourData.stats?.total_installs || 0,
-            conversion_purchases: hourData.stats?.conversion_purchases || 0,
-            conversion_purchases_value: hourData.stats?.conversion_purchases_value || 0,
-          });
-        }
-      } else {
-        console.warn(`No timeseries array found for campaign ${campaignId}`);
+      // The actual campaign data is inside breakdown_stats.campaign[]
+      const breakdownStats = timeseriesStat.breakdown_stats;
+      if (!breakdownStats?.campaign || !Array.isArray(breakdownStats.campaign)) {
+        console.warn('No breakdown_stats.campaign found');
         console.warn(`timeseries_stat keys: ${Object.keys(timeseriesStat).join(', ')}`);
-        console.warn(`timeseries_stat preview: ${JSON.stringify(timeseriesStat).slice(0, 1200)}`);
+        continue;
+      }
+
+      console.log(`Found ${breakdownStats.campaign.length} campaigns in breakdown_stats`);
+
+      for (const campaign of breakdownStats.campaign) {
+        const campaignId = campaign.id || 'unknown';
+        const campaignType = campaign.type || 'CAMPAIGN';
+
+        console.log(`Processing ${campaignType} ${campaignId}`);
+
+        const timeseries = campaign.timeseries;
+        if (Array.isArray(timeseries)) {
+          for (const hourData of timeseries) {
+            stats.push({
+              timestamp: hourData.start_time,
+              campaign_id: campaignId,
+              campaign_name: campaignId, // API doesn't return name in stats response
+              impressions: hourData.stats?.impressions || 0,
+              swipes: hourData.stats?.swipes || 0,
+              spend_micros: hourData.stats?.spend || 0,
+              spend: (hourData.stats?.spend || 0) / 1000000,
+              video_views: hourData.stats?.video_views || 0,
+              screen_time_millis: hourData.stats?.screen_time_millis || 0,
+              quartile_1: hourData.stats?.quartile_1 || 0,
+              quartile_2: hourData.stats?.quartile_2 || 0,
+              quartile_3: hourData.stats?.quartile_3 || 0,
+              view_completion: hourData.stats?.view_completion || 0,
+              total_installs: hourData.stats?.total_installs || 0,
+              conversion_purchases: hourData.stats?.conversion_purchases || 0,
+              conversion_purchases_value: hourData.stats?.conversion_purchases_value || 0,
+            });
+          }
+        } else {
+          console.warn(`No timeseries array found for campaign ${campaignId}`);
+        }
       }
     }
   }
