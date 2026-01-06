@@ -288,7 +288,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
   url.searchParams.set('limit', '200');
-  url.searchParams.set('fields', 'impressions,swipes,spend,total_installs,android_installs,ios_installs,screen_time_millis,frequency,uniques');
+  url.searchParams.set('fields', 'impressions,swipes,spend,total_installs,android_installs,ios_installs,screen_time_millis');
 
   console.log(`Calling Snapchat API: ${url.toString()}`);
 
@@ -374,8 +374,8 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
               ios_installs: hourData.stats?.ios_installs || 0,
               screen_time_millis: screenTimeMillis,
               avg_screen_time_millis: avgScreenTimeMillis,
-              frequency: hourData.stats?.frequency || 0,
-              uniques: hourData.stats?.uniques || 0,
+              frequency: 0, // Not available for hourly granularity
+              uniques: 0, // Not available for hourly granularity
               swipe_up_percent: swipeUpPercent,
             });
           }
