@@ -218,6 +218,7 @@ serve(async (req: Request) => {
             totalSwipes: 0,
             totalInstalls: 0,
             avgCpi: 0,
+            swipeRate: 0,
             rowCount: 0,
             campaigns: [],
           },
@@ -234,17 +235,19 @@ serve(async (req: Request) => {
     const totalSwipes = snapchatData.reduce((sum, row) => sum + (row.swipes || 0), 0);
     const totalInstalls = snapchatData.reduce((sum, row) => sum + (row.total_installs || 0), 0);
     const avgCpi = totalInstalls > 0 ? totalSpend / totalInstalls : 0;
+    const swipeRate = totalImpressions > 0 ? (totalSwipes / totalImpressions) * 100 : 0;
 
     // Get spend by campaign
-    const campaignSpend: Record<string, { name: string; spend: number; installs: number; impressions: number }> = {};
+    const campaignSpend: Record<string, { name: string; spend: number; installs: number; impressions: number; swipes: number }> = {};
     snapchatData.forEach(row => {
       const key = row.campaign_id || 'Unknown';
       if (!campaignSpend[key]) {
-        campaignSpend[key] = { name: row.campaign_name || key, spend: 0, installs: 0, impressions: 0 };
+        campaignSpend[key] = { name: row.campaign_name || key, spend: 0, installs: 0, impressions: 0, swipes: 0 };
       }
       campaignSpend[key].spend += row.spend || 0;
       campaignSpend[key].installs += row.total_installs || 0;
       campaignSpend[key].impressions += row.impressions || 0;
+      campaignSpend[key].swipes += row.swipes || 0;
     });
 
     const summary = {
@@ -253,9 +256,17 @@ serve(async (req: Request) => {
       totalSwipes,
       totalInstalls,
       avgCpi,
+      swipeRate,
       rowCount: snapchatData.length,
       campaigns: Object.entries(campaignSpend)
-        .map(([id, data]) => ({ id, name: data.name, spend: data.spend, installs: data.installs, impressions: data.impressions }))
+        .map(([id, data]) => ({
+          id,
+          name: data.name,
+          spend: data.spend,
+          installs: data.installs,
+          impressions: data.impressions,
+          swipeRate: data.impressions > 0 ? (data.swipes / data.impressions) * 100 : 0,
+        }))
         .sort((a, b) => b.spend - a.spend),
     };
 
