@@ -14,6 +14,80 @@ function getYesterdayDate(): string {
   return yesterday.toISOString().split('T')[0];
 }
 
+function parseYmd(dateStr: string): { year: number; month: number; day: number } {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) throw new Error(`Invalid date: ${dateStr} (expected YYYY-MM-DD)`);
+  return { year: y, month: m, day: d };
+}
+
+function addDaysYmd(dateStr: string, days: number): string {
+  const { year, month, day } = parseYmd(dateStr);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().split('T')[0];
+}
+
+function getZonedParts(utcDate: Date, timeZone: string) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  const parts = dtf.formatToParts(utcDate);
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    if (p.type !== 'literal') map[p.type] = p.value;
+  }
+
+  const hour = Number(map.hour);
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: hour === 24 ? 0 : hour,
+    minute: Number(map.minute),
+    second: Number(map.second),
+  };
+}
+
+function getTimeZoneOffsetMs(utcDate: Date, timeZone: string): number {
+  const p = getZonedParts(utcDate, timeZone);
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return asUtc - utcDate.getTime();
+}
+
+function getUtcMsForZonedMidnight(dateStr: string, timeZone: string): number {
+  const { year, month, day } = parseYmd(dateStr);
+  // Treat “YYYY-MM-DD 00:00:00” as a *local* time in the ad account timezone.
+  const localMidnightAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
+
+  let utcMs = localMidnightAsUtc;
+  for (let i = 0; i < 3; i++) {
+    const offset = getTimeZoneOffsetMs(new Date(utcMs), timeZone);
+    const nextUtcMs = localMidnightAsUtc - offset;
+    if (Math.abs(nextUtcMs - utcMs) < 1000) break;
+    utcMs = nextUtcMs;
+  }
+
+  return utcMs;
+}
+
+function resolveAccountDayRangeUtc(dateStr: string, timeZone: string): { startTime: string; endTime: string } {
+  const startMs = getUtcMsForZonedMidnight(dateStr, timeZone);
+  const nextDate = addDaysYmd(dateStr, 1);
+  const endMs = getUtcMsForZonedMidnight(nextDate, timeZone);
+  return {
+    startTime: new Date(startMs).toISOString(),
+    endTime: new Date(endMs).toISOString(),
+  };
+}
+
 async function getSnapchatAccessToken(): Promise<string> {
   const clientId = Deno.env.get('SNAPCHAT_CLIENT_ID');
   const clientSecret = Deno.env.get('SNAPCHAT_CLIENT_SECRET');
@@ -194,13 +268,10 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
     throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
   }
 
-  // Use Pacific Time (UTC-8) to match Snapchat ad account timezone
-  const startTime = `${date}T00:00:00.000-08:00`;
-  const nextDate = new Date(`${date}T00:00:00.000-08:00`);
-  nextDate.setDate(nextDate.getDate() + 1);
-  const endTime = `${nextDate.toISOString().split('T')[0]}T00:00:00.000-08:00`;
-  
-  console.log(`Querying date range: ${startTime} to ${endTime} (Pacific Time)`);
+  const accountTimeZone = Deno.env.get('SNAPCHAT_ACCOUNT_TIMEZONE') || 'America/Toronto';
+  const { startTime, endTime } = resolveAccountDayRangeUtc(date, accountTimeZone);
+
+  console.log(`Querying date range: ${startTime} to ${endTime} (account TZ: ${accountTimeZone})`);
 
   console.log(`Fetching Snapchat stats for ad account ${adAccountId} on ${date}`);
 
