@@ -272,12 +272,13 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
     throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
   }
 
-  // Convert date to start and end timestamps (full day in UTC)
-  // End time must be at the beginning of an hour per Snapchat API requirements
-  const startTime = `${date}T00:00:00.000Z`;
-  const nextDate = new Date(date);
+  // Use Pacific Time (UTC-8) to match Snapchat ad account timezone
+  const startTime = `${date}T00:00:00.000-08:00`;
+  const nextDate = new Date(`${date}T00:00:00.000-08:00`);
   nextDate.setDate(nextDate.getDate() + 1);
-  const endTime = `${nextDate.toISOString().split('T')[0]}T00:00:00.000Z`;
+  const endTime = `${nextDate.toISOString().split('T')[0]}T00:00:00.000-08:00`;
+  
+  console.log(`Querying date range: ${startTime} to ${endTime} (Pacific Time)`);
 
   console.log(`Fetching Snapchat stats for ad account ${adAccountId} on ${date}`);
 
@@ -288,7 +289,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
   url.searchParams.set('limit', '200');
-  url.searchParams.set('fields', 'impressions,swipes,spend,total_installs,android_installs,ios_installs,screen_time_millis');
+  url.searchParams.set('fields', 'impressions,swipes,spend,total_installs,android_installs,ios_installs,conversion_skan_app_installs,screen_time_millis');
 
   console.log(`Calling Snapchat API: ${url.toString()}`);
 
@@ -369,7 +370,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
               impressions: impressions,
               swipes: swipes,
               spend: (hourData.stats?.spend || 0) / 1000000,
-              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0),
+              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0) + (hourData.stats?.conversion_skan_app_installs || 0),
               android_installs: hourData.stats?.android_installs || 0,
               ios_installs: hourData.stats?.ios_installs || 0,
               screen_time_millis: screenTimeMillis,
