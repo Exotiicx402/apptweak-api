@@ -209,7 +209,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
-  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,ios_installs,android_installs,conversion_skan_app_installs,conversion_purchases,conversion_purchases_value');
+  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,ios_installs,android_installs,conversion_purchases,conversion_purchases_value');
 
   const response = await fetch(url.toString(), {
     method: 'GET',
@@ -262,7 +262,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
               quartile_2: hourData.stats?.quartile_2 || 0,
               quartile_3: hourData.stats?.quartile_3 || 0,
               view_completion: hourData.stats?.view_completion || 0,
-              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0) + (hourData.stats?.conversion_skan_app_installs || 0),
+              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0),
               conversion_purchases: hourData.stats?.conversion_purchases || 0,
               conversion_purchases_value: hourData.stats?.conversion_purchases_value || 0,
             });

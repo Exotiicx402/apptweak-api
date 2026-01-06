@@ -289,7 +289,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
   url.searchParams.set('limit', '200');
-  url.searchParams.set('fields', 'impressions,swipes,spend,total_installs,android_installs,ios_installs,conversion_skan_app_installs,screen_time_millis');
+  url.searchParams.set('fields', 'impressions,swipes,spend,total_installs,android_installs,ios_installs,screen_time_millis');
 
   console.log(`Calling Snapchat API: ${url.toString()}`);
 
@@ -370,7 +370,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
               impressions: impressions,
               swipes: swipes,
               spend: (hourData.stats?.spend || 0) / 1000000,
-              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0) + (hourData.stats?.conversion_skan_app_installs || 0),
+              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0),
               android_installs: hourData.stats?.android_installs || 0,
               ios_installs: hourData.stats?.ios_installs || 0,
               screen_time_millis: screenTimeMillis,
