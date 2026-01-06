@@ -8,6 +8,7 @@ export interface DiagnosticResult {
   total_installs: number;
   ios_installs: number;
   android_installs: number;
+  error?: string;
 }
 
 export interface DiagnosticsResponse {

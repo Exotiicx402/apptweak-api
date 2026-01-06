@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, AlertCircle } from "lucide-react";
 import type { DiagnosticsResponse } from "@/hooks/useSnapchatDiagnostics";
 
 interface SnapchatDiagnosticsProps {
@@ -10,15 +10,20 @@ interface SnapchatDiagnosticsProps {
 }
 
 function formatNumber(value: number): string {
-  if (value < 0) return 'Error';
+  if (value < 0) return '—';
   return new Intl.NumberFormat('en-US').format(value);
 }
 
 export default function SnapchatDiagnostics({ result, targetInstalls }: SnapchatDiagnosticsProps) {
   const { results, date, durationMs } = result;
 
-  // Sort by total_installs descending to see highest values first
-  const sortedResults = [...results].sort((a, b) => b.total_installs - a.total_installs);
+  // Sort by total_installs descending to see highest values first (filter out errors)
+  const sortedResults = [...results].sort((a, b) => {
+    if (a.total_installs < 0 && b.total_installs < 0) return 0;
+    if (a.total_installs < 0) return 1;
+    if (b.total_installs < 0) return -1;
+    return b.total_installs - a.total_installs;
+  });
 
   return (
     <Card>
@@ -53,13 +58,14 @@ export default function SnapchatDiagnostics({ result, targetInstalls }: Snapchat
           </TableHeader>
           <TableBody>
             {sortedResults.map((row, idx) => {
-              const isMatch = targetInstalls && row.total_installs === targetInstalls;
-              const isClose = targetInstalls && Math.abs(row.total_installs - targetInstalls) <= 10;
+              const hasError = row.total_installs < 0 || row.error;
+              const isMatch = !hasError && targetInstalls && row.total_installs === targetInstalls;
+              const isClose = !hasError && targetInstalls && Math.abs(row.total_installs - targetInstalls) <= 10;
               
               return (
                 <TableRow 
                   key={idx} 
-                  className={isMatch ? 'bg-green-500/10' : isClose ? 'bg-yellow-500/10' : ''}
+                  className={isMatch ? 'bg-green-500/10' : isClose ? 'bg-yellow-500/10' : hasError ? 'bg-destructive/5' : ''}
                 >
                   <TableCell>
                     <Badge variant="outline">{row.swipe_up_attribution_window}</Badge>
@@ -73,13 +79,18 @@ export default function SnapchatDiagnostics({ result, targetInstalls }: Snapchat
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono font-medium">
-                    {formatNumber(row.total_installs)}
+                    {hasError ? (
+                      <span className="text-destructive flex items-center justify-end gap-1">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="text-xs">{row.error?.slice(0, 30) || 'Error'}</span>
+                      </span>
+                    ) : formatNumber(row.total_installs)}
                   </TableCell>
                   <TableCell className="text-right font-mono text-muted-foreground">
-                    {formatNumber(row.ios_installs)}
+                    {hasError ? '—' : formatNumber(row.ios_installs)}
                   </TableCell>
                   <TableCell className="text-right font-mono text-muted-foreground">
-                    {formatNumber(row.android_installs)}
+                    {hasError ? '—' : formatNumber(row.android_installs)}
                   </TableCell>
                   <TableCell className="text-center">
                     {isMatch && (
