@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+type CachedOAuthToken = { token: string; expiresAtMs: number };
+let snapchatTokenCache: CachedOAuthToken | null = null;
+
+
 // Get yesterday's date in YYYY-MM-DD format
 function getYesterdayDate(): string {
   const yesterday = new Date();
@@ -33,8 +37,13 @@ async function getSnapchatAccessToken(maxRetries = 3): Promise<string> {
     throw new Error('Missing Snapchat OAuth credentials');
   }
 
+  if (snapchatTokenCache && Date.now() < snapchatTokenCache.expiresAtMs - 60_000) {
+    console.log('Reusing cached Snapchat access token');
+    return snapchatTokenCache.token;
+  }
+
   let lastError: Error | null = null;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     console.log(`Exchanging Snapchat refresh token for access token (attempt ${attempt}/${maxRetries})...`);
 
@@ -66,8 +75,14 @@ async function getSnapchatAccessToken(maxRetries = 3): Promise<string> {
       }
 
       const data = await response.json();
+      const expiresInSec = Number(data.expires_in ?? 3600);
+      snapchatTokenCache = {
+        token: data.access_token,
+        expiresAtMs: Date.now() + expiresInSec * 1000,
+      };
       console.log('Successfully obtained Snapchat access token');
       return data.access_token;
+
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt < maxRetries) {
@@ -139,6 +154,8 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
   url.searchParams.set('breakdown', 'campaign');
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
+  url.searchParams.set('omit_empty', 'false');
+  url.searchParams.set('limit', '200');
   url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,conversion_purchases,conversion_purchases_value');
 
   console.log(`Calling Snapchat API: ${url.toString()}`);
@@ -165,29 +182,35 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
   
   // Log the response structure for debugging
   console.log(`Response keys: ${Object.keys(data).join(', ')}`);
+  console.log(
+    `timeseries_stats count: ${Array.isArray(data.timeseries_stats) ? data.timeseries_stats.length : 0}`
+  );
 
-  if (data.timeseries_stats && Array.isArray(data.timeseries_stats)) {
+  if (Array.isArray(data.timeseries_stats)) {
     for (const wrapper of data.timeseries_stats) {
-      // Check sub-request status
-      if (wrapper.sub_request_status !== 'success') {
-        console.warn(`Sub-request failed: ${wrapper.sub_request_status}`);
+      // Check sub-request status (Snapchat sometimes returns "SUCCESS")
+      const subStatusRaw = wrapper?.sub_request_status;
+      const subStatus = typeof subStatusRaw === 'string' ? subStatusRaw.toLowerCase() : '';
+      if (subStatus && subStatus !== 'success') {
+        console.warn(`Sub-request failed: ${subStatusRaw}`);
         continue;
       }
-      
+
       // Access the nested timeseries_stat object (singular)
-      const timeseriesStat = wrapper.timeseries_stat;
+      const timeseriesStat = wrapper?.timeseries_stat;
       if (!timeseriesStat) {
         console.warn('No timeseries_stat found in wrapper');
         continue;
       }
-      
+
       const campaignId = timeseriesStat.id || 'unknown';
       const campaignType = timeseriesStat.type || 'UNKNOWN';
-      
+
       console.log(`Processing ${campaignType} ${campaignId}`);
-      
-      if (timeseriesStat.timeseries && Array.isArray(timeseriesStat.timeseries)) {
-        for (const hourData of timeseriesStat.timeseries) {
+
+      const timeseries = timeseriesStat.timeseries;
+      if (Array.isArray(timeseries)) {
+        for (const hourData of timeseries) {
           stats.push({
             timestamp: hourData.start_time,
             campaign_id: campaignId,
@@ -209,6 +232,8 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
         }
       } else {
         console.warn(`No timeseries array found for campaign ${campaignId}`);
+        console.warn(`timeseries_stat keys: ${Object.keys(timeseriesStat).join(', ')}`);
+        console.warn(`timeseries_stat preview: ${JSON.stringify(timeseriesStat).slice(0, 1200)}`);
       }
     }
   }
