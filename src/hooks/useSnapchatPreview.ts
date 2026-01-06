@@ -26,7 +26,7 @@ export interface SnapchatSummary {
   totalInstalls: number;
   avgCpi: number;
   rowCount: number;
-  campaigns: { id: string; spend: number; installs: number; impressions: number }[];
+  campaigns: { id: string; name: string; spend: number; installs: number; impressions: number }[];
 }
 
 export interface SnapchatPreviewResult {

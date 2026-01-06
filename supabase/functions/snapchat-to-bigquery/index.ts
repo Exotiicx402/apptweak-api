@@ -132,8 +132,50 @@ async function getGoogleAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+// Fetch campaign names from Snapchat API
+async function fetchCampaignNames(accessToken: string): Promise<Map<string, string>> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  const campaignMap = new Map<string, string>();
+
+  if (!adAccountId) {
+    console.warn('Missing SNAPCHAT_AD_ACCOUNT_ID for campaign name lookup');
+    return campaignMap;
+  }
+
+  try {
+    console.log('Fetching campaign names...');
+    const response = await fetch(
+      `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/campaigns?limit=500`,
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch campaign names: ${response.status}`);
+      return campaignMap;
+    }
+
+    const data = await response.json();
+    if (data.campaigns && Array.isArray(data.campaigns)) {
+      for (const wrapper of data.campaigns) {
+        const campaign = wrapper.campaign;
+        if (campaign?.id && campaign?.name) {
+          campaignMap.set(campaign.id, campaign.name);
+        }
+      }
+    }
+
+    console.log(`Fetched names for ${campaignMap.size} campaigns`);
+  } catch (error) {
+    console.warn('Error fetching campaign names:', error);
+  }
+
+  return campaignMap;
+}
+
 // Fetch Snapchat campaign stats for a given date
-async function fetchSnapchatStats(accessToken: string, date: string): Promise<any[]> {
+async function fetchSnapchatStats(accessToken: string, date: string, campaignNames: Map<string, string>): Promise<any[]> {
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
 
   if (!adAccountId) {
@@ -207,9 +249,9 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
 
       for (const campaign of breakdownStats.campaign) {
         const campaignId = campaign.id || 'unknown';
-        const campaignType = campaign.type || 'CAMPAIGN';
+        const campaignName = campaignNames.get(campaignId) || campaignId;
 
-        console.log(`Processing ${campaignType} ${campaignId}`);
+        console.log(`Processing campaign ${campaignId} (${campaignName})`);
 
         const timeseries = campaign.timeseries;
         if (Array.isArray(timeseries)) {
@@ -217,7 +259,7 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
             stats.push({
               timestamp: hourData.start_time,
               campaign_id: campaignId,
-              campaign_name: campaignId, // API doesn't return name in stats response
+              campaign_name: campaignName,
               impressions: hourData.stats?.impressions || 0,
               swipes: hourData.stats?.swipes || 0,
               spend_micros: hourData.stats?.spend || 0,
@@ -424,8 +466,9 @@ serve(async (req) => {
     const snapchatToken = await getSnapchatAccessToken();
     const googleToken = await getGoogleAccessToken();
 
-    // Fetch Snapchat stats
-    const stats = await fetchSnapchatStats(snapchatToken, targetDate);
+    // Fetch campaign names and Snapchat stats
+    const campaignNames = await fetchCampaignNames(snapchatToken);
+    const stats = await fetchSnapchatStats(snapchatToken, targetDate, campaignNames);
 
     if (stats.length === 0) {
       console.log('No Snapchat stats found for the specified date');
