@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { DollarSign, Users, MousePointerClick, Eye, Database, TrendingUp } from "lucide-react";
+import { DollarSign, Users, MousePointerClick, Eye, TrendingUp } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import type { SnapchatPreviewResult } from "@/hooks/useSnapchatPreview";
 
@@ -23,16 +23,19 @@ export default function SnapchatDataPreview({ result }: SnapchatDataPreviewProps
   const { summary, data, date, durationMs } = result;
 
   // Prepare chart data for campaigns
-  const campaignChartData = summary.campaigns.slice(0, 8).map((c, idx) => ({
-    name: c.id.length > 12 ? c.id.slice(0, 12) + '...' : c.id,
-    spend: c.spend,
-    fill: COLORS[idx % COLORS.length],
-  }));
+  const campaignChartData = summary.campaigns.slice(0, 8).map((c, idx) => {
+    const displayName = c.name || c.id;
+    return {
+      name: displayName.length > 20 ? displayName.slice(0, 20) + '...' : displayName,
+      spend: c.spend,
+      fill: COLORS[idx % COLORS.length],
+    };
+  });
 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
@@ -80,16 +83,6 @@ export default function SnapchatDataPreview({ result }: SnapchatDataPreviewProps
               <span className="text-sm text-muted-foreground">Avg CPI</span>
             </div>
             <p className="text-2xl font-bold mt-1">{formatCurrency(summary.avgCpi)}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Rows</span>
-            </div>
-            <p className="text-2xl font-bold mt-1">{formatNumber(summary.rowCount)}</p>
           </CardContent>
         </Card>
       </div>

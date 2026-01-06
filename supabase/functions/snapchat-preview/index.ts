@@ -58,7 +58,48 @@ async function getSnapchatAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-async function fetchSnapchatStats(accessToken: string, date: string): Promise<any[]> {
+async function fetchCampaignNames(accessToken: string): Promise<Map<string, string>> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  const campaignMap = new Map<string, string>();
+
+  if (!adAccountId) {
+    console.warn('Missing SNAPCHAT_AD_ACCOUNT_ID for campaign name lookup');
+    return campaignMap;
+  }
+
+  try {
+    console.log('Fetching campaign names...');
+    const response = await fetch(
+      `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/campaigns?limit=500`,
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch campaign names: ${response.status}`);
+      return campaignMap;
+    }
+
+    const data = await response.json();
+    if (data.campaigns && Array.isArray(data.campaigns)) {
+      for (const wrapper of data.campaigns) {
+        const campaign = wrapper.campaign;
+        if (campaign?.id && campaign?.name) {
+          campaignMap.set(campaign.id, campaign.name);
+        }
+      }
+    }
+
+    console.log(`Fetched names for ${campaignMap.size} campaigns`);
+  } catch (error) {
+    console.warn('Error fetching campaign names:', error);
+  }
+
+  return campaignMap;
+}
+
+async function fetchSnapchatStats(accessToken: string, date: string, campaignNames: Map<string, string>): Promise<any[]> {
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
 
   if (!adAccountId) {
@@ -106,6 +147,7 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
 
       for (const campaign of breakdownStats.campaign) {
         const campaignId = campaign.id || 'unknown';
+        const campaignName = campaignNames.get(campaignId) || campaignId;
         const timeseries = campaign.timeseries;
 
         if (Array.isArray(timeseries)) {
@@ -113,7 +155,7 @@ async function fetchSnapchatStats(accessToken: string, date: string): Promise<an
             stats.push({
               timestamp: hourData.start_time,
               campaign_id: campaignId,
-              campaign_name: campaignId,
+              campaign_name: campaignName,
               impressions: hourData.stats?.impressions || 0,
               swipes: hourData.stats?.swipes || 0,
               spend: (hourData.stats?.spend || 0) / 1000000,
@@ -162,7 +204,8 @@ serve(async (req: Request) => {
     console.log(`Target date: ${targetDate}`);
 
     const accessToken = await getSnapchatAccessToken();
-    const snapchatData = await fetchSnapchatStats(accessToken, targetDate);
+    const campaignNames = await fetchCampaignNames(accessToken);
+    const snapchatData = await fetchSnapchatStats(accessToken, targetDate, campaignNames);
 
     if (snapchatData.length === 0) {
       return new Response(
@@ -193,11 +236,11 @@ serve(async (req: Request) => {
     const avgCpi = totalInstalls > 0 ? totalSpend / totalInstalls : 0;
 
     // Get spend by campaign
-    const campaignSpend: Record<string, { spend: number; installs: number; impressions: number }> = {};
+    const campaignSpend: Record<string, { name: string; spend: number; installs: number; impressions: number }> = {};
     snapchatData.forEach(row => {
       const key = row.campaign_id || 'Unknown';
       if (!campaignSpend[key]) {
-        campaignSpend[key] = { spend: 0, installs: 0, impressions: 0 };
+        campaignSpend[key] = { name: row.campaign_name || key, spend: 0, installs: 0, impressions: 0 };
       }
       campaignSpend[key].spend += row.spend || 0;
       campaignSpend[key].installs += row.total_installs || 0;
@@ -212,7 +255,7 @@ serve(async (req: Request) => {
       avgCpi,
       rowCount: snapchatData.length,
       campaigns: Object.entries(campaignSpend)
-        .map(([id, data]) => ({ id, ...data }))
+        .map(([id, data]) => ({ id, name: data.name, spend: data.spend, installs: data.installs, impressions: data.impressions }))
         .sort((a, b) => b.spend - a.spend),
     };
 
