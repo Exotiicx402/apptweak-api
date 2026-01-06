@@ -193,7 +193,7 @@ const SnapchatSync = () => {
 
       // Small delay between requests to avoid rate limiting
       if (i < dates.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     }
 
@@ -264,7 +264,7 @@ const SnapchatSync = () => {
       } : null);
 
       if (i < failedDates.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     }
 
