@@ -5,6 +5,8 @@ export interface SnapchatRow {
   timestamp: string;
   campaign_id: string;
   campaign_name: string;
+  ad_id: string;
+  ad_name: string;
   impressions: number;
   swipes: number;
   spend: number;
@@ -28,6 +30,7 @@ export interface SnapchatSummary {
   swipeRate: number;
   rowCount: number;
   campaigns: { id: string; name: string; spend: number; installs: number; impressions: number; swipeRate: number }[];
+  ads: { id: string; name: string; spend: number; installs: number; impressions: number; swipeRate: number }[];
 }
 
 export interface SnapchatPreviewResult {

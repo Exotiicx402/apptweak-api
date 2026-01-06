@@ -99,7 +99,94 @@ async function fetchCampaignNames(accessToken: string): Promise<Map<string, stri
   return campaignMap;
 }
 
-async function fetchSnapchatStats(accessToken: string, date: string, campaignNames: Map<string, string>): Promise<any[]> {
+async function fetchAdNames(accessToken: string): Promise<Map<string, { name: string; adSquadId: string }>> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  const adMap = new Map<string, { name: string; adSquadId: string }>();
+
+  if (!adAccountId) {
+    console.warn('Missing SNAPCHAT_AD_ACCOUNT_ID for ad name lookup');
+    return adMap;
+  }
+
+  try {
+    console.log('Fetching ad names...');
+    const response = await fetch(
+      `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/ads?limit=500`,
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch ad names: ${response.status}`);
+      return adMap;
+    }
+
+    const data = await response.json();
+    if (data.ads && Array.isArray(data.ads)) {
+      for (const wrapper of data.ads) {
+        const ad = wrapper.ad;
+        if (ad?.id && ad?.name) {
+          adMap.set(ad.id, { name: ad.name, adSquadId: ad.ad_squad_id || '' });
+        }
+      }
+    }
+
+    console.log(`Fetched names for ${adMap.size} ads`);
+  } catch (error) {
+    console.warn('Error fetching ad names:', error);
+  }
+
+  return adMap;
+}
+
+async function fetchAdSquadToCampaignMap(accessToken: string): Promise<Map<string, string>> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  const adSquadMap = new Map<string, string>();
+
+  if (!adAccountId) {
+    return adSquadMap;
+  }
+
+  try {
+    console.log('Fetching ad squads for campaign mapping...');
+    const response = await fetch(
+      `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/adsquads?limit=500`,
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch ad squads: ${response.status}`);
+      return adSquadMap;
+    }
+
+    const data = await response.json();
+    if (data.adsquads && Array.isArray(data.adsquads)) {
+      for (const wrapper of data.adsquads) {
+        const adSquad = wrapper.adsquad;
+        if (adSquad?.id && adSquad?.campaign_id) {
+          adSquadMap.set(adSquad.id, adSquad.campaign_id);
+        }
+      }
+    }
+
+    console.log(`Fetched ${adSquadMap.size} ad squad to campaign mappings`);
+  } catch (error) {
+    console.warn('Error fetching ad squads:', error);
+  }
+
+  return adSquadMap;
+}
+
+interface AdLookupMaps {
+  adNames: Map<string, { name: string; adSquadId: string }>;
+  adSquadToCampaign: Map<string, string>;
+  campaignNames: Map<string, string>;
+}
+
+async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps: AdLookupMaps): Promise<any[]> {
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
 
   if (!adAccountId) {
@@ -115,7 +202,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
 
   const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
   url.searchParams.set('granularity', 'HOUR');
-  url.searchParams.set('breakdown', 'campaign');
+  url.searchParams.set('breakdown', 'ad');
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
@@ -143,12 +230,17 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
       if (!timeseriesStat) continue;
 
       const breakdownStats = timeseriesStat.breakdown_stats;
-      if (!breakdownStats?.campaign || !Array.isArray(breakdownStats.campaign)) continue;
+      if (!breakdownStats?.ad || !Array.isArray(breakdownStats.ad)) continue;
 
-      for (const campaign of breakdownStats.campaign) {
-        const campaignId = campaign.id || 'unknown';
-        const campaignName = campaignNames.get(campaignId) || campaignId;
-        const timeseries = campaign.timeseries;
+      for (const ad of breakdownStats.ad) {
+        const adId = ad.id || 'unknown';
+        const adInfo = lookupMaps.adNames.get(adId);
+        const adName = adInfo?.name || adId;
+        const adSquadId = adInfo?.adSquadId || '';
+        const campaignId = lookupMaps.adSquadToCampaign.get(adSquadId) || '';
+        const campaignName = lookupMaps.campaignNames.get(campaignId) || campaignId;
+        
+        const timeseries = ad.timeseries;
 
         if (Array.isArray(timeseries)) {
           for (const hourData of timeseries) {
@@ -156,6 +248,8 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
               timestamp: hourData.start_time,
               campaign_id: campaignId,
               campaign_name: campaignName,
+              ad_id: adId,
+              ad_name: adName,
               impressions: hourData.stats?.impressions || 0,
               swipes: hourData.stats?.swipes || 0,
               spend: (hourData.stats?.spend || 0) / 1000000,
@@ -204,8 +298,16 @@ serve(async (req: Request) => {
     console.log(`Target date: ${targetDate}`);
 
     const accessToken = await getSnapchatAccessToken();
-    const campaignNames = await fetchCampaignNames(accessToken);
-    const snapchatData = await fetchSnapchatStats(accessToken, targetDate, campaignNames);
+    
+    // Fetch all lookup maps in parallel
+    const [campaignNames, adNames, adSquadToCampaign] = await Promise.all([
+      fetchCampaignNames(accessToken),
+      fetchAdNames(accessToken),
+      fetchAdSquadToCampaignMap(accessToken),
+    ]);
+    
+    const lookupMaps: AdLookupMaps = { adNames, adSquadToCampaign, campaignNames };
+    const snapchatData = await fetchSnapchatStats(accessToken, targetDate, lookupMaps);
 
     if (snapchatData.length === 0) {
       return new Response(
@@ -221,6 +323,7 @@ serve(async (req: Request) => {
             swipeRate: 0,
             rowCount: 0,
             campaigns: [],
+            ads: [],
           },
           date: targetDate,
           durationMs: Date.now() - startTime,
@@ -250,6 +353,19 @@ serve(async (req: Request) => {
       campaignSpend[key].swipes += row.swipes || 0;
     });
 
+    // Get spend by ad
+    const adSpend: Record<string, { name: string; spend: number; installs: number; impressions: number; swipes: number }> = {};
+    snapchatData.forEach(row => {
+      const key = row.ad_id || 'Unknown';
+      if (!adSpend[key]) {
+        adSpend[key] = { name: row.ad_name || key, spend: 0, installs: 0, impressions: 0, swipes: 0 };
+      }
+      adSpend[key].spend += row.spend || 0;
+      adSpend[key].installs += row.total_installs || 0;
+      adSpend[key].impressions += row.impressions || 0;
+      adSpend[key].swipes += row.swipes || 0;
+    });
+
     const summary = {
       totalSpend,
       totalImpressions,
@@ -259,6 +375,16 @@ serve(async (req: Request) => {
       swipeRate,
       rowCount: snapchatData.length,
       campaigns: Object.entries(campaignSpend)
+        .map(([id, data]) => ({
+          id,
+          name: data.name,
+          spend: data.spend,
+          installs: data.installs,
+          impressions: data.impressions,
+          swipeRate: data.impressions > 0 ? (data.swipes / data.impressions) * 100 : 0,
+        }))
+        .sort((a, b) => b.spend - a.spend),
+      ads: Object.entries(adSpend)
         .map(([id, data]) => ({
           id,
           name: data.name,
