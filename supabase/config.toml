@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.snapchat-to-bigquery]
 verify_jwt = false
+
+[functions.snapchat-preview]
+verify_jwt = false

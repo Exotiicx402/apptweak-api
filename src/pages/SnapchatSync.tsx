@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Play, Calendar, RefreshCw, CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react";
+import { ArrowLeft, Play, Calendar, RefreshCw, CheckCircle2, XCircle, Clock, Loader2, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useSnapchatPreview } from "@/hooks/useSnapchatPreview";
+import SnapchatDataPreview from "@/components/SnapchatDataPreview";
 
 interface SyncResult {
   success: boolean;
@@ -32,7 +34,9 @@ const SnapchatSync = () => {
   const [backfillStart, setBackfillStart] = useState("");
   const [backfillEnd, setBackfillEnd] = useState("");
   const [backfillProgress, setBackfillProgress] = useState<BackfillProgress | null>(null);
+  const [previewDate, setPreviewDate] = useState("");
   const { toast } = useToast();
+  const { isLoading: isPreviewLoading, result: previewResult, error: previewError, fetchPreview, clearPreview } = useSnapchatPreview();
 
   const getYesterdayDate = () => {
     const yesterday = new Date();
@@ -355,7 +359,60 @@ const SnapchatSync = () => {
                 )}
               </Button>
             </CardContent>
-          </Card>
+        </Card>
+
+        {/* Data Preview */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Data Preview
+            </CardTitle>
+            <CardDescription>Preview Snapchat data before syncing to BigQuery</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-4 items-end">
+              <div className="flex-1">
+                <Label htmlFor="previewDate">Date</Label>
+                <Input
+                  id="previewDate"
+                  type="date"
+                  value={previewDate}
+                  onChange={(e) => setPreviewDate(e.target.value)}
+                  max={getTodayDate()}
+                />
+              </div>
+              <Button
+                onClick={() => {
+                  fetchPreview(previewDate || undefined);
+                }}
+                disabled={isPreviewLoading}
+              >
+                {isPreviewLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <Eye className="mr-2 h-4 w-4" />
+                    Fetch Preview
+                  </>
+                )}
+              </Button>
+              {previewResult && (
+                <Button variant="outline" onClick={clearPreview}>
+                  Clear
+                </Button>
+              )}
+            </div>
+            {previewError && (
+              <div className="p-3 bg-destructive/10 rounded-md">
+                <p className="text-sm text-destructive">{previewError}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
         </div>
 
         {/* Custom Date */}
@@ -550,6 +607,9 @@ const SnapchatSync = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Preview Result */}
+        {previewResult && <SnapchatDataPreview result={previewResult} />}
       </div>
     </div>
   );
