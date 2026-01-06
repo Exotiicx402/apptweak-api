@@ -9,7 +9,6 @@ const corsHeaders = {
 type CachedOAuthToken = { token: string; expiresAtMs: number };
 let snapchatTokenCache: CachedOAuthToken | null = null;
 
-
 // Get yesterday's date in YYYY-MM-DD format
 function getYesterdayDate(): string {
   const yesterday = new Date();
@@ -17,14 +16,83 @@ function getYesterdayDate(): string {
   return yesterday.toISOString().split('T')[0];
 }
 
-// Get today's date in YYYY-MM-DD format
-function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
 // Helper function to sleep for a given number of milliseconds
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============= Timezone helper functions =============
+function parseYmd(dateStr: string): { year: number; month: number; day: number } {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) throw new Error(`Invalid date: ${dateStr} (expected YYYY-MM-DD)`);
+  return { year: y, month: m, day: d };
+}
+
+function addDaysYmd(dateStr: string, days: number): string {
+  const { year, month, day } = parseYmd(dateStr);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().split('T')[0];
+}
+
+function getZonedParts(utcDate: Date, timeZone: string) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  const parts = dtf.formatToParts(utcDate);
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    if (p.type !== 'literal') map[p.type] = p.value;
+  }
+
+  const hour = Number(map.hour);
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: hour === 24 ? 0 : hour,
+    minute: Number(map.minute),
+    second: Number(map.second),
+  };
+}
+
+function getTimeZoneOffsetMs(utcDate: Date, timeZone: string): number {
+  const p = getZonedParts(utcDate, timeZone);
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return asUtc - utcDate.getTime();
+}
+
+function getUtcMsForZonedMidnight(dateStr: string, timeZone: string): number {
+  const { year, month, day } = parseYmd(dateStr);
+  const localMidnightAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
+
+  let utcMs = localMidnightAsUtc;
+  for (let i = 0; i < 3; i++) {
+    const offset = getTimeZoneOffsetMs(new Date(utcMs), timeZone);
+    const nextUtcMs = localMidnightAsUtc - offset;
+    if (Math.abs(nextUtcMs - utcMs) < 1000) break;
+    utcMs = nextUtcMs;
+  }
+
+  return utcMs;
+}
+
+function resolveAccountDayRangeUtc(dateStr: string, timeZone: string): { startTime: string; endTime: string } {
+  const startMs = getUtcMsForZonedMidnight(dateStr, timeZone);
+  const nextDate = addDaysYmd(dateStr, 1);
+  const endMs = getUtcMsForZonedMidnight(nextDate, timeZone);
+  return {
+    startTime: new Date(startMs).toISOString(),
+    endTime: new Date(endMs).toISOString(),
+  };
 }
 
 // Exchange refresh token for access token with retry logic for rate limiting
@@ -62,7 +130,7 @@ async function getSnapchatAccessToken(maxRetries = 3): Promise<string> {
       });
 
       if (response.status === 429) {
-        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        const waitTime = Math.pow(2, attempt) * 1000;
         console.warn(`Rate limited by Snapchat API (429). Waiting ${waitTime}ms before retry...`);
         await sleep(waitTime);
         continue;
@@ -174,122 +242,28 @@ async function fetchCampaignNames(accessToken: string): Promise<Map<string, stri
   return campaignMap;
 }
 
-async function fetchAdNames(accessToken: string): Promise<Map<string, { name: string; adSquadId: string }>> {
-  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
-  const adMap = new Map<string, { name: string; adSquadId: string }>();
-
-  if (!adAccountId) {
-    console.warn('Missing SNAPCHAT_AD_ACCOUNT_ID for ad name lookup');
-    return adMap;
-  }
-
-  try {
-    console.log('Fetching ad names...');
-    const response = await fetch(
-      `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/ads?limit=500`,
-      {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      }
-    );
-
-    if (!response.ok) {
-      console.warn(`Failed to fetch ad names: ${response.status}`);
-      return adMap;
-    }
-
-    const data = await response.json();
-    if (data.ads && Array.isArray(data.ads)) {
-      for (const wrapper of data.ads) {
-        const ad = wrapper.ad;
-        if (ad?.id && ad?.name) {
-          adMap.set(ad.id, { name: ad.name, adSquadId: ad.ad_squad_id || '' });
-        }
-      }
-    }
-
-    console.log(`Fetched names for ${adMap.size} ads`);
-  } catch (error) {
-    console.warn('Error fetching ad names:', error);
-  }
-
-  return adMap;
-}
-
-async function fetchAdSquadData(accessToken: string): Promise<Map<string, { campaignId: string; name: string }>> {
-  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
-  const adSquadMap = new Map<string, { campaignId: string; name: string }>();
-
-  if (!adAccountId) {
-    return adSquadMap;
-  }
-
-  try {
-    console.log('Fetching ad squads for campaign mapping and names...');
-    const response = await fetch(
-      `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/adsquads?limit=500`,
-      {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      }
-    );
-
-    if (!response.ok) {
-      console.warn(`Failed to fetch ad squads: ${response.status}`);
-      return adSquadMap;
-    }
-
-    const data = await response.json();
-    if (data.adsquads && Array.isArray(data.adsquads)) {
-      for (const wrapper of data.adsquads) {
-        const adSquad = wrapper.adsquad;
-        if (adSquad?.id) {
-          adSquadMap.set(adSquad.id, {
-            campaignId: adSquad.campaign_id || '',
-            name: adSquad.name || adSquad.id,
-          });
-        }
-      }
-    }
-
-    console.log(`Fetched ${adSquadMap.size} ad squad mappings with names`);
-  } catch (error) {
-    console.warn('Error fetching ad squads:', error);
-  }
-
-  return adSquadMap;
-}
-
-interface AdLookupMaps {
-  adNames: Map<string, { name: string; adSquadId: string }>;
-  adSquadData: Map<string, { campaignId: string; name: string }>;
-  campaignNames: Map<string, string>;
-}
-
-// Fetch Snapchat ad stats for a given date
-async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps: AdLookupMaps): Promise<any[]> {
+// Fetch Snapchat campaign stats for a given date (DAY granularity, campaign breakdown)
+async function fetchSnapchatStats(accessToken: string, date: string, campaignNames: Map<string, string>): Promise<any[]> {
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
 
   if (!adAccountId) {
     throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
   }
 
-  // Use Pacific Time (UTC-8) to match Snapchat ad account timezone
-  const startTime = `${date}T00:00:00.000-08:00`;
-  const nextDate = new Date(`${date}T00:00:00.000-08:00`);
-  nextDate.setDate(nextDate.getDate() + 1);
-  const endTime = `${nextDate.toISOString().split('T')[0]}T00:00:00.000-08:00`;
-  
-  console.log(`Querying date range: ${startTime} to ${endTime} (Pacific Time)`);
+  const accountTimeZone = Deno.env.get('SNAPCHAT_ACCOUNT_TIMEZONE') || 'America/Toronto';
+  const { startTime, endTime } = resolveAccountDayRangeUtc(date, accountTimeZone);
 
+  console.log(`Querying date range: ${startTime} to ${endTime} (account TZ: ${accountTimeZone})`);
   console.log(`Fetching Snapchat stats for ad account ${adAccountId} on ${date}`);
 
   const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
-  url.searchParams.set('granularity', 'HOUR');
-  url.searchParams.set('breakdown', 'ad');
+  url.searchParams.set('granularity', 'DAY');
+  url.searchParams.set('breakdown', 'campaign');
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
   url.searchParams.set('limit', '200');
-  url.searchParams.set('fields', 'impressions,swipes,spend,total_installs,android_installs,ios_installs,screen_time_millis');
+  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,conversion_purchases,conversion_purchases_value');
 
   console.log(`Calling Snapchat API: ${url.toString()}`);
 
@@ -310,84 +284,65 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   const data = await response.json();
   console.log(`Snapchat API response received`);
 
-  // Extract timeseries stats from the response
   const stats: any[] = [];
-  
-  // Log the response structure for debugging
+
   console.log(`Response keys: ${Object.keys(data).join(', ')}`);
-  console.log(
-    `timeseries_stats count: ${Array.isArray(data.timeseries_stats) ? data.timeseries_stats.length : 0}`
-  );
+  console.log(`timeseries_stats count: ${Array.isArray(data.timeseries_stats) ? data.timeseries_stats.length : 0}`);
 
   if (Array.isArray(data.timeseries_stats)) {
     for (const wrapper of data.timeseries_stats) {
-      // Access the nested timeseries_stat object (singular)
       const timeseriesStat = wrapper?.timeseries_stat;
       if (!timeseriesStat) {
         console.warn('No timeseries_stat found in wrapper');
         continue;
       }
 
-      // The actual ad data is inside breakdown_stats.ad[]
       const breakdownStats = timeseriesStat.breakdown_stats;
-      if (!breakdownStats?.ad || !Array.isArray(breakdownStats.ad)) {
-        console.warn('No breakdown_stats.ad found');
+      if (!breakdownStats?.campaign || !Array.isArray(breakdownStats.campaign)) {
+        console.warn('No breakdown_stats.campaign found');
         console.warn(`timeseries_stat keys: ${Object.keys(timeseriesStat).join(', ')}`);
         continue;
       }
 
-      console.log(`Found ${breakdownStats.ad.length} ads in breakdown_stats`);
+      console.log(`Found ${breakdownStats.campaign.length} campaigns in breakdown_stats`);
 
-      for (const ad of breakdownStats.ad) {
-        const adId = ad.id || 'unknown';
-        const adInfo = lookupMaps.adNames.get(adId);
-        const adName = adInfo?.name || adId;
-        const adSquadId = adInfo?.adSquadId || '';
-        const adSquadInfo = lookupMaps.adSquadData.get(adSquadId);
-        const adSquadName = adSquadInfo?.name || adSquadId;
-        const campaignId = adSquadInfo?.campaignId || '';
-        const campaignName = lookupMaps.campaignNames.get(campaignId) || campaignId;
+      for (const campaign of breakdownStats.campaign) {
+        const campaignId = campaign.id || 'unknown';
+        const campaignName = campaignNames.get(campaignId) || campaignId;
 
-        console.log(`Processing ad ${adId} (${adName})`);
+        console.log(`Processing campaign ${campaignId} (${campaignName})`);
 
-        const timeseries = ad.timeseries;
-        if (Array.isArray(timeseries)) {
-          for (const hourData of timeseries) {
-            const impressions = hourData.stats?.impressions || 0;
-            const swipes = hourData.stats?.swipes || 0;
-            const screenTimeMillis = hourData.stats?.screen_time_millis || 0;
-            const avgScreenTimeMillis = impressions > 0 ? screenTimeMillis / impressions : 0;
-            const swipeUpPercent = impressions > 0 ? (swipes / impressions) * 100 : 0;
-            
-            stats.push({
-              timestamp: hourData.start_time,
-              campaign_id: campaignId,
-              campaign_name: campaignName,
-              ad_squad_id: adSquadId,
-              ad_squad_name: adSquadName,
-              ad_id: adId,
-              ad_name: adName,
-              impressions: impressions,
-              swipes: swipes,
-              spend: (hourData.stats?.spend || 0) / 1000000,
-              total_installs: (hourData.stats?.ios_installs || 0) + (hourData.stats?.android_installs || 0),
-              android_installs: hourData.stats?.android_installs || 0,
-              ios_installs: hourData.stats?.ios_installs || 0,
-              screen_time_millis: screenTimeMillis,
-              avg_screen_time_millis: avgScreenTimeMillis,
-              frequency: 0, // Not available for hourly granularity
-              uniques: 0, // Not available for hourly granularity
-              swipe_up_percent: swipeUpPercent,
-            });
-          }
+        // For DAY granularity, timeseries has one entry with daily totals
+        const timeseries = campaign.timeseries;
+        if (Array.isArray(timeseries) && timeseries.length > 0) {
+          const dayData = timeseries[0];
+          const s = dayData.stats || {};
+
+          stats.push({
+            timestamp: dayData.start_time,
+            campaign_id: campaignId,
+            campaign_name: campaignName,
+            impressions: s.impressions || 0,
+            swipes: s.swipes || 0,
+            spend: (s.spend || 0) / 1000000,
+            video_views: s.video_views || 0,
+            screen_time_millis: s.screen_time_millis || 0,
+            quartile_1: s.quartile_1 || 0,
+            quartile_2: s.quartile_2 || 0,
+            quartile_3: s.quartile_3 || 0,
+            view_completion: s.view_completion || 0,
+            total_installs: s.total_installs || 0,
+            conversion_purchases: s.conversion_purchases || 0,
+            conversion_purchases_value: (s.conversion_purchases_value || 0) / 1000000,
+          });
         } else {
-          console.warn(`No timeseries array found for ad ${adId}`);
+          console.warn(`No timeseries data found for campaign ${campaignId}`);
         }
       }
     }
   }
 
-  console.log(`Extracted ${stats.length} hourly stat records`);
+  console.log(`Extracted ${stats.length} daily campaign stat records`);
   return stats;
 }
 
@@ -402,21 +357,18 @@ function transformData(stats: any[], fetchedAt: string): any[] {
     timestamp: formatTimestamp(row.timestamp),
     campaign_id: row.campaign_id,
     campaign_name: row.campaign_name,
-    ad_squad_id: row.ad_squad_id,
-    ad_squad_name: row.ad_squad_name,
-    ad_id: row.ad_id,
-    ad_name: row.ad_name,
     impressions: row.impressions,
     swipes: row.swipes,
     spend: row.spend,
-    total_installs: row.total_installs,
-    android_installs: row.android_installs,
-    ios_installs: row.ios_installs,
+    video_views: row.video_views,
     screen_time_millis: row.screen_time_millis,
-    avg_screen_time_millis: row.avg_screen_time_millis,
-    frequency: row.frequency,
-    uniques: row.uniques,
-    swipe_up_percent: row.swipe_up_percent,
+    quartile_1: row.quartile_1,
+    quartile_2: row.quartile_2,
+    quartile_3: row.quartile_3,
+    view_completion: row.view_completion,
+    total_installs: row.total_installs,
+    conversion_purchases: row.conversion_purchases,
+    conversion_purchases_value: row.conversion_purchases_value,
     fetched_at: fetchedAt,
   }));
 }
@@ -433,10 +385,6 @@ function resolveBigQueryTarget(): { projectId: string; datasetId: string; tableI
 
   const splitRef = (value: string) => value.replace(/`/g, '').split(/[.:]/).filter(Boolean);
 
-  // Allow SNAPCHAT_BQ_TABLE_ID to be either:
-  // - table
-  // - dataset.table
-  // - project.dataset.table OR project:dataset.table
   if (tableId && (tableId.includes('.') || tableId.includes(':'))) {
     const parts = splitRef(tableId);
     if (parts.length >= 3) {
@@ -449,10 +397,6 @@ function resolveBigQueryTarget(): { projectId: string; datasetId: string; tableI
     }
   }
 
-  // Allow BQ_DATASET_ID to be either:
-  // - dataset
-  // - project.dataset OR project:dataset
-  // - (accidentally) project.dataset.table
   if (datasetId && (datasetId.includes('.') || datasetId.includes(':'))) {
     const parts = splitRef(datasetId);
     if (parts.length >= 2) {
@@ -464,7 +408,6 @@ function resolveBigQueryTarget(): { projectId: string; datasetId: string; tableI
     }
   }
 
-  // Allow BQ_PROJECT_ID to be (accidentally) qualified
   if (projectId && (projectId.includes('.') || projectId.includes(':'))) {
     const parts = splitRef(projectId);
     if (parts.length >= 1) {
@@ -493,7 +436,7 @@ function resolveBigQueryTarget(): { projectId: string; datasetId: string; tableI
 // Merge data into BigQuery using MERGE statement
 async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void> {
   const { projectId, datasetId, tableId } = resolveBigQueryTarget();
-  
+
   if (rows.length === 0) {
     console.log('No rows to merge into BigQuery');
     return;
@@ -507,21 +450,18 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
       TIMESTAMP '${row.timestamp}',
       '${row.campaign_id.replace(/'/g, "''")}',
       '${row.campaign_name.replace(/'/g, "''")}',
-      '${row.ad_squad_id.replace(/'/g, "''")}',
-      '${row.ad_squad_name.replace(/'/g, "''")}',
-      '${row.ad_id.replace(/'/g, "''")}',
-      '${row.ad_name.replace(/'/g, "''")}',
       ${row.impressions},
       ${row.swipes},
       ${row.spend},
-      ${row.total_installs},
-      ${row.android_installs},
-      ${row.ios_installs},
+      ${row.video_views},
       ${row.screen_time_millis},
-      ${row.avg_screen_time_millis},
-      ${row.frequency},
-      ${row.uniques},
-      ${row.swipe_up_percent},
+      ${row.quartile_1},
+      ${row.quartile_2},
+      ${row.quartile_3},
+      ${row.view_completion},
+      ${row.total_installs},
+      ${row.conversion_purchases},
+      ${row.conversion_purchases_value},
       TIMESTAMP '${row.fetched_at}'
     )`;
   }).join(',\n');
@@ -534,54 +474,47 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
           timestamp TIMESTAMP,
           campaign_id STRING,
           campaign_name STRING,
-          ad_squad_id STRING,
-          ad_squad_name STRING,
-          ad_id STRING,
-          ad_name STRING,
           impressions INT64,
           swipes INT64,
           spend FLOAT64,
-          total_installs INT64,
-          android_installs INT64,
-          ios_installs INT64,
+          video_views INT64,
           screen_time_millis INT64,
-          avg_screen_time_millis FLOAT64,
-          frequency FLOAT64,
-          uniques INT64,
-          swipe_up_percent FLOAT64,
+          quartile_1 INT64,
+          quartile_2 INT64,
+          quartile_3 INT64,
+          view_completion INT64,
+          total_installs INT64,
+          conversion_purchases INT64,
+          conversion_purchases_value FLOAT64,
           fetched_at TIMESTAMP
         >
         ${valuesRows}
       ])
     ) AS source
-    ON target.timestamp = source.timestamp AND target.ad_id = source.ad_id
+    ON target.timestamp = source.timestamp AND target.campaign_id = source.campaign_id
     WHEN MATCHED THEN UPDATE SET
-      campaign_id = source.campaign_id,
       campaign_name = source.campaign_name,
-      ad_squad_id = source.ad_squad_id,
-      ad_squad_name = source.ad_squad_name,
-      ad_name = source.ad_name,
       impressions = source.impressions,
       swipes = source.swipes,
       spend = source.spend,
-      total_installs = source.total_installs,
-      android_installs = source.android_installs,
-      ios_installs = source.ios_installs,
+      video_views = source.video_views,
       screen_time_millis = source.screen_time_millis,
-      avg_screen_time_millis = source.avg_screen_time_millis,
-      frequency = source.frequency,
-      uniques = source.uniques,
-      swipe_up_percent = source.swipe_up_percent,
+      quartile_1 = source.quartile_1,
+      quartile_2 = source.quartile_2,
+      quartile_3 = source.quartile_3,
+      view_completion = source.view_completion,
+      total_installs = source.total_installs,
+      conversion_purchases = source.conversion_purchases,
+      conversion_purchases_value = source.conversion_purchases_value,
       fetched_at = source.fetched_at
     WHEN NOT MATCHED THEN INSERT (
-      timestamp, campaign_id, campaign_name, ad_squad_id, ad_squad_name, ad_id, ad_name,
-      impressions, swipes, spend, total_installs, android_installs, ios_installs,
-      screen_time_millis, avg_screen_time_millis, frequency, uniques, swipe_up_percent, fetched_at
+      timestamp, campaign_id, campaign_name, impressions, swipes, spend,
+      video_views, screen_time_millis, quartile_1, quartile_2, quartile_3,
+      view_completion, total_installs, conversion_purchases, conversion_purchases_value, fetched_at
     ) VALUES (
-      source.timestamp, source.campaign_id, source.campaign_name, source.ad_squad_id, source.ad_squad_name,
-      source.ad_id, source.ad_name, source.impressions, source.swipes, source.spend,
-      source.total_installs, source.android_installs, source.ios_installs, source.screen_time_millis,
-      source.avg_screen_time_millis, source.frequency, source.uniques, source.swipe_up_percent, source.fetched_at
+      source.timestamp, source.campaign_id, source.campaign_name, source.impressions, source.swipes, source.spend,
+      source.video_views, source.screen_time_millis, source.quartile_1, source.quartile_2, source.quartile_3,
+      source.view_completion, source.total_installs, source.conversion_purchases, source.conversion_purchases_value, source.fetched_at
     )
   `;
 
@@ -619,7 +552,7 @@ serve(async (req) => {
   try {
     // Parse request body for optional date parameter
     let targetDate = getYesterdayDate();
-    
+
     try {
       const body = await req.json();
       if (body.date) {
@@ -635,15 +568,11 @@ serve(async (req) => {
     const snapchatToken = await getSnapchatAccessToken();
     const googleToken = await getGoogleAccessToken();
 
-    // Fetch all lookup maps in parallel
-    const [campaignNames, adNames, adSquadData] = await Promise.all([
-      fetchCampaignNames(snapchatToken),
-      fetchAdNames(snapchatToken),
-      fetchAdSquadData(snapchatToken),
-    ]);
-    
-    const lookupMaps: AdLookupMaps = { adNames, adSquadData, campaignNames };
-    const stats = await fetchSnapchatStats(snapchatToken, targetDate, lookupMaps);
+    // Fetch campaign names
+    const campaignNames = await fetchCampaignNames(snapchatToken);
+
+    // Fetch stats
+    const stats = await fetchSnapchatStats(snapchatToken, targetDate, campaignNames);
 
     if (stats.length === 0) {
       console.log('No Snapchat stats found for the specified date');
