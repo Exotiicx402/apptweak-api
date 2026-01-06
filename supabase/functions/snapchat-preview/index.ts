@@ -211,8 +211,8 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
-  // Include SKAN installs - only available with DAY/TOTAL granularity
-  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,ios_installs,android_installs,conversion_skan_app_installs,conversion_purchases,conversion_purchases_value');
+  // Fetch installs via total_installs (matches Ads Manager “Installs”)
+  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,ios_installs,android_installs,conversion_purchases,conversion_purchases_value');
 
   console.log(`API URL: ${url.toString()}`);
 
@@ -257,12 +257,12 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
           for (const dayData of timeseries) {
             const iosInstalls = dayData.stats?.ios_installs || 0;
             const androidInstalls = dayData.stats?.android_installs || 0;
-            const skanInstalls = dayData.stats?.conversion_skan_app_installs || 0;
-            // Total installs = standard installs + SKAN installs
-            const totalInstalls = iosInstalls + androidInstalls + skanInstalls;
-            
-            console.log(`Campaign ${campaignName}: ios=${iosInstalls}, android=${androidInstalls}, skan=${skanInstalls}, total=${totalInstalls}`);
-            
+            const totalInstalls = dayData.stats?.total_installs ?? (iosInstalls + androidInstalls);
+
+            console.log(
+              `Campaign ${campaignName}: total_installs=${totalInstalls} (ios=${iosInstalls}, android=${androidInstalls})`
+            );
+
             stats.push({
               timestamp: dayData.start_time,
               campaign_id: campaignId,
@@ -278,9 +278,6 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
               quartile_2: dayData.stats?.quartile_2 || 0,
               quartile_3: dayData.stats?.quartile_3 || 0,
               view_completion: dayData.stats?.view_completion || 0,
-              ios_installs: iosInstalls,
-              android_installs: androidInstalls,
-              skan_installs: skanInstalls,
               total_installs: totalInstalls,
               conversion_purchases: dayData.stats?.conversion_purchases || 0,
               conversion_purchases_value: dayData.stats?.conversion_purchases_value || 0,
@@ -336,18 +333,17 @@ serve(async (req: Request) => {
         JSON.stringify({
           success: true,
           data: [],
-          summary: {
-            totalSpend: 0,
-            totalImpressions: 0,
-            totalSwipes: 0,
-            totalInstalls: 0,
-            totalSkanInstalls: 0,
-            avgCpi: 0,
-            swipeRate: 0,
-            rowCount: 0,
-            campaigns: [],
-            ads: [],
-          },
+           summary: {
+             totalSpend: 0,
+             totalImpressions: 0,
+             totalSwipes: 0,
+             totalInstalls: 0,
+             avgCpi: 0,
+             swipeRate: 0,
+             rowCount: 0,
+             campaigns: [],
+             ads: [],
+           },
           date: targetDate,
           durationMs: Date.now() - startTime,
         }),
@@ -359,24 +355,22 @@ serve(async (req: Request) => {
     const totalSpend = snapchatData.reduce((sum, row) => sum + (row.spend || 0), 0);
     const totalImpressions = snapchatData.reduce((sum, row) => sum + (row.impressions || 0), 0);
     const totalSwipes = snapchatData.reduce((sum, row) => sum + (row.swipes || 0), 0);
-    const totalInstalls = snapchatData.reduce((sum, row) => sum + (row.total_installs || 0), 0);
-    const totalSkanInstalls = snapchatData.reduce((sum, row) => sum + (row.skan_installs || 0), 0);
-    const avgCpi = totalInstalls > 0 ? totalSpend / totalInstalls : 0;
-    const swipeRate = totalImpressions > 0 ? (totalSwipes / totalImpressions) * 100 : 0;
+     const totalInstalls = snapchatData.reduce((sum, row) => sum + (row.total_installs || 0), 0);
+     const avgCpi = totalInstalls > 0 ? totalSpend / totalInstalls : 0;
+     const swipeRate = totalImpressions > 0 ? (totalSwipes / totalImpressions) * 100 : 0;
 
     // Get spend by campaign
-    const campaignSpend: Record<string, { name: string; spend: number; installs: number; skanInstalls: number; impressions: number; swipes: number }> = {};
-    snapchatData.forEach(row => {
-      const key = row.campaign_id || 'Unknown';
-      if (!campaignSpend[key]) {
-        campaignSpend[key] = { name: row.campaign_name || key, spend: 0, installs: 0, skanInstalls: 0, impressions: 0, swipes: 0 };
-      }
-      campaignSpend[key].spend += row.spend || 0;
-      campaignSpend[key].installs += row.total_installs || 0;
-      campaignSpend[key].skanInstalls += row.skan_installs || 0;
-      campaignSpend[key].impressions += row.impressions || 0;
-      campaignSpend[key].swipes += row.swipes || 0;
-    });
+     const campaignSpend: Record<string, { name: string; spend: number; installs: number; impressions: number; swipes: number }> = {};
+     snapchatData.forEach(row => {
+       const key = row.campaign_id || 'Unknown';
+       if (!campaignSpend[key]) {
+         campaignSpend[key] = { name: row.campaign_name || key, spend: 0, installs: 0, impressions: 0, swipes: 0 };
+       }
+       campaignSpend[key].spend += row.spend || 0;
+       campaignSpend[key].installs += row.total_installs || 0;
+       campaignSpend[key].impressions += row.impressions || 0;
+       campaignSpend[key].swipes += row.swipes || 0;
+     });
 
     // Get spend by ad (empty since we're using campaign breakdown for SKAN)
     const adSpend: Record<string, { name: string; spend: number; installs: number; impressions: number; swipes: number }> = {};
@@ -386,21 +380,19 @@ serve(async (req: Request) => {
       totalImpressions,
       totalSwipes,
       totalInstalls,
-      totalSkanInstalls,
       avgCpi,
       swipeRate,
       rowCount: snapchatData.length,
-      campaigns: Object.entries(campaignSpend)
-        .map(([id, data]) => ({
-          id,
-          name: data.name,
-          spend: data.spend,
-          installs: data.installs,
-          skanInstalls: data.skanInstalls,
-          impressions: data.impressions,
-          swipeRate: data.impressions > 0 ? (data.swipes / data.impressions) * 100 : 0,
-        }))
-        .sort((a, b) => b.spend - a.spend),
+       campaigns: Object.entries(campaignSpend)
+         .map(([id, data]) => ({
+           id,
+           name: data.name,
+           spend: data.spend,
+           installs: data.installs,
+           impressions: data.impressions,
+           swipeRate: data.impressions > 0 ? (data.swipes / data.impressions) * 100 : 0,
+         }))
+         .sort((a, b) => b.spend - a.spend),
       ads: Object.entries(adSpend)
         .map(([id, data]) => ({
           id,
@@ -414,8 +406,8 @@ serve(async (req: Request) => {
     };
 
     const duration = Date.now() - startTime;
-    console.log(`=== Preview completed in ${duration}ms with ${snapchatData.length} rows ===`);
-    console.log(`Total spend: $${totalSpend.toFixed(2)}, Total installs: ${totalInstalls} (SKAN: ${totalSkanInstalls})`);
+     console.log(`=== Preview completed in ${duration}ms with ${snapchatData.length} rows ===`);
+     console.log(`Total spend: $${totalSpend.toFixed(2)}, Total installs: ${totalInstalls}`);
 
     return new Response(
       JSON.stringify({
