@@ -138,6 +138,7 @@ export default function SnapchatDataPreview({ result }: SnapchatDataPreviewProps
               <TableHeader>
                 <TableRow>
                   <TableHead className="sticky left-0 bg-background">Campaign</TableHead>
+                  <TableHead>Ad Name</TableHead>
                   <TableHead className="text-right">Spend</TableHead>
                   <TableHead className="text-right">Impressions</TableHead>
                   <TableHead className="text-right">Swipes</TableHead>
@@ -149,8 +150,11 @@ export default function SnapchatDataPreview({ result }: SnapchatDataPreviewProps
               <TableBody>
                 {data.slice(0, 100).map((row, idx) => (
                   <TableRow key={idx}>
-                    <TableCell className="sticky left-0 bg-background font-medium max-w-[200px] truncate">
+                    <TableCell className="sticky left-0 bg-background font-medium max-w-[150px] truncate">
                       {row.campaign_name || row.campaign_id}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate" title={row.ad_name || row.ad_id}>
+                      {row.ad_name || row.ad_id}
                     </TableCell>
                     <TableCell className="text-right">{formatCurrency(row.spend)}</TableCell>
                     <TableCell className="text-right">{formatNumber(row.impressions)}</TableCell>

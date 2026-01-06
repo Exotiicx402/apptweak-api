@@ -174,8 +174,95 @@ async function fetchCampaignNames(accessToken: string): Promise<Map<string, stri
   return campaignMap;
 }
 
-// Fetch Snapchat campaign stats for a given date
-async function fetchSnapchatStats(accessToken: string, date: string, campaignNames: Map<string, string>): Promise<any[]> {
+async function fetchAdNames(accessToken: string): Promise<Map<string, { name: string; adSquadId: string }>> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  const adMap = new Map<string, { name: string; adSquadId: string }>();
+
+  if (!adAccountId) {
+    console.warn('Missing SNAPCHAT_AD_ACCOUNT_ID for ad name lookup');
+    return adMap;
+  }
+
+  try {
+    console.log('Fetching ad names...');
+    const response = await fetch(
+      `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/ads?limit=500`,
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch ad names: ${response.status}`);
+      return adMap;
+    }
+
+    const data = await response.json();
+    if (data.ads && Array.isArray(data.ads)) {
+      for (const wrapper of data.ads) {
+        const ad = wrapper.ad;
+        if (ad?.id && ad?.name) {
+          adMap.set(ad.id, { name: ad.name, adSquadId: ad.ad_squad_id || '' });
+        }
+      }
+    }
+
+    console.log(`Fetched names for ${adMap.size} ads`);
+  } catch (error) {
+    console.warn('Error fetching ad names:', error);
+  }
+
+  return adMap;
+}
+
+async function fetchAdSquadToCampaignMap(accessToken: string): Promise<Map<string, string>> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  const adSquadMap = new Map<string, string>();
+
+  if (!adAccountId) {
+    return adSquadMap;
+  }
+
+  try {
+    console.log('Fetching ad squads for campaign mapping...');
+    const response = await fetch(
+      `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/adsquads?limit=500`,
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch ad squads: ${response.status}`);
+      return adSquadMap;
+    }
+
+    const data = await response.json();
+    if (data.adsquads && Array.isArray(data.adsquads)) {
+      for (const wrapper of data.adsquads) {
+        const adSquad = wrapper.adsquad;
+        if (adSquad?.id && adSquad?.campaign_id) {
+          adSquadMap.set(adSquad.id, adSquad.campaign_id);
+        }
+      }
+    }
+
+    console.log(`Fetched ${adSquadMap.size} ad squad to campaign mappings`);
+  } catch (error) {
+    console.warn('Error fetching ad squads:', error);
+  }
+
+  return adSquadMap;
+}
+
+interface AdLookupMaps {
+  adNames: Map<string, { name: string; adSquadId: string }>;
+  adSquadToCampaign: Map<string, string>;
+  campaignNames: Map<string, string>;
+}
+
+// Fetch Snapchat ad stats for a given date
+async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps: AdLookupMaps): Promise<any[]> {
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
 
   if (!adAccountId) {
@@ -193,7 +280,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
 
   const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
   url.searchParams.set('granularity', 'HOUR');
-  url.searchParams.set('breakdown', 'campaign');
+  url.searchParams.set('breakdown', 'ad');
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
@@ -237,29 +324,35 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
         continue;
       }
 
-      // The actual campaign data is inside breakdown_stats.campaign[]
+      // The actual ad data is inside breakdown_stats.ad[]
       const breakdownStats = timeseriesStat.breakdown_stats;
-      if (!breakdownStats?.campaign || !Array.isArray(breakdownStats.campaign)) {
-        console.warn('No breakdown_stats.campaign found');
+      if (!breakdownStats?.ad || !Array.isArray(breakdownStats.ad)) {
+        console.warn('No breakdown_stats.ad found');
         console.warn(`timeseries_stat keys: ${Object.keys(timeseriesStat).join(', ')}`);
         continue;
       }
 
-      console.log(`Found ${breakdownStats.campaign.length} campaigns in breakdown_stats`);
+      console.log(`Found ${breakdownStats.ad.length} ads in breakdown_stats`);
 
-      for (const campaign of breakdownStats.campaign) {
-        const campaignId = campaign.id || 'unknown';
-        const campaignName = campaignNames.get(campaignId) || campaignId;
+      for (const ad of breakdownStats.ad) {
+        const adId = ad.id || 'unknown';
+        const adInfo = lookupMaps.adNames.get(adId);
+        const adName = adInfo?.name || adId;
+        const adSquadId = adInfo?.adSquadId || '';
+        const campaignId = lookupMaps.adSquadToCampaign.get(adSquadId) || '';
+        const campaignName = lookupMaps.campaignNames.get(campaignId) || campaignId;
 
-        console.log(`Processing campaign ${campaignId} (${campaignName})`);
+        console.log(`Processing ad ${adId} (${adName})`);
 
-        const timeseries = campaign.timeseries;
+        const timeseries = ad.timeseries;
         if (Array.isArray(timeseries)) {
           for (const hourData of timeseries) {
             stats.push({
               timestamp: hourData.start_time,
               campaign_id: campaignId,
               campaign_name: campaignName,
+              ad_id: adId,
+              ad_name: adName,
               impressions: hourData.stats?.impressions || 0,
               swipes: hourData.stats?.swipes || 0,
               spend_micros: hourData.stats?.spend || 0,
@@ -276,7 +369,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
             });
           }
         } else {
-          console.warn(`No timeseries array found for campaign ${campaignId}`);
+          console.warn(`No timeseries array found for ad ${adId}`);
         }
       }
     }
@@ -297,6 +390,8 @@ function transformData(stats: any[], fetchedAt: string): any[] {
     timestamp: formatTimestamp(row.timestamp),
     campaign_id: row.campaign_id,
     campaign_name: row.campaign_name,
+    ad_id: row.ad_id,
+    ad_name: row.ad_name,
     impressions: row.impressions,
     swipes: row.swipes,
     spend_micros: row.spend_micros,
@@ -344,6 +439,8 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
       TIMESTAMP '${row.timestamp}',
       '${row.campaign_id.replace(/'/g, "''")}',
       '${row.campaign_name.replace(/'/g, "''")}',
+      '${row.ad_id.replace(/'/g, "''")}',
+      '${row.ad_name.replace(/'/g, "''")}',
       ${row.impressions},
       ${row.swipes},
       ${row.spend_micros},
@@ -369,6 +466,8 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
           timestamp TIMESTAMP,
           campaign_id STRING,
           campaign_name STRING,
+          ad_id STRING,
+          ad_name STRING,
           impressions INT64,
           swipes INT64,
           spend_micros INT64,
@@ -387,9 +486,10 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
         ${valuesRows}
       ])
     ) AS source
-    ON target.timestamp = source.timestamp AND target.campaign_id = source.campaign_id
+    ON target.timestamp = source.timestamp AND target.campaign_id = source.campaign_id AND target.ad_id = source.ad_id
     WHEN MATCHED THEN UPDATE SET
       campaign_name = source.campaign_name,
+      ad_name = source.ad_name,
       impressions = source.impressions,
       swipes = source.swipes,
       spend_micros = source.spend_micros,
@@ -405,11 +505,11 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
       conversion_purchases_value = source.conversion_purchases_value,
       fetched_at = source.fetched_at
     WHEN NOT MATCHED THEN INSERT (
-      timestamp, campaign_id, campaign_name, impressions, swipes, spend_micros, spend,
+      timestamp, campaign_id, campaign_name, ad_id, ad_name, impressions, swipes, spend_micros, spend,
       video_views, screen_time_millis, quartile_1, quartile_2, quartile_3, view_completion,
       total_installs, conversion_purchases, conversion_purchases_value, fetched_at
     ) VALUES (
-      source.timestamp, source.campaign_id, source.campaign_name, source.impressions, source.swipes,
+      source.timestamp, source.campaign_id, source.campaign_name, source.ad_id, source.ad_name, source.impressions, source.swipes,
       source.spend_micros, source.spend, source.video_views, source.screen_time_millis,
       source.quartile_1, source.quartile_2, source.quartile_3, source.view_completion,
       source.total_installs, source.conversion_purchases, source.conversion_purchases_value, source.fetched_at
@@ -466,9 +566,15 @@ serve(async (req) => {
     const snapchatToken = await getSnapchatAccessToken();
     const googleToken = await getGoogleAccessToken();
 
-    // Fetch campaign names and Snapchat stats
-    const campaignNames = await fetchCampaignNames(snapchatToken);
-    const stats = await fetchSnapchatStats(snapchatToken, targetDate, campaignNames);
+    // Fetch all lookup maps in parallel
+    const [campaignNames, adNames, adSquadToCampaign] = await Promise.all([
+      fetchCampaignNames(snapchatToken),
+      fetchAdNames(snapchatToken),
+      fetchAdSquadToCampaignMap(snapchatToken),
+    ]);
+    
+    const lookupMaps: AdLookupMaps = { adNames, adSquadToCampaign, campaignNames };
+    const stats = await fetchSnapchatStats(snapchatToken, targetDate, lookupMaps);
 
     if (stats.length === 0) {
       console.log('No Snapchat stats found for the specified date');
