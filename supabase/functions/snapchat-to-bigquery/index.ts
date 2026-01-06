@@ -394,7 +394,6 @@ function transformData(stats: any[], fetchedAt: string): any[] {
     ad_name: row.ad_name,
     impressions: row.impressions,
     swipes: row.swipes,
-    spend_micros: row.spend_micros,
     spend: row.spend,
     video_views: row.video_views,
     screen_time_millis: row.screen_time_millis,
@@ -499,7 +498,6 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
       '${row.ad_name.replace(/'/g, "''")}',
       ${row.impressions},
       ${row.swipes},
-      ${row.spend_micros},
       ${row.spend},
       ${row.video_views},
       ${row.screen_time_millis},
@@ -526,7 +524,6 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
           ad_name STRING,
           impressions INT64,
           swipes INT64,
-          spend_micros INT64,
           spend FLOAT64,
           video_views INT64,
           screen_time_millis INT64,
@@ -548,7 +545,6 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
       ad_name = source.ad_name,
       impressions = source.impressions,
       swipes = source.swipes,
-      spend_micros = source.spend_micros,
       spend = source.spend,
       video_views = source.video_views,
       screen_time_millis = source.screen_time_millis,
@@ -561,12 +557,12 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
       conversion_purchases_value = source.conversion_purchases_value,
       fetched_at = source.fetched_at
     WHEN NOT MATCHED THEN INSERT (
-      timestamp, campaign_id, campaign_name, ad_id, ad_name, impressions, swipes, spend_micros, spend,
+      timestamp, campaign_id, campaign_name, ad_id, ad_name, impressions, swipes, spend,
       video_views, screen_time_millis, quartile_1, quartile_2, quartile_3, view_completion,
       total_installs, conversion_purchases, conversion_purchases_value, fetched_at
     ) VALUES (
       source.timestamp, source.campaign_id, source.campaign_name, source.ad_id, source.ad_name, source.impressions, source.swipes,
-      source.spend_micros, source.spend, source.video_views, source.screen_time_millis,
+      source.spend, source.video_views, source.screen_time_millis,
       source.quartile_1, source.quartile_2, source.quartile_3, source.view_completion,
       source.total_installs, source.conversion_purchases, source.conversion_purchases_value, source.fetched_at
     )
