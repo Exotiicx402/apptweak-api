@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { DollarSign, Users, MousePointerClick, Eye, TrendingUp } from "lucide-react";
+import { DollarSign, Users, MousePointerClick, Eye, TrendingUp, Percent } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import type { SnapchatPreviewResult } from "@/hooks/useSnapchatPreview";
 
@@ -17,6 +17,10 @@ function formatCurrency(value: number): string {
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US').format(value);
+}
+
+function formatPercent(value: number): string {
+  return `${value.toFixed(2)}%`;
 }
 
 export default function SnapchatDataPreview({ result }: SnapchatDataPreviewProps) {
@@ -35,7 +39,7 @@ export default function SnapchatDataPreview({ result }: SnapchatDataPreviewProps
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
@@ -63,6 +67,16 @@ export default function SnapchatDataPreview({ result }: SnapchatDataPreviewProps
               <span className="text-sm text-muted-foreground">Swipes</span>
             </div>
             <p className="text-2xl font-bold mt-1">{formatNumber(summary.totalSwipes)}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <Percent className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Swipe Rate</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{formatPercent(summary.swipeRate)}</p>
           </CardContent>
         </Card>
 
