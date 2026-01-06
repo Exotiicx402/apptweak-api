@@ -6,12 +6,14 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Play, Calendar, RefreshCw, CheckCircle2, XCircle, Clock, Loader2, Eye } from "lucide-react";
+import { ArrowLeft, Play, Calendar, RefreshCw, CheckCircle2, XCircle, Clock, Loader2, Eye, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useSnapchatPreview } from "@/hooks/useSnapchatPreview";
+import { useSnapchatDiagnostics } from "@/hooks/useSnapchatDiagnostics";
 import SnapchatDataPreview from "@/components/SnapchatDataPreview";
+import SnapchatDiagnostics from "@/components/SnapchatDiagnostics";
 
 interface SyncResult {
   success: boolean;
@@ -35,8 +37,11 @@ const SnapchatSync = () => {
   const [backfillEnd, setBackfillEnd] = useState("");
   const [backfillProgress, setBackfillProgress] = useState<BackfillProgress | null>(null);
   const [previewDate, setPreviewDate] = useState("");
+  const [diagnosticsDate, setDiagnosticsDate] = useState("");
+  const [targetInstalls, setTargetInstalls] = useState("");
   const { toast } = useToast();
   const { isLoading: isPreviewLoading, result: previewResult, error: previewError, fetchPreview, clearPreview } = useSnapchatPreview();
+  const { isLoading: isDiagnosticsLoading, result: diagnosticsResult, error: diagnosticsError, runDiagnostics, clearDiagnostics } = useSnapchatDiagnostics();
 
   const getYesterdayDate = () => {
     const yesterday = new Date();
@@ -413,6 +418,79 @@ const SnapchatSync = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Diagnostics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Attribution Diagnostics
+            </CardTitle>
+            <CardDescription>
+              Test different attribution window settings to find which matches your Ads Manager
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-4 items-end">
+              <div className="flex-1">
+                <Label htmlFor="diagnosticsDate">Date</Label>
+                <Input
+                  id="diagnosticsDate"
+                  type="date"
+                  value={diagnosticsDate}
+                  onChange={(e) => setDiagnosticsDate(e.target.value)}
+                  max={getTodayDate()}
+                />
+              </div>
+              <div className="w-32">
+                <Label htmlFor="targetInstalls">Target Installs</Label>
+                <Input
+                  id="targetInstalls"
+                  type="number"
+                  placeholder="e.g. 1343"
+                  value={targetInstalls}
+                  onChange={(e) => setTargetInstalls(e.target.value)}
+                />
+              </div>
+              <Button
+                onClick={() => {
+                  if (!diagnosticsDate) {
+                    toast({
+                      title: "Date Required",
+                      description: "Please select a date for diagnostics",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  runDiagnostics(diagnosticsDate);
+                }}
+                disabled={isDiagnosticsLoading}
+              >
+                {isDiagnosticsLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-2 h-4 w-4" />
+                    Run Diagnostics
+                  </>
+                )}
+              </Button>
+              {diagnosticsResult && (
+                <Button variant="outline" onClick={clearDiagnostics}>
+                  Clear
+                </Button>
+              )}
+            </div>
+            {diagnosticsError && (
+              <div className="p-3 bg-destructive/10 rounded-md">
+                <p className="text-sm text-destructive">{diagnosticsError}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
         </div>
 
         {/* Custom Date */}
@@ -606,6 +684,14 @@ const SnapchatSync = () => {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {/* Diagnostics Result */}
+        {diagnosticsResult && (
+          <SnapchatDiagnostics 
+            result={diagnosticsResult} 
+            targetInstalls={targetInstalls ? parseInt(targetInstalls, 10) : undefined} 
+          />
         )}
 
         {/* Preview Result */}
