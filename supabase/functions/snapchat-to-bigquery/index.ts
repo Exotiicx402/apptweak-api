@@ -411,13 +411,69 @@ function transformData(stats: any[], fetchedAt: string): any[] {
 
 // Get BigQuery target table configuration
 function resolveBigQueryTarget(): { projectId: string; datasetId: string; tableId: string } {
-  const projectId = Deno.env.get('BQ_PROJECT_ID');
-  const datasetId = Deno.env.get('BQ_DATASET_ID');
-  const tableId = Deno.env.get('SNAPCHAT_BQ_TABLE_ID');
+  const rawProjectId = Deno.env.get('BQ_PROJECT_ID')?.trim();
+  const rawDatasetId = Deno.env.get('BQ_DATASET_ID')?.trim();
+  const rawTableId = Deno.env.get('SNAPCHAT_BQ_TABLE_ID')?.trim();
+
+  let projectId = rawProjectId || '';
+  let datasetId = rawDatasetId || '';
+  let tableId = rawTableId || '';
+
+  const splitRef = (value: string) => value.replace(/`/g, '').split(/[.:]/).filter(Boolean);
+
+  // Allow SNAPCHAT_BQ_TABLE_ID to be either:
+  // - table
+  // - dataset.table
+  // - project.dataset.table OR project:dataset.table
+  if (tableId && (tableId.includes('.') || tableId.includes(':'))) {
+    const parts = splitRef(tableId);
+    if (parts.length >= 3) {
+      projectId = parts[0];
+      datasetId = parts[1];
+      tableId = parts[2];
+    } else if (parts.length === 2) {
+      datasetId = parts[0];
+      tableId = parts[1];
+    }
+  }
+
+  // Allow BQ_DATASET_ID to be either:
+  // - dataset
+  // - project.dataset OR project:dataset
+  // - (accidentally) project.dataset.table
+  if (datasetId && (datasetId.includes('.') || datasetId.includes(':'))) {
+    const parts = splitRef(datasetId);
+    if (parts.length >= 2) {
+      projectId = projectId || parts[0];
+      datasetId = parts[1];
+      if (!tableId && parts.length >= 3) {
+        tableId = parts[2];
+      }
+    }
+  }
+
+  // Allow BQ_PROJECT_ID to be (accidentally) qualified
+  if (projectId && (projectId.includes('.') || projectId.includes(':'))) {
+    const parts = splitRef(projectId);
+    if (parts.length >= 1) {
+      projectId = parts[0];
+      if (!datasetId && parts.length >= 2) datasetId = parts[1];
+      if (!tableId && parts.length >= 3) tableId = parts[2];
+    }
+  }
 
   if (!projectId || !datasetId || !tableId) {
     throw new Error('Missing BigQuery configuration (BQ_PROJECT_ID, BQ_DATASET_ID, SNAPCHAT_BQ_TABLE_ID)');
   }
+
+  console.log('Resolved BigQuery target', {
+    rawProjectId,
+    rawDatasetId,
+    rawTableId,
+    projectId,
+    datasetId,
+    tableId,
+  });
 
   return { projectId, datasetId, tableId };
 }
