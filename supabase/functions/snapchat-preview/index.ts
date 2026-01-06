@@ -64,7 +64,6 @@ function getTimeZoneOffsetMs(utcDate: Date, timeZone: string): number {
 
 function getUtcMsForZonedMidnight(dateStr: string, timeZone: string): number {
   const { year, month, day } = parseYmd(dateStr);
-  // Treat "YYYY-MM-DD 00:00:00" as a *local* time in the ad account timezone.
   const localMidnightAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
 
   let utcMs = localMidnightAsUtc;
@@ -260,6 +259,125 @@ interface AdLookupMaps {
   campaignNames: Map<string, string>;
 }
 
+interface DiagnosticVariant {
+  swipe_up_attribution_window: string;
+  view_attribution_window: string;
+  action_report_time: string;
+}
+
+// Fetch stats with specific attribution settings for diagnostics
+async function fetchStatsWithSettings(
+  accessToken: string, 
+  date: string, 
+  settings: DiagnosticVariant
+): Promise<{ total_installs: number; ios_installs: number; android_installs: number }> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+
+  if (!adAccountId) {
+    throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
+  }
+
+  const accountTimeZone = Deno.env.get('SNAPCHAT_ACCOUNT_TIMEZONE') || 'America/Toronto';
+  const { startTime, endTime } = resolveAccountDayRangeUtc(date, accountTimeZone);
+
+  const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
+  url.searchParams.set('granularity', 'DAY');
+  url.searchParams.set('start_time', startTime);
+  url.searchParams.set('end_time', endTime);
+  url.searchParams.set('omit_empty', 'false');
+  url.searchParams.set('swipe_up_attribution_window', settings.swipe_up_attribution_window);
+  url.searchParams.set('view_attribution_window', settings.view_attribution_window);
+  url.searchParams.set('action_report_time', settings.action_report_time);
+  url.searchParams.set('fields', 'total_installs,ios_installs,android_installs');
+
+  console.log(`Diagnostics API call: swipe=${settings.swipe_up_attribution_window}, view=${settings.view_attribution_window}, action=${settings.action_report_time}`);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Diagnostics API error: ${response.status} ${errorText}`);
+    return { total_installs: -1, ios_installs: -1, android_installs: -1 };
+  }
+
+  const data = await response.json();
+  
+  let totalInstalls = 0;
+  let iosInstalls = 0;
+  let androidInstalls = 0;
+
+  if (Array.isArray(data.timeseries_stats)) {
+    for (const wrapper of data.timeseries_stats) {
+      const timeseriesStat = wrapper?.timeseries_stat;
+      if (!timeseriesStat?.timeseries) continue;
+
+      for (const dayData of timeseriesStat.timeseries) {
+        totalInstalls += dayData.stats?.total_installs || 0;
+        iosInstalls += dayData.stats?.ios_installs || 0;
+        androidInstalls += dayData.stats?.android_installs || 0;
+      }
+    }
+  }
+
+  console.log(`Result: total=${totalInstalls}, ios=${iosInstalls}, android=${androidInstalls}`);
+  return { total_installs: totalInstalls, ios_installs: iosInstalls, android_installs: androidInstalls };
+}
+
+// Run diagnostics with multiple attribution window combinations
+async function runDiagnostics(accessToken: string, date: string) {
+  const variants: DiagnosticVariant[] = [
+    // All swipe + view combinations with conversion time
+    { swipe_up_attribution_window: '1_DAY', view_attribution_window: 'NONE', action_report_time: 'conversion' },
+    { swipe_up_attribution_window: '1_DAY', view_attribution_window: '1_DAY', action_report_time: 'conversion' },
+    { swipe_up_attribution_window: '7_DAY', view_attribution_window: 'NONE', action_report_time: 'conversion' },
+    { swipe_up_attribution_window: '7_DAY', view_attribution_window: '1_DAY', action_report_time: 'conversion' },
+    { swipe_up_attribution_window: '7_DAY', view_attribution_window: '7_DAY', action_report_time: 'conversion' },
+    { swipe_up_attribution_window: '28_DAY', view_attribution_window: 'NONE', action_report_time: 'conversion' },
+    { swipe_up_attribution_window: '28_DAY', view_attribution_window: '1_DAY', action_report_time: 'conversion' },
+    { swipe_up_attribution_window: '28_DAY', view_attribution_window: '7_DAY', action_report_time: 'conversion' },
+    // Key combinations with impression time
+    { swipe_up_attribution_window: '7_DAY', view_attribution_window: '1_DAY', action_report_time: 'impression' },
+    { swipe_up_attribution_window: '28_DAY', view_attribution_window: '1_DAY', action_report_time: 'impression' },
+  ];
+
+  const results: Array<{
+    swipe_up_attribution_window: string;
+    view_attribution_window: string;
+    action_report_time: string;
+    total_installs: number;
+    ios_installs: number;
+    android_installs: number;
+  }> = [];
+
+  for (const variant of variants) {
+    try {
+      const stats = await fetchStatsWithSettings(accessToken, date, variant);
+      results.push({
+        ...variant,
+        ...stats,
+      });
+    } catch (error) {
+      console.error(`Error fetching variant:`, variant, error);
+      results.push({
+        ...variant,
+        total_installs: -1,
+        ios_installs: -1,
+        android_installs: -1,
+      });
+    }
+    // Small delay between requests to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  return results;
+}
+
 // Fetch stats with DAY granularity to get SKAN installs (not available with HOUR)
 async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps: AdLookupMaps): Promise<any[]> {
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
@@ -375,6 +493,7 @@ serve(async (req: Request) => {
 
   try {
     let targetDate = getYesterdayDate();
+    let diagnosticsMode = false;
 
     if (req.method === 'POST') {
       try {
@@ -382,15 +501,38 @@ serve(async (req: Request) => {
         if (body.date) {
           targetDate = body.date;
         }
+        if (body.diagnostics === true) {
+          diagnosticsMode = true;
+        }
       } catch {
         // No body or invalid JSON, use default date
       }
     }
 
     console.log(`=== Snapchat Preview Started ===`);
-    console.log(`Target date: ${targetDate}`);
+    console.log(`Target date: ${targetDate}, Diagnostics mode: ${diagnosticsMode}`);
 
     const accessToken = await getSnapchatAccessToken();
+
+    // If diagnostics mode, run the diagnostics and return early
+    if (diagnosticsMode) {
+      console.log('Running diagnostics mode...');
+      const diagnosticsResults = await runDiagnostics(accessToken, targetDate);
+      const duration = Date.now() - startTime;
+      
+      console.log(`Diagnostics completed in ${duration}ms with ${diagnosticsResults.length} variants`);
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          diagnostics: true,
+          date: targetDate,
+          results: diagnosticsResults,
+          durationMs: duration,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     // Fetch all lookup maps in parallel
     const [campaignNames, adNames, adSquadToCampaign] = await Promise.all([
