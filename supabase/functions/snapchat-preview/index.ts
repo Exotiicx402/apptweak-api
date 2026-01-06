@@ -270,11 +270,11 @@ async function fetchStatsWithSettings(
   accessToken: string, 
   date: string, 
   settings: DiagnosticVariant
-): Promise<{ total_installs: number; ios_installs: number; android_installs: number }> {
+): Promise<{ total_installs: number; ios_installs: number; android_installs: number; error?: string }> {
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
 
   if (!adAccountId) {
-    throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
+    return { total_installs: -1, ios_installs: -1, android_installs: -1, error: 'Missing SNAPCHAT_AD_ACCOUNT_ID' };
   }
 
   const accountTimeZone = Deno.env.get('SNAPCHAT_ACCOUNT_TIMEZONE') || 'America/Toronto';
@@ -282,6 +282,7 @@ async function fetchStatsWithSettings(
 
   const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
   url.searchParams.set('granularity', 'DAY');
+  url.searchParams.set('breakdown', 'campaign'); // Required for install metrics
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
@@ -292,41 +293,56 @@ async function fetchStatsWithSettings(
 
   console.log(`Diagnostics API call: swipe=${settings.swipe_up_attribution_window}, view=${settings.view_attribution_window}, action=${settings.action_report_time}`);
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Diagnostics API error: ${response.status} ${errorText}`);
-    return { total_installs: -1, ios_installs: -1, android_installs: -1 };
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Diagnostics API error: ${response.status} ${errorText}`);
+      return { total_installs: -1, ios_installs: -1, android_installs: -1, error: `API ${response.status}: ${errorText.slice(0, 100)}` };
+    }
 
-  const data = await response.json();
-  
-  let totalInstalls = 0;
-  let iosInstalls = 0;
-  let androidInstalls = 0;
+    const data = await response.json();
+    
+    let totalInstalls = 0;
+    let iosInstalls = 0;
+    let androidInstalls = 0;
 
-  if (Array.isArray(data.timeseries_stats)) {
-    for (const wrapper of data.timeseries_stats) {
-      const timeseriesStat = wrapper?.timeseries_stat;
-      if (!timeseriesStat?.timeseries) continue;
+    // Parse breakdown_stats.campaign structure (same as main preview)
+    if (Array.isArray(data.timeseries_stats)) {
+      for (const wrapper of data.timeseries_stats) {
+        const timeseriesStat = wrapper?.timeseries_stat;
+        if (!timeseriesStat) continue;
 
-      for (const dayData of timeseriesStat.timeseries) {
-        totalInstalls += dayData.stats?.total_installs || 0;
-        iosInstalls += dayData.stats?.ios_installs || 0;
-        androidInstalls += dayData.stats?.android_installs || 0;
+        const breakdownStats = timeseriesStat.breakdown_stats;
+        if (!breakdownStats?.campaign || !Array.isArray(breakdownStats.campaign)) continue;
+
+        for (const campaign of breakdownStats.campaign) {
+          const timeseries = campaign.timeseries;
+          if (Array.isArray(timeseries)) {
+            for (const dayData of timeseries) {
+              totalInstalls += dayData.stats?.total_installs || 0;
+              iosInstalls += dayData.stats?.ios_installs || 0;
+              androidInstalls += dayData.stats?.android_installs || 0;
+            }
+          }
+        }
       }
     }
-  }
 
-  console.log(`Result: total=${totalInstalls}, ios=${iosInstalls}, android=${androidInstalls}`);
-  return { total_installs: totalInstalls, ios_installs: iosInstalls, android_installs: androidInstalls };
+    console.log(`Result: total=${totalInstalls}, ios=${iosInstalls}, android=${androidInstalls}`);
+    return { total_installs: totalInstalls, ios_installs: iosInstalls, android_installs: androidInstalls };
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Diagnostics fetch error: ${errMsg}`);
+    return { total_installs: -1, ios_installs: -1, android_installs: -1, error: errMsg };
+  }
 }
 
 // Run diagnostics with multiple attribution window combinations
@@ -353,24 +369,15 @@ async function runDiagnostics(accessToken: string, date: string) {
     total_installs: number;
     ios_installs: number;
     android_installs: number;
+    error?: string;
   }> = [];
 
   for (const variant of variants) {
-    try {
-      const stats = await fetchStatsWithSettings(accessToken, date, variant);
-      results.push({
-        ...variant,
-        ...stats,
-      });
-    } catch (error) {
-      console.error(`Error fetching variant:`, variant, error);
-      results.push({
-        ...variant,
-        total_installs: -1,
-        ios_installs: -1,
-        android_installs: -1,
-      });
-    }
+    const stats = await fetchStatsWithSettings(accessToken, date, variant);
+    results.push({
+      ...variant,
+      ...stats,
+    });
     // Small delay between requests to avoid rate limiting
     await new Promise(resolve => setTimeout(resolve, 200));
   }
