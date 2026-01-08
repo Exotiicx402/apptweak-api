@@ -267,6 +267,7 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
   // Attribution windows: 28-day swipe, 1-day view (matches Snapchat Ads Manager default)
   url.searchParams.set('swipe_up_attribution_window', '28_DAY');
   url.searchParams.set('view_attribution_window', '1_DAY');
+  url.searchParams.set('action_report_time', 'conversion');
 
   console.log(`Calling Snapchat API: ${url.toString()}`);
 
