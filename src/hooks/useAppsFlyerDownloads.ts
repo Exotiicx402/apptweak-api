@@ -41,9 +41,10 @@ export const useAppsFlyerDownloads = (days: number = 8) => {
   return useQuery({
     queryKey: ["appsflyer-downloads", days],
     queryFn: async (): Promise<DownloadDataPoint[]> => {
-      // Use yesterday as end date since today's data may not be complete
+      // Yesterday is always the end date (today's data is incomplete)
       const endDate = format(subDays(new Date(), 1), "yyyy-MM-dd");
-      const startDate = format(subDays(new Date(), days), "yyyy-MM-dd");
+      // Start 7 days before yesterday to get 8 total data points
+      const startDate = format(subDays(new Date(), 8), "yyyy-MM-dd");
 
       console.log(`Fetching AppsFlyer downloads from ${startDate} to ${endDate}`);
 
