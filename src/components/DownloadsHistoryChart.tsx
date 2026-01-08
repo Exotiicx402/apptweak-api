@@ -12,7 +12,7 @@ interface DownloadsHistoryChartProps {
 }
 
 export const DownloadsHistoryChart = ({ appId, appName, dataSource = "AppTweak" }: DownloadsHistoryChartProps) => {
-  const { data: historyData, isLoading, error } = useAppTweakMetricsHistory(appId, 7);
+  const { data: historyData, isLoading, error } = useAppTweakMetricsHistory(appId, 8);
 
   if (isLoading) {
     return (

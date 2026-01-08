@@ -1,5 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
+import { getRollingRange } from "@/lib/rollingDateRange";
 
 interface DownloadDataPoint {
   value: number;
@@ -36,10 +38,7 @@ export interface CompetitorDownloadsPoint {
   [key: string]: number | string; // Dynamic keys for each competitor
 }
 
-const fetchAppDownloadsHistory = async (appId: string, days: number) => {
-  const endDate = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
+const fetchAppDownloadsHistory = async (appId: string, startDate: string, endDate: string, dates: string[]) => {
   const { data, error } = await supabase.functions.invoke('apptweak-metrics-history', {
     body: { 
       appId, 
@@ -59,20 +58,27 @@ const fetchAppDownloadsHistory = async (appId: string, days: number) => {
   const response = data as AppTweakMetricsHistoryResponse;
   const downloads = response?.result?.[appId]?.downloads || [];
   
-  return downloads
-    .filter(d => d.value !== null)
-    .map(d => ({
-      date: d.date,
-      downloads: d.value,
-    }))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // Build a map from API results
+  const dataMap = new Map(
+    downloads
+      .filter(d => d.value !== null)
+      .map(d => [d.date, d.value])
+  );
+
+  // Normalize to exactly N data points
+  return dates.map(date => ({
+    date,
+    downloads: dataMap.get(date) ?? 0,
+  }));
 };
 
-export const useCompetitorDownloadsHistory = (days: number = 7) => {
+export const useCompetitorDownloadsHistory = (points: number = 8) => {
+  const { startDate, endDate, dates } = getRollingRange({ points, endOffsetDays: 1 });
+
   const queries = useQueries({
     queries: COMPETITOR_APPS.map(app => ({
-      queryKey: ["competitor-downloads-history", app.id, days],
-      queryFn: () => fetchAppDownloadsHistory(app.id, days),
+      queryKey: ["competitor-downloads-history", app.id, points, endDate],
+      queryFn: () => fetchAppDownloadsHistory(app.id, startDate, endDate, dates),
       refetchInterval: 5 * 60 * 1000,
       retry: 2,
     })),
@@ -82,28 +88,14 @@ export const useCompetitorDownloadsHistory = (days: number = 7) => {
   const isError = queries.every(q => q.isError);
   const errors = queries.filter(q => q.error).map(q => q.error);
 
-  // Merge all data by date
+  // Merge all data by date (use the canonical dates array)
   const mergedData: CompetitorDownloadsPoint[] = [];
   
   if (!isLoading && queries.some(q => q.data)) {
-    // Get all unique dates
-    const allDates = new Set<string>();
-    queries.forEach((q, idx) => {
-      if (q.data) {
-        q.data.forEach(d => allDates.add(d.date));
-      }
-    });
-
-    // Sort dates
-    const sortedDates = Array.from(allDates).sort(
-      (a, b) => new Date(a).getTime() - new Date(b).getTime()
-    );
-
-    // Build merged data
-    sortedDates.forEach(date => {
+    dates.forEach(date => {
       const point: CompetitorDownloadsPoint = {
         date,
-        displayDate: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        displayDate: format(new Date(`${date}T00:00:00`), "MMM d"),
       };
 
       queries.forEach((q, idx) => {
