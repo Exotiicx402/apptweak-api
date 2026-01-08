@@ -350,9 +350,23 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
   return stats;
 }
 
-// Format timestamp for BigQuery
+// Format timestamp for BigQuery - correctly handles timezone offsets
+// Snapchat returns timestamps like "2026-01-01T00:00:00.000-05:00"
+// We parse the full ISO string (including offset) and convert to UTC for BigQuery
 function formatTimestamp(isoString: string): string {
-  return isoString.replace('T', ' ').replace('Z', '').split('.')[0];
+  // Parse the ISO string with offset into a Date object (this handles the timezone correctly)
+  const date = new Date(isoString);
+  // Format as BigQuery-friendly UTC timestamp: "YYYY-MM-DD HH:MM:SS"
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+  
+  const formatted = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  console.log(`Timestamp conversion: ${isoString} -> ${formatted} (UTC)`);
+  return formatted;
 }
 
 // Transform data for BigQuery schema
