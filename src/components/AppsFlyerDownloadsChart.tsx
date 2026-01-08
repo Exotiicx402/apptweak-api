@@ -97,6 +97,7 @@ export const AppsFlyerDownloadsChart = ({ appName }: AppsFlyerDownloadsChartProp
                 dataKey="downloads"
                 stroke="hsl(var(--chart-2))"
                 strokeWidth={2}
+                connectNulls={true}
                 dot={{ fill: "hsl(var(--chart-2))", strokeWidth: 2, r: 4 }}
                 activeDot={{ r: 6, fill: "hsl(var(--chart-2))" }}
               />
