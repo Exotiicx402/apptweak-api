@@ -34,9 +34,9 @@ serve(async (req) => {
 
     console.log(`Fetching AppsFlyer SSOT iOS data for ${APPSFLYER_APP_ID} from ${startDate} to ${endDate}`);
 
-    // AppsFlyer Pull API - installs_report for aggregated install data
+    // AppsFlyer Pull API - daily_report for aggregated install data by day
     // The app ID prefix 'id' indicates iOS App Store app
-    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${APPSFLYER_APP_ID}/installs_report/v5`;
+    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${APPSFLYER_APP_ID}/daily_report/v5`;
     
     const params = new URLSearchParams({
       from: startDate,
