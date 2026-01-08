@@ -407,8 +407,8 @@ async function fetchSnapchatStats(accessToken: string, date: string, lookupMaps:
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
-  // Attribution windows: 7-day swipe, 1-day view
-  url.searchParams.set('swipe_up_attribution_window', '7_DAY');
+  // Attribution windows: 28-day swipe, 1-day view (matches Snapchat Ads Manager default)
+  url.searchParams.set('swipe_up_attribution_window', '28_DAY');
   url.searchParams.set('view_attribution_window', '1_DAY');
   // Fetch installs via total_installs (matches Ads Manager "Installs")
   url.searchParams.set('fields', 'impressions,swipes,spend,video_views,screen_time_millis,quartile_1,quartile_2,quartile_3,view_completion,total_installs,ios_installs,android_installs,conversion_purchases,conversion_purchases_value');
