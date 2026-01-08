@@ -32,3 +32,9 @@ verify_jwt = false
 
 [functions.snapchat-preview]
 verify_jwt = false
+
+[functions.snapchat-clear-bigquery]
+verify_jwt = false
+
+[functions.snapchat-reconcile]
+verify_jwt = false

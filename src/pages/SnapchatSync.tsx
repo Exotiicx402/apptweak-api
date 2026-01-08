@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Play, Calendar, RefreshCw, CheckCircle2, XCircle, Clock, Loader2, Eye, Search } from "lucide-react";
+import { ArrowLeft, Play, Calendar, RefreshCw, CheckCircle2, XCircle, Clock, Loader2, Eye, Search, Trash2, Scale } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +14,17 @@ import { useSnapchatPreview } from "@/hooks/useSnapchatPreview";
 import { useSnapchatDiagnostics } from "@/hooks/useSnapchatDiagnostics";
 import SnapchatDataPreview from "@/components/SnapchatDataPreview";
 import SnapchatDiagnostics from "@/components/SnapchatDiagnostics";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface SyncResult {
   success: boolean;
@@ -29,6 +40,16 @@ interface BackfillProgress {
   results: SyncResult[];
 }
 
+interface ReconcileResult {
+  success: boolean;
+  startDate: string;
+  endDate: string;
+  snapchat: { spend: number; impressions: number; swipes: number; totalInstalls: number };
+  bigQuery: { spend: number; impressions: number; swipes: number; totalInstalls: number; rowCount: number };
+  diff: { spend: number; impressions: number; swipes: number; totalInstalls: number };
+  diffPercent: { spend: number; impressions: number; swipes: number; totalInstalls: number };
+}
+
 const SnapchatSync = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
@@ -39,6 +60,11 @@ const SnapchatSync = () => {
   const [previewDate, setPreviewDate] = useState("");
   const [diagnosticsDate, setDiagnosticsDate] = useState("");
   const [targetInstalls, setTargetInstalls] = useState("");
+  const [isClearing, setIsClearing] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [reconcileStart, setReconcileStart] = useState("");
+  const [reconcileEnd, setReconcileEnd] = useState("");
+  const [reconcileResult, setReconcileResult] = useState<ReconcileResult | null>(null);
   const { toast } = useToast();
   const { isLoading: isPreviewLoading, result: previewResult, error: previewError, fetchPreview, clearPreview } = useSnapchatPreview();
   const { isLoading: isDiagnosticsLoading, result: diagnosticsResult, error: diagnosticsError, runDiagnostics, clearDiagnostics } = useSnapchatDiagnostics();
@@ -287,6 +313,72 @@ const SnapchatSync = () => {
       description: `${newSuccessCount} succeeded, ${newFailCount} failed`,
       variant: newFailCount > 0 ? "destructive" : "default",
     });
+  };
+
+  const handleClearTable = async () => {
+    setIsClearing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('snapchat-clear-bigquery');
+      
+      if (error) throw error;
+      
+      if (data.success) {
+        toast({
+          title: "Table Cleared",
+          description: `Deleted ${data.rowsDeleted} rows from BigQuery`,
+        });
+      } else {
+        throw new Error(data.error || 'Clear failed');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to clear table",
+        variant: "destructive",
+      });
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const handleReconcile = async () => {
+    if (!reconcileStart || !reconcileEnd) {
+      toast({
+        title: "Invalid Range",
+        description: "Please select both start and end dates",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsReconciling(true);
+    setReconcileResult(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('snapchat-reconcile', {
+        body: { startDate: reconcileStart, endDate: reconcileEnd },
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setReconcileResult(data);
+        toast({
+          title: "Reconciliation Complete",
+          description: `Compared ${data.startDate} to ${data.endDate}`,
+        });
+      } else {
+        throw new Error(data.error || 'Reconciliation failed');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reconcile",
+        variant: "destructive",
+      });
+    } finally {
+      setIsReconciling(false);
+    }
   };
 
   return (
@@ -573,6 +665,176 @@ const SnapchatSync = () => {
                 </>
               )}
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Reconcile - Compare Snapchat vs BigQuery */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Scale className="h-5 w-5" />
+              Reconcile Data
+            </CardTitle>
+            <CardDescription>Compare Snapchat API totals vs BigQuery to verify data accuracy</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="reconcileStart">Start Date</Label>
+                <Input
+                  id="reconcileStart"
+                  type="date"
+                  value={reconcileStart}
+                  onChange={(e) => setReconcileStart(e.target.value)}
+                  max={getTodayDate()}
+                />
+              </div>
+              <div>
+                <Label htmlFor="reconcileEnd">End Date</Label>
+                <Input
+                  id="reconcileEnd"
+                  type="date"
+                  value={reconcileEnd}
+                  onChange={(e) => setReconcileEnd(e.target.value)}
+                  max={getTodayDate()}
+                />
+              </div>
+            </div>
+            <Button
+              onClick={handleReconcile}
+              disabled={isReconciling || !reconcileStart || !reconcileEnd}
+              className="w-full"
+            >
+              {isReconciling ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Comparing...
+                </>
+              ) : (
+                <>
+                  <Scale className="mr-2 h-4 w-4" />
+                  Run Reconciliation
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Reconcile Result */}
+        {reconcileResult && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Reconciliation Results</CardTitle>
+              <CardDescription>
+                {reconcileResult.startDate} to {reconcileResult.endDate} • {reconcileResult.bigQuery.rowCount} rows in BigQuery
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2">Metric</th>
+                      <th className="text-right py-2">Snapchat API</th>
+                      <th className="text-right py-2">BigQuery</th>
+                      <th className="text-right py-2">Diff</th>
+                      <th className="text-right py-2">Diff %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b">
+                      <td className="py-2 font-medium">Spend</td>
+                      <td className="text-right">${reconcileResult.snapchat.spend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="text-right">${reconcileResult.bigQuery.spend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className={`text-right ${Math.abs(reconcileResult.diff.spend) > 1 ? 'text-destructive' : 'text-green-600'}`}>
+                        ${reconcileResult.diff.spend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className={`text-right ${Math.abs(reconcileResult.diffPercent.spend) > 0.1 ? 'text-destructive' : 'text-green-600'}`}>
+                        {reconcileResult.diffPercent.spend.toFixed(3)}%
+                      </td>
+                    </tr>
+                    <tr className="border-b">
+                      <td className="py-2 font-medium">Impressions</td>
+                      <td className="text-right">{reconcileResult.snapchat.impressions.toLocaleString()}</td>
+                      <td className="text-right">{reconcileResult.bigQuery.impressions.toLocaleString()}</td>
+                      <td className={`text-right ${Math.abs(reconcileResult.diff.impressions) > 100 ? 'text-destructive' : 'text-green-600'}`}>
+                        {reconcileResult.diff.impressions.toLocaleString()}
+                      </td>
+                      <td className={`text-right ${Math.abs(reconcileResult.diffPercent.impressions) > 0.1 ? 'text-destructive' : 'text-green-600'}`}>
+                        {reconcileResult.diffPercent.impressions.toFixed(3)}%
+                      </td>
+                    </tr>
+                    <tr className="border-b">
+                      <td className="py-2 font-medium">Swipes</td>
+                      <td className="text-right">{reconcileResult.snapchat.swipes.toLocaleString()}</td>
+                      <td className="text-right">{reconcileResult.bigQuery.swipes.toLocaleString()}</td>
+                      <td className={`text-right ${Math.abs(reconcileResult.diff.swipes) > 10 ? 'text-destructive' : 'text-green-600'}`}>
+                        {reconcileResult.diff.swipes.toLocaleString()}
+                      </td>
+                      <td className={`text-right ${Math.abs(reconcileResult.diffPercent.swipes) > 0.1 ? 'text-destructive' : 'text-green-600'}`}>
+                        {reconcileResult.diffPercent.swipes.toFixed(3)}%
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 font-medium">Installs</td>
+                      <td className="text-right">{reconcileResult.snapchat.totalInstalls.toLocaleString()}</td>
+                      <td className="text-right">{reconcileResult.bigQuery.totalInstalls.toLocaleString()}</td>
+                      <td className={`text-right ${Math.abs(reconcileResult.diff.totalInstalls) > 5 ? 'text-destructive' : 'text-green-600'}`}>
+                        {reconcileResult.diff.totalInstalls.toLocaleString()}
+                      </td>
+                      <td className={`text-right ${Math.abs(reconcileResult.diffPercent.totalInstalls) > 0.1 ? 'text-destructive' : 'text-green-600'}`}>
+                        {reconcileResult.diffPercent.totalInstalls.toFixed(3)}%
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Clear BigQuery Table - Danger Zone */}
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Danger Zone
+            </CardTitle>
+            <CardDescription>Permanently delete all Snapchat data from BigQuery</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={isClearing || isLoading}>
+                  {isClearing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Clearing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Clear BigQuery Table
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete ALL Snapchat data from the BigQuery table. 
+                    This action cannot be undone. You will need to re-run the backfill to restore the data.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearTable} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Yes, delete all data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardContent>
         </Card>
 
