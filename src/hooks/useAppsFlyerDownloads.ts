@@ -37,12 +37,13 @@ const fetchCachedDownloads = async (startDate: string, endDate: string): Promise
   }));
 };
 
-export const useAppsFlyerDownloads = (days: number = 7) => {
+export const useAppsFlyerDownloads = (days: number = 8) => {
   return useQuery({
     queryKey: ["appsflyer-downloads", days],
     queryFn: async (): Promise<DownloadDataPoint[]> => {
-      const endDate = format(new Date(), "yyyy-MM-dd");
-      const startDate = format(subDays(new Date(), days - 1), "yyyy-MM-dd");
+      // Use yesterday as end date since today's data may not be complete
+      const endDate = format(subDays(new Date(), 1), "yyyy-MM-dd");
+      const startDate = format(subDays(new Date(), days), "yyyy-MM-dd");
 
       console.log(`Fetching AppsFlyer downloads from ${startDate} to ${endDate}`);
 

@@ -95,10 +95,10 @@ export const AppsFlyerDownloadsChart = ({ appName }: AppsFlyerDownloadsChartProp
               <Line
                 type="monotone"
                 dataKey="downloads"
-                stroke="hsl(var(--chart-2))"
+                stroke="hsl(var(--primary))"
                 strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 6, fill: "hsl(var(--chart-2))" }}
+                dot={{ fill: "hsl(var(--primary))", strokeWidth: 2, r: 4 }}
+                activeDot={{ r: 6, fill: "hsl(var(--primary))" }}
               />
             </LineChart>
           </ResponsiveContainer>
