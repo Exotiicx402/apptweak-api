@@ -38,7 +38,7 @@ export const DownloadsHistoryChart = ({ appId, appName, dataSource = "AppTweak" 
 
   const formattedData = historyData.map(point => ({
     ...point,
-    displayDate: format(new Date(point.date), "MMM d"),
+    displayDate: format(new Date(`${point.date}T00:00:00`), "MMM d"),
     formattedDownloads: point.downloads.toLocaleString(),
   }));
 
