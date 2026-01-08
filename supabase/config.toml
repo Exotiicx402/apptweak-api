@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.snapchat-reconcile]
 verify_jwt = false
+
+[functions.apptweak-rank-to-sheets]
+verify_jwt = false
