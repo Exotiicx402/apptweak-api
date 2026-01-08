@@ -174,7 +174,42 @@ async function getGoogleAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-// Fetch Snapchat totals for date range
+// Fetch all campaign IDs
+async function fetchCampaignIds(accessToken: string): Promise<string[]> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  if (!adAccountId) throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
+
+  const url = `https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/campaigns?limit=1000`;
+  
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Snapchat campaigns API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const campaignIds: string[] = [];
+  
+  if (data.campaigns && Array.isArray(data.campaigns)) {
+    for (const wrapper of data.campaigns) {
+      if (wrapper?.campaign?.id) {
+        campaignIds.push(wrapper.campaign.id);
+      }
+    }
+  }
+
+  console.log(`Found ${campaignIds.length} campaigns`);
+  return campaignIds;
+}
+
+// Fetch Snapchat totals for date range (at campaign level to get all metrics)
 async function fetchSnapchatTotals(accessToken: string, startDate: string, endDate: string): Promise<{
   spend: number;
   impressions: number;
@@ -184,12 +219,22 @@ async function fetchSnapchatTotals(accessToken: string, startDate: string, endDa
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
   if (!adAccountId) throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
 
+  // Get all campaign IDs first
+  const campaignIds = await fetchCampaignIds(accessToken);
+  
+  if (campaignIds.length === 0) {
+    console.log('No campaigns found, returning zeros');
+    return { spend: 0, impressions: 0, swipes: 0, totalInstalls: 0 };
+  }
+
   const accountTimeZone = Deno.env.get('SNAPCHAT_ACCOUNT_TIMEZONE') || 'America/Toronto';
   const { startTime, endTime } = resolveAccountDayRangeUtc(startDate, endDate, accountTimeZone);
 
   console.log(`Fetching Snapchat totals: ${startDate} to ${endDate} (${startTime} to ${endTime})`);
 
-  const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
+  // Query at campaign level (supports all fields)
+  const url = new URL(`https://adsapi.snapchat.com/v1/campaigns/stats`);
+  url.searchParams.set('campaign_ids', campaignIds.join(','));
   url.searchParams.set('granularity', 'TOTAL');
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
@@ -219,6 +264,7 @@ async function fetchSnapchatTotals(accessToken: string, startDate: string, endDa
   let swipes = 0;
   let totalInstalls = 0;
 
+  // Sum up stats from all campaigns
   if (data.total_stats && Array.isArray(data.total_stats)) {
     for (const wrapper of data.total_stats) {
       const stats = wrapper?.total_stat?.stats;
@@ -231,6 +277,7 @@ async function fetchSnapchatTotals(accessToken: string, startDate: string, endDa
     }
   }
 
+  console.log(`Snapchat totals: spend=$${spend.toFixed(2)}, impressions=${impressions}, swipes=${swipes}, installs=${totalInstalls}`);
   return { spend, impressions, swipes, totalInstalls };
 }
 
