@@ -93,12 +93,11 @@ export const AppsFlyerDownloadsChart = ({ appName }: AppsFlyerDownloadsChartProp
                 formatter={(value: number) => [value.toLocaleString(), "Downloads"]}
               />
               <Line
-                type="linear"
+                type="monotone"
                 dataKey="downloads"
                 stroke="hsl(var(--chart-2))"
                 strokeWidth={2}
-                connectNulls={true}
-                dot={{ fill: "hsl(var(--chart-2))", strokeWidth: 2, r: 4 }}
+                dot={false}
                 activeDot={{ r: 6, fill: "hsl(var(--chart-2))" }}
               />
             </LineChart>
