@@ -32,10 +32,9 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Fetching AppsFlyer SSOT iOS data for ${APPSFLYER_APP_ID} from ${startDate} to ${endDate}`);
+    console.log(`Fetching AppsFlyer iOS installs for ${APPSFLYER_APP_ID} from ${startDate} to ${endDate}`);
 
-    // AppsFlyer Pull API - daily_report for aggregated install data by day
-    // The app ID prefix 'id' indicates iOS App Store app
+    // Use aggregate daily_report which gives us Date and Installs by media source
     const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${APPSFLYER_APP_ID}/daily_report/v5`;
     
     const params = new URLSearchParams({
@@ -79,30 +78,38 @@ serve(async (req) => {
       );
     }
 
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    // Parse headers - handle potential quoted values
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    console.log('CSV headers:', headers);
+    
+    // Find date and installs columns (case-insensitive, partial match)
     const dateIndex = headers.findIndex(h => h === 'date');
     const installsIndex = headers.findIndex(h => h === 'installs');
 
     if (dateIndex === -1 || installsIndex === -1) {
-      console.error('Could not find date or installs columns in CSV', headers);
+      console.error('Could not find date or installs columns in CSV. Headers:', headers);
       return new Response(
         JSON.stringify({ 
-          error: 'Invalid CSV format',
+          error: 'Invalid CSV format - missing date or installs column',
           headers: headers 
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Aggregate installs by date
+    console.log(`Found date at index ${dateIndex}, installs at index ${installsIndex}`);
+
+    // Aggregate installs by date (summing across all media sources)
     const downloadsByDate: Record<string, number> = {};
     
     for (let i = 1; i < lines.length; i++) {
+      // Simple CSV parsing - split by comma
       const values = lines[i].split(',');
-      const date = values[dateIndex]?.trim();
-      const installs = parseInt(values[installsIndex]?.trim() || '0', 10);
+      const date = values[dateIndex]?.trim().replace(/"/g, '');
+      const installsStr = values[installsIndex]?.trim().replace(/"/g, '') || '0';
+      const installs = parseInt(installsStr, 10) || 0;
       
-      if (date) {
+      if (date && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
         downloadsByDate[date] = (downloadsByDate[date] || 0) + installs;
       }
     }
@@ -111,7 +118,7 @@ serve(async (req) => {
       .map(([date, downloads]) => ({ date, downloads }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    console.log(`Parsed ${downloads.length} days of download data`);
+    console.log(`Parsed ${downloads.length} days of iOS install data:`, downloads);
 
     return new Response(
       JSON.stringify({ downloads }),
