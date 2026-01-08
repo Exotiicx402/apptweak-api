@@ -4,7 +4,7 @@ import { useCompetitorDownloadsHistory, COMPETITOR_APPS } from "@/hooks/useCompe
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const CompetitorDownloadsChart = () => {
-  const { data: chartData, isLoading, isError } = useCompetitorDownloadsHistory(7);
+  const { data: chartData, isLoading, isError } = useCompetitorDownloadsHistory(8);
 
   if (isLoading) {
     return (

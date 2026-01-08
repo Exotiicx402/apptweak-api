@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { format, subDays } from "date-fns";
+import { getRollingRange } from "@/lib/rollingDateRange";
 
 interface DownloadDataPoint {
   date: string;
@@ -37,16 +37,15 @@ const fetchCachedDownloads = async (startDate: string, endDate: string): Promise
   }));
 };
 
-export const useAppsFlyerDownloads = (days: number = 8) => {
-  return useQuery({
-    queryKey: ["appsflyer-downloads", days],
-    queryFn: async (): Promise<DownloadDataPoint[]> => {
-      // Yesterday is always the end date (today's data is incomplete)
-      const endDate = format(subDays(new Date(), 1), "yyyy-MM-dd");
-      // Start 7 days before yesterday to get 8 total data points
-      const startDate = format(subDays(new Date(), 8), "yyyy-MM-dd");
+export const useAppsFlyerDownloads = (points: number = 8) => {
+  const { startDate, endDate, dates } = getRollingRange({ points, endOffsetDays: 1 });
 
+  return useQuery({
+    queryKey: ["appsflyer-downloads", points, endDate],
+    queryFn: async (): Promise<DownloadDataPoint[]> => {
       console.log(`Fetching AppsFlyer downloads from ${startDate} to ${endDate}`);
+
+      let rawData: DownloadDataPoint[] = [];
 
       try {
         const { data, error } = await supabase.functions.invoke<AppsFlyerResponse>("appsflyer-ssot", {
@@ -55,28 +54,27 @@ export const useAppsFlyerDownloads = (days: number = 8) => {
 
         if (error) {
           console.error("AppsFlyer function error:", error);
-          // Fallback to cached data
-          console.log("Falling back to cached database data...");
-          return await fetchCachedDownloads(startDate, endDate);
-        }
-
-        if (data?.error) {
+          rawData = await fetchCachedDownloads(startDate, endDate);
+        } else if (data?.error) {
           console.error("AppsFlyer API error:", data.error);
-          // Fallback to cached data
-          console.log("Falling back to cached database data...");
-          return await fetchCachedDownloads(startDate, endDate);
+          rawData = await fetchCachedDownloads(startDate, endDate);
+        } else {
+          rawData = data?.downloads || [];
         }
-
-        console.log("AppsFlyer downloads data:", data?.downloads);
-        return data?.downloads || [];
       } catch (err) {
         console.error("AppsFlyer request failed:", err);
-        // Fallback to cached data
-        console.log("Falling back to cached database data...");
-        return await fetchCachedDownloads(startDate, endDate);
+        rawData = await fetchCachedDownloads(startDate, endDate);
       }
+
+      // Normalize to exactly `points` data points
+      const dataMap = new Map(rawData.map(d => [d.date, d.downloads]));
+      return dates.map(date => ({
+        date,
+        downloads: dataMap.get(date) ?? 0,
+      }));
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: 5 * 60 * 1000, // 5 minutes
     retry: 1,
   });
 };

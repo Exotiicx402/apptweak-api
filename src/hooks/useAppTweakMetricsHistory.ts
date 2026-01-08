@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getRollingRange } from "@/lib/rollingDateRange";
 
 interface DownloadDataPoint {
   value: number;
@@ -20,13 +21,12 @@ export interface DownloadsHistoryPoint {
   downloads: number;
 }
 
-export const useAppTweakMetricsHistory = (appId: string, days: number = 7) => {
-  return useQuery({
-    queryKey: ["apptweak-metrics-history", appId, days],
-    queryFn: async (): Promise<DownloadsHistoryPoint[]> => {
-      const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+export const useAppTweakMetricsHistory = (appId: string, points: number = 8) => {
+  const { startDate, endDate, dates } = getRollingRange({ points, endOffsetDays: 1 });
 
+  return useQuery({
+    queryKey: ["apptweak-metrics-history", appId, points, endDate],
+    queryFn: async (): Promise<DownloadsHistoryPoint[]> => {
       const { data, error } = await supabase.functions.invoke('apptweak-metrics-history', {
         body: { 
           appId, 
@@ -46,13 +46,18 @@ export const useAppTweakMetricsHistory = (appId: string, days: number = 7) => {
       const response = data as AppTweakMetricsHistoryResponse;
       const downloads = response?.result?.[appId]?.downloads || [];
       
-      return downloads
-        .filter(d => d.value !== null)
-        .map(d => ({
-          date: d.date,
-          downloads: d.value,
-        }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      // Build a map from API results
+      const dataMap = new Map(
+        downloads
+          .filter(d => d.value !== null)
+          .map(d => [d.date, d.value])
+      );
+
+      // Normalize to exactly `points` data points
+      return dates.map(date => ({
+        date,
+        downloads: dataMap.get(date) ?? 0,
+      }));
     },
     refetchInterval: 5 * 60 * 1000,
     retry: 2,
