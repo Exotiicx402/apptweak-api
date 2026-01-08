@@ -10,7 +10,7 @@ interface AppsFlyerDownloadsChartProps {
 }
 
 export const AppsFlyerDownloadsChart = ({ appName }: AppsFlyerDownloadsChartProps) => {
-  const { data: historyData, isLoading, error } = useAppsFlyerDownloads(7);
+  const { data: historyData, isLoading, error } = useAppsFlyerDownloads(8);
 
   if (isLoading) {
     return (
