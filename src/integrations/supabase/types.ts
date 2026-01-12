@@ -104,6 +104,39 @@ export type Database = {
         }
         Relationships: []
       }
+      sync_logs: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          rows_affected: number | null
+          source: string
+          status: string
+          sync_date: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          rows_affected?: number | null
+          source: string
+          status: string
+          sync_date: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          rows_affected?: number | null
+          source?: string
+          status?: string
+          sync_date?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

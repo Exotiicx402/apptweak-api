@@ -1,10 +1,44 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Create Supabase client for logging
+function getSupabaseClient() {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase credentials');
+  }
+  return createClient(supabaseUrl, supabaseKey);
+}
+
+// Log sync operation to database
+async function logSync(
+  syncDate: string,
+  status: 'success' | 'error',
+  rowsAffected: number | null,
+  durationMs: number,
+  errorMessage?: string
+) {
+  try {
+    const supabase = getSupabaseClient();
+    await supabase.from('sync_logs').insert({
+      source: 'snapchat',
+      sync_date: syncDate,
+      status,
+      rows_affected: rowsAffected,
+      duration_ms: durationMs,
+      error_message: errorMessage || null,
+    });
+  } catch (err) {
+    console.error('Failed to log sync:', err);
+  }
+}
 
 type CachedOAuthToken = { token: string; expiresAtMs: number };
 let snapchatTokenCache: CachedOAuthToken | null = null;
@@ -567,10 +601,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+  let targetDate = getYesterdayDate();
+
   try {
     // Parse request body for optional date parameter
-    let targetDate = getYesterdayDate();
-
     try {
       const body = await req.json();
       if (body.date) {
@@ -593,13 +628,16 @@ serve(async (req) => {
     const stats = await fetchSnapchatStats(snapchatToken, targetDate, campaignNames);
 
     if (stats.length === 0) {
+      const duration = Date.now() - startTime;
       console.log('No Snapchat stats found for the specified date');
+      await logSync(targetDate, 'success', 0, duration);
       return new Response(
         JSON.stringify({
           success: true,
           message: 'No data found for the specified date',
           date: targetDate,
           rowsProcessed: 0,
+          durationMs: duration,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -610,7 +648,10 @@ serve(async (req) => {
     const transformedData = transformData(stats, fetchedAt);
     await mergeIntoBigQuery(transformedData, googleToken);
 
-    console.log(`Successfully synced ${transformedData.length} rows to BigQuery`);
+    const duration = Date.now() - startTime;
+    console.log(`Successfully synced ${transformedData.length} rows to BigQuery in ${duration}ms`);
+
+    await logSync(targetDate, 'success', transformedData.length, duration);
 
     return new Response(
       JSON.stringify({
@@ -618,17 +659,23 @@ serve(async (req) => {
         message: `Successfully synced Snapchat data to BigQuery`,
         date: targetDate,
         rowsProcessed: transformedData.length,
+        durationMs: duration,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: unknown) {
+    const duration = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     console.error('Error in snapchat-to-bigquery function:', error);
+    
+    await logSync(targetDate, 'error', null, duration, errorMessage);
+    
     return new Response(
       JSON.stringify({
         success: false,
         error: errorMessage,
+        durationMs: duration,
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
