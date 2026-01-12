@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Play, Loader2, CheckCircle, XCircle, Calendar, Zap, Eye, X, CalendarRange } from "lucide-react";
+import { ArrowLeft, Play, Loader2, CheckCircle, XCircle, Calendar, Zap, Eye, X, CalendarRange, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useUnityPreview } from "@/hooks/useUnityPreview";
 import UnityDataPreview from "@/components/UnityDataPreview";
+import SyncLogTable from "@/components/SyncLogTable";
 
 interface SyncResult {
   success: boolean;
@@ -665,6 +666,22 @@ export default function UnitySync() {
             </CardContent>
           </Card>
         )}
+
+        {/* Sync History */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="w-5 h-5" />
+              Recent Syncs
+            </CardTitle>
+            <CardDescription>
+              History of Unity data syncs to BigQuery
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SyncLogTable source="unity" limit={15} />
+          </CardContent>
+        </Card>
 
       </div>
     </div>

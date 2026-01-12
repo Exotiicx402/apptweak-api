@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Play, Calendar, RefreshCw, CheckCircle2, XCircle, Clock, Loader2, Eye, Search, Trash2, Scale } from "lucide-react";
+import { ArrowLeft, Play, Calendar, RefreshCw, CheckCircle2, XCircle, Clock, Loader2, Eye, Search, Trash2, Scale, History } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +14,7 @@ import { useSnapchatPreview } from "@/hooks/useSnapchatPreview";
 import { useSnapchatDiagnostics } from "@/hooks/useSnapchatDiagnostics";
 import SnapchatDataPreview from "@/components/SnapchatDataPreview";
 import SnapchatDiagnostics from "@/components/SnapchatDiagnostics";
+import SyncLogTable from "@/components/SyncLogTable";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -958,6 +959,22 @@ const SnapchatSync = () => {
 
         {/* Preview Result */}
         {previewResult && <SnapchatDataPreview result={previewResult} />}
+
+        {/* Sync History */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Recent Syncs
+            </CardTitle>
+            <CardDescription>
+              History of Snapchat data syncs to BigQuery
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SyncLogTable source="snapchat" limit={15} />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

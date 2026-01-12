@@ -1,9 +1,43 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Create Supabase client for logging
+function getSupabaseClient() {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase credentials');
+  }
+  return createClient(supabaseUrl, supabaseKey);
+}
+
+// Log sync operation to database
+async function logSync(
+  syncDate: string,
+  status: 'success' | 'error',
+  rowsAffected: number | null,
+  durationMs: number,
+  errorMessage?: string
+) {
+  try {
+    const supabase = getSupabaseClient();
+    await supabase.from('sync_logs').insert({
+      source: 'unity',
+      sync_date: syncDate,
+      status,
+      rows_affected: rowsAffected,
+      duration_ms: durationMs,
+      error_message: errorMessage || null,
+    });
+  } catch (err) {
+    console.error('Failed to log sync:', err);
+  }
+}
 
 // Calculate yesterday's date in YYYY-MM-DD format (UTC)
 function getYesterdayDate(): string {
@@ -366,14 +400,16 @@ serve(async (req: Request) => {
     const unityData = await fetchUnityData(targetDate);
     
     if (unityData.length === 0) {
+      const duration = Date.now() - startTime;
       console.log(`No data for date ${targetDate}`);
+      await logSync(targetDate, 'success', 0, duration);
       return new Response(
         JSON.stringify({ 
           success: true, 
           message: `No data for date ${targetDate}`,
           date: targetDate,
           rowsInserted: 0,
-          durationMs: Date.now() - startTime,
+          durationMs: duration,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -392,6 +428,8 @@ serve(async (req: Request) => {
     const duration = Date.now() - startTime;
     console.log(`=== Sync completed in ${duration}ms ===`);
 
+    await logSync(targetDate, 'success', mergeResult.inserted, duration);
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -405,12 +443,22 @@ serve(async (req: Request) => {
 
   } catch (error) {
     const duration = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Sync failed:', error);
+    
+    // Try to extract target date for logging
+    let logDate: string;
+    try {
+      logDate = new Date().toISOString().split('T')[0];
+    } catch {
+      logDate = 'unknown';
+    }
+    await logSync(logDate, 'error', null, duration, errorMessage);
     
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
         durationMs: duration,
       }),
       { 
