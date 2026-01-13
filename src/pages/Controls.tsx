@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Zap, Upload, RefreshCw, Database, Loader2 } from "lucide-react";
+import { ArrowLeft, Zap, Upload, RefreshCw, Database, Loader2, Camera, MessagesSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
@@ -213,26 +213,68 @@ const Controls = () => {
           </Card>
         </div>
 
-        {/* Unity Sync Link */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Database className="w-5 h-5" />
-              Unity Sync Settings
-            </CardTitle>
-            <CardDescription>
-              Access full Unity sync controls, backfill options, and cron job status
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link to="/unity-sync">
-              <Button variant="outline" className="w-full">
-                <Database className="w-4 h-4 mr-2" />
-                Open Unity Sync
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+        {/* Sync Pages */}
+        <div className="grid gap-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Database className="w-5 h-5" />
+                Unity Sync Settings
+              </CardTitle>
+              <CardDescription>
+                Access full Unity sync controls, backfill options, and cron job status
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/unity-sync">
+                <Button variant="outline" className="w-full">
+                  <Database className="w-4 h-4 mr-2" />
+                  Open Unity Sync
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Camera className="w-5 h-5" />
+                Snapchat Sync
+              </CardTitle>
+              <CardDescription>
+                Sync Snapchat Ads data to BigQuery
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/snapchat-sync">
+                <Button variant="outline" className="w-full">
+                  <Camera className="w-4 h-4 mr-2" />
+                  Open Snapchat Sync
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <MessagesSquare className="w-5 h-5" />
+                Meta Ads Sync
+              </CardTitle>
+              <CardDescription>
+                Sync Meta campaign data to BigQuery
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/meta-sync">
+                <Button variant="outline" className="w-full">
+                  <MessagesSquare className="w-4 h-4 mr-2" />
+                  Open Meta Sync
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

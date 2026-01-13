@@ -41,3 +41,9 @@ verify_jwt = false
 
 [functions.apptweak-rank-to-sheets]
 verify_jwt = false
+
+[functions.meta-to-bigquery]
+verify_jwt = false
+
+[functions.meta-preview]
+verify_jwt = false
