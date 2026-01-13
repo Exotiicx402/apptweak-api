@@ -19,6 +19,7 @@ interface MetaPreviewResult {
   date: string;
   count: number;
   data: MetaCampaignData[];
+  durationMs?: number;
   error?: string;
 }
 
@@ -27,6 +28,7 @@ export function useMetaPreview() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewDate, setPreviewDate] = useState<string | null>(null);
+  const [durationMs, setDurationMs] = useState<number | null>(null);
 
   const fetchPreview = async (date?: string) => {
     setIsLoading(true);
@@ -50,10 +52,12 @@ export function useMetaPreview() {
 
       setData(result.data);
       setPreviewDate(result.date);
+      setDurationMs(result.durationMs || null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setError(message);
       setData(null);
+      setDurationMs(null);
     } finally {
       setIsLoading(false);
     }
@@ -63,6 +67,7 @@ export function useMetaPreview() {
     setData(null);
     setError(null);
     setPreviewDate(null);
+    setDurationMs(null);
   };
 
   return {
@@ -70,6 +75,7 @@ export function useMetaPreview() {
     isLoading,
     error,
     previewDate,
+    durationMs,
     fetchPreview,
     clearPreview,
   };

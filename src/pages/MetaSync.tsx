@@ -41,6 +41,7 @@ export default function MetaSync() {
     isLoading: isPreviewLoading,
     error: previewError,
     previewDate,
+    durationMs: previewDurationMs,
     fetchPreview,
     clearPreview,
   } = useMetaPreview();
@@ -362,6 +363,7 @@ export default function MetaSync() {
           isLoading={isPreviewLoading}
           error={previewError}
           previewDate={previewDate}
+          durationMs={previewDurationMs}
         />
 
         {previewData && (

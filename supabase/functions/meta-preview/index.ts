@@ -58,6 +58,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+
   try {
     let targetDate = getYesterdayDate();
 
@@ -71,6 +73,7 @@ serve(async (req) => {
     console.log(`Fetching Meta preview for date: ${targetDate}`);
 
     const data = await fetchMetaInsights(targetDate);
+    const durationMs = Date.now() - startTime;
 
     return new Response(
       JSON.stringify({
@@ -78,6 +81,7 @@ serve(async (req) => {
         date: targetDate,
         count: data.length,
         data,
+        durationMs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
