@@ -5,7 +5,7 @@ import { useSyncLogs, SyncLog } from "@/hooks/useSyncLogs";
 import { format, formatDistanceToNow } from "date-fns";
 
 interface SyncLogTableProps {
-  source?: 'unity' | 'snapchat';
+  source?: 'unity' | 'snapchat' | 'meta';
   limit?: number;
 }
 

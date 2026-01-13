@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import UnitySync from "./pages/UnitySync";
 import Controls from "./pages/Controls";
 import SnapchatSync from "./pages/SnapchatSync";
+import MetaSync from "./pages/MetaSync";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/unity-sync" element={<UnitySync />} />
           <Route path="/controls" element={<Controls />} />
           <Route path="/snapchat-sync" element={<SnapchatSync />} />
+          <Route path="/meta-sync" element={<MetaSync />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
