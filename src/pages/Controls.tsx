@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Zap, Upload, RefreshCw, Database, Loader2, Camera, MessagesSquare } from "lucide-react";
+import { ArrowLeft, Zap, Upload, RefreshCw, Database, Loader2, Camera, MessagesSquare, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
@@ -270,6 +270,26 @@ const Controls = () => {
                 <Button variant="outline" className="w-full">
                   <MessagesSquare className="w-4 h-4 mr-2" />
                   Open Meta Sync
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <TrendingUp className="w-5 h-5" />
+                Google Ads Sync
+              </CardTitle>
+              <CardDescription>
+                Sync Google Ads campaign data to BigQuery
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/google-ads-sync">
+                <Button variant="outline" className="w-full">
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Open Google Ads Sync
                 </Button>
               </Link>
             </CardContent>

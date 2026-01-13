@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+export type SyncSource = 'unity' | 'snapchat' | 'meta' | 'google_ads';
+
 export interface SyncLog {
   id: string;
-  source: 'unity' | 'snapchat' | 'meta';
+  source: SyncSource;
   sync_date: string;
   status: 'success' | 'error';
   rows_affected: number | null;
@@ -12,7 +14,7 @@ export interface SyncLog {
   created_at: string;
 }
 
-export function useSyncLogs(source?: 'unity' | 'snapchat' | 'meta', limit = 20) {
+export function useSyncLogs(source?: SyncSource, limit = 20) {
   return useQuery({
     queryKey: ['sync-logs', source, limit],
     queryFn: async () => {
