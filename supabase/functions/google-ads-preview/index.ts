@@ -42,7 +42,7 @@ async function getAccessToken(): Promise<string> {
 
 async function fetchGoogleAdsData(date: string, accessToken: string): Promise<any[]> {
   const developerToken = Deno.env.get("GOOGLE_ADS_DEVELOPER_TOKEN");
-  const customerId = Deno.env.get("GOOGLE_ADS_CUSTOMER_ID");
+  const customerId = Deno.env.get("GOOGLE_ADS_CUSTOMER_ID")?.replace(/-/g, "");
 
   if (!developerToken || !customerId) {
     throw new Error("Missing Google Ads credentials (GOOGLE_ADS_DEVELOPER_TOKEN or GOOGLE_ADS_CUSTOMER_ID)");
