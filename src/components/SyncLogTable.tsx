@@ -1,11 +1,11 @@
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { useSyncLogs, SyncLog } from "@/hooks/useSyncLogs";
+import { useSyncLogs, SyncLog, SyncSource } from "@/hooks/useSyncLogs";
 import { format, formatDistanceToNow } from "date-fns";
 
 interface SyncLogTableProps {
-  source?: 'unity' | 'snapchat' | 'meta';
+  source?: SyncSource;
   limit?: number;
 }
 

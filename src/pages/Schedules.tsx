@@ -65,6 +65,7 @@ export default function Schedules() {
     if (name.includes("Unity")) return "bg-purple-500";
     if (name.includes("Snapchat")) return "bg-yellow-500";
     if (name.includes("Meta")) return "bg-blue-500";
+    if (name.includes("Google Ads")) return "bg-red-500";
     if (name.includes("AppTweak")) return "bg-green-500";
     return "bg-gray-500";
   };
@@ -74,6 +75,7 @@ export default function Schedules() {
     if (name === "Unity (Yesterday)") return "Syncs previous day Unity data to BigQuery";
     if (name === "Snapchat") return "Syncs Snapchat ad data to BigQuery";
     if (name === "Meta") return "Syncs Meta Ads data to BigQuery";
+    if (name.includes("Google Ads")) return "Syncs Google Ads data to BigQuery";
     if (name === "AppTweak Rankings") return "Syncs app rankings to Google Sheets";
     return "Scheduled sync job";
   };
@@ -108,6 +110,7 @@ export default function Schedules() {
             <NavLink to="/unity-sync">Unity</NavLink>
             <NavLink to="/snapchat-sync">Snapchat</NavLink>
             <NavLink to="/meta-sync">Meta</NavLink>
+            <NavLink to="/google-ads-sync">Google Ads</NavLink>
             <NavLink to="/schedules">Schedules</NavLink>
           </div>
         </div>

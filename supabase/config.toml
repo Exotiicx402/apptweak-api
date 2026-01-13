@@ -47,3 +47,9 @@ verify_jwt = false
 
 [functions.meta-preview]
 verify_jwt = false
+
+[functions.google-ads-to-bigquery]
+verify_jwt = false
+
+[functions.google-ads-preview]
+verify_jwt = false
