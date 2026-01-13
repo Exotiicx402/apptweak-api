@@ -9,7 +9,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, DollarSign, Eye, Users, MousePointerClick, Percent, TrendingUp } from "lucide-react";
+import { Loader2, DollarSign, Eye, Users, MousePointerClick, Percent, TrendingUp, Smartphone } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
@@ -53,12 +53,10 @@ const formatPercent = (value: string | number) => {
   return isNaN(num) ? "0.00%" : `${num.toFixed(2)}%`;
 };
 
-const getConversions = (actions?: Array<{ action_type: string; value: string }>) => {
+const getAppInstalls = (actions?: Array<{ action_type: string; value: string }>) => {
   if (!actions || actions.length === 0) return 0;
-  const conversions = actions.find(
-    (a) => a.action_type === "purchase" || a.action_type === "complete_registration"
-  );
-  return parseInt(conversions?.value || actions[0]?.value || "0", 10);
+  const installs = actions.find((a) => a.action_type === "mobile_app_install");
+  return parseInt(installs?.value || "0", 10);
 };
 
 const CHART_COLORS = [
@@ -114,8 +112,10 @@ export function MetaDataPreview({ data, isLoading, error, previewDate, durationM
   const totalImpressions = data.reduce((sum, c) => sum + parseFloat(c.impressions || "0"), 0);
   const totalReach = data.reduce((sum, c) => sum + parseFloat(c.reach || "0"), 0);
   const totalClicks = data.reduce((sum, c) => sum + parseFloat(c.clicks || "0"), 0);
+  const totalInstalls = data.reduce((sum, c) => sum + getAppInstalls(c.actions), 0);
   const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
   const avgCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  const avgCpi = totalInstalls > 0 ? totalSpend / totalInstalls : 0;
 
   // Prepare chart data - top 8 campaigns by spend
   const chartData = [...data]
@@ -137,7 +137,7 @@ export function MetaDataPreview({ data, isLoading, error, previewDate, durationM
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Spend</CardTitle>
@@ -195,6 +195,26 @@ export function MetaDataPreview({ data, isLoading, error, previewDate, durationM
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(avgCpc)}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Installs</CardTitle>
+            <Smartphone className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatNumber(totalInstalls)}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg CPI</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(avgCpi)}</div>
           </CardContent>
         </Card>
       </div>
@@ -265,7 +285,8 @@ export function MetaDataPreview({ data, isLoading, error, previewDate, durationM
                     <TableHead className="text-right">Spend</TableHead>
                     <TableHead className="text-right">CPM</TableHead>
                     <TableHead className="text-right">CPC</TableHead>
-                    <TableHead className="text-right">Conversions</TableHead>
+                    <TableHead className="text-right">App Installs</TableHead>
+                    <TableHead className="text-right">CPI</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -286,7 +307,14 @@ export function MetaDataPreview({ data, isLoading, error, previewDate, durationM
                       <TableCell className="text-right">{formatCurrency(campaign.spend)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(campaign.cpm)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(campaign.cpc)}</TableCell>
-                      <TableCell className="text-right">{formatNumber(getConversions(campaign.actions))}</TableCell>
+                      <TableCell className="text-right">{formatNumber(getAppInstalls(campaign.actions))}</TableCell>
+                      <TableCell className="text-right">
+                        {(() => {
+                          const installs = getAppInstalls(campaign.actions);
+                          const spend = parseFloat(campaign.spend || "0");
+                          return installs > 0 ? formatCurrency(spend / installs) : "-";
+                        })()}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
