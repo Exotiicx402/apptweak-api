@@ -63,7 +63,16 @@ async function getAccessToken(): Promise<string> {
 
 async function fetchMetaInsights(date: string): Promise<any[]> {
   const accessToken = Deno.env.get("META_ACCESS_TOKEN");
-  const adAccountId = Deno.env.get("META_AD_ACCOUNT_ID");
+  let adAccountId = Deno.env.get("META_AD_ACCOUNT_ID");
+
+  if (!accessToken || !adAccountId) {
+    throw new Error("Missing META_ACCESS_TOKEN or META_AD_ACCOUNT_ID");
+  }
+
+  // Ensure ad account ID has the required "act_" prefix
+  if (!adAccountId.startsWith("act_")) {
+    adAccountId = `act_${adAccountId}`;
+  }
 
   const fields = [
     "campaign_id",
@@ -87,7 +96,7 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   url.searchParams.set("fields", fields);
   url.searchParams.set("time_range", timeRange);
   url.searchParams.set("level", "campaign");
-  url.searchParams.set("access_token", accessToken!);
+  url.searchParams.set("access_token", accessToken);
 
   console.log(`Fetching Meta insights for date: ${date}`);
 
