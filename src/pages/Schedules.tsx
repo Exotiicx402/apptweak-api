@@ -69,6 +69,15 @@ export default function Schedules() {
     return "bg-gray-500";
   };
 
+  const getDescription = (name: string) => {
+    if (name === "Unity (Today)") return "Syncs current day Unity data to BigQuery";
+    if (name === "Unity (Yesterday)") return "Syncs previous day Unity data to BigQuery";
+    if (name === "Snapchat") return "Syncs Snapchat ad data to BigQuery";
+    if (name === "Meta") return "Syncs Meta Ads data to BigQuery";
+    if (name === "AppTweak Rankings") return "Syncs app rankings to Google Sheets";
+    return "Scheduled sync job";
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
@@ -127,10 +136,10 @@ export default function Schedules() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Platform</TableHead>
-                    <TableHead>Schedule</TableHead>
-                    <TableHead>Cron Expression</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Frequency</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right">Active</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -141,6 +150,9 @@ export default function Schedules() {
                           <div className={`h-2 w-2 rounded-full ${getPlatformColor(schedule.name)}`} />
                           <span className="font-medium">{schedule.name}</span>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {getDescription(schedule.name)}
                       </TableCell>
                       <TableCell>
                         {editingId === schedule.id ? (
@@ -160,18 +172,15 @@ export default function Schedules() {
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span
-                            className="cursor-pointer hover:underline"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto py-1 px-2"
                             onClick={() => setEditingId(schedule.id)}
                           >
                             {schedule.scheduleDisplay}
-                          </span>
+                          </Button>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <code className="text-xs bg-muted px-2 py-1 rounded">
-                          {schedule.schedule}
-                        </code>
                       </TableCell>
                       <TableCell>
                         <Badge variant={schedule.active ? "default" : "secondary"}>
@@ -198,22 +207,6 @@ export default function Schedules() {
           </CardContent>
         </Card>
 
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Schedule Reference</CardTitle>
-            <CardDescription>Common cron schedule patterns</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {SCHEDULE_OPTIONS.map((opt) => (
-                <div key={opt.value} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                  <span className="text-sm">{opt.label}</span>
-                  <code className="text-xs bg-background px-2 py-1 rounded">{opt.value}</code>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </main>
     </div>
   );
