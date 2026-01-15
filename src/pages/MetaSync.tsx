@@ -11,6 +11,7 @@ import { useMetaPreview } from "@/hooks/useMetaPreview";
 import { MetaDataPreview } from "@/components/MetaDataPreview";
 import SyncLogTable from "@/components/SyncLogTable";
 import { MetaHistoryDashboard } from "@/components/dashboard/MetaHistoryDashboard";
+import { getLocalToday, getLocalYesterday, formatLocalDate } from "@/lib/dateUtils";
 
 interface SyncResult {
   success: boolean;
@@ -47,15 +48,8 @@ export default function MetaSync() {
     clearPreview,
   } = useMetaPreview();
 
-  const getYesterdayDate = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split("T")[0];
-  };
-
-  const getTodayDate = () => {
-    return new Date().toISOString().split("T")[0];
-  };
+  const getYesterdayDate = () => getLocalYesterday();
+  const getTodayDate = () => getLocalToday();
 
   const handleSync = async (date?: string) => {
     setIsSyncing(true);
@@ -123,7 +117,7 @@ export default function MetaSync() {
     const endDate = new Date(end);
 
     while (current <= endDate) {
-      dates.push(current.toISOString().split("T")[0]);
+      dates.push(formatLocalDate(current));
       current.setDate(current.getDate() + 1);
     }
 

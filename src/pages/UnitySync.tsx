@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useUnityPreview } from "@/hooks/useUnityPreview";
 import UnityDataPreview from "@/components/UnityDataPreview";
 import SyncLogTable from "@/components/SyncLogTable";
+import { formatLocalDate } from "@/lib/dateUtils";
 
 interface SyncResult {
   success: boolean;
@@ -118,7 +119,7 @@ export default function UnitySync() {
     
     const current = new Date(startDate);
     while (current <= endDate) {
-      dates.push(current.toISOString().split('T')[0]);
+      dates.push(formatLocalDate(current));
       current.setDate(current.getDate() + 1);
     }
     return dates;
@@ -276,12 +277,11 @@ export default function UnitySync() {
   };
 
   // Calculate today's and yesterday's dates for display
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = formatLocalDate(new Date());
   
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const yesterdayStr = formatLocalDate(yesterday);
 
   const failedCount = backfillProgress.results.filter(r => !r.success).length;
   const successCount = backfillProgress.results.filter(r => r.success).length;

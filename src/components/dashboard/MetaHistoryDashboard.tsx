@@ -7,18 +7,16 @@ import { TimeSeriesChart } from "./TimeSeriesChart";
 import { CampaignBreakdownChart } from "./CampaignBreakdownChart";
 import { CreativeReportingTable } from "./CreativeReportingTable";
 import { DateRangePicker } from "./DateRangePicker";
+import { getLocalDaysAgo, getLocalToday } from "@/lib/dateUtils";
 
 export function MetaHistoryDashboard() {
   const { data, isLoading, error, fetchHistory } = useMetaHistory();
   
   // Default to last 30 days
   const getDefaultDates = () => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 30);
     return {
-      start: start.toISOString().split("T")[0],
-      end: end.toISOString().split("T")[0],
+      start: getLocalDaysAgo(30),
+      end: getLocalToday(),
     };
   };
 
