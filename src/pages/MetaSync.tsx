@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useMetaPreview } from "@/hooks/useMetaPreview";
 import { MetaDataPreview } from "@/components/MetaDataPreview";
 import SyncLogTable from "@/components/SyncLogTable";
+import { MetaHistoryDashboard } from "@/components/dashboard/MetaHistoryDashboard";
 
 interface SyncResult {
   success: boolean;
@@ -462,6 +463,9 @@ export default function MetaSync() {
             <SyncLogTable source="meta" limit={10} />
           </CardContent>
         </Card>
+
+        {/* Historical Performance Dashboard */}
+        <MetaHistoryDashboard />
       </div>
     </div>
   );
