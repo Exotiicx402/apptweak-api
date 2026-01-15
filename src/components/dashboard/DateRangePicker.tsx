@@ -1,8 +1,8 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "lucide-react";
+import { formatLocalDate, getLocalDaysAgo, getLocalToday } from "@/lib/dateUtils";
 
 interface DateRangePickerProps {
   startDate: string;
@@ -22,12 +22,8 @@ export function DateRangePicker({
   loading = false,
 }: DateRangePickerProps) {
   const setPreset = (days: number) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - days);
-    
-    onStartDateChange(start.toISOString().split("T")[0]);
-    onEndDateChange(end.toISOString().split("T")[0]);
+    onStartDateChange(getLocalDaysAgo(days));
+    onEndDateChange(getLocalToday());
   };
 
   return (

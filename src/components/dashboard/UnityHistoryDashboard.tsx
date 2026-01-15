@@ -7,15 +7,13 @@ import { TimeSeriesChart } from "./TimeSeriesChart";
 import { CampaignBreakdownChart } from "./CampaignBreakdownChart";
 import { CreativeReportingTable } from "./CreativeReportingTable";
 import { DateRangePicker } from "./DateRangePicker";
+import { getLocalDaysAgo, getLocalToday } from "@/lib/dateUtils";
 
 export function UnityHistoryDashboard() {
   const { data, isLoading, error, fetchHistory } = useUnityHistory();
   
   const getDefaultDates = () => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 30);
-    return { start: start.toISOString().split("T")[0], end: end.toISOString().split("T")[0] };
+    return { start: getLocalDaysAgo(30), end: getLocalToday() };
   };
 
   const defaultDates = getDefaultDates();

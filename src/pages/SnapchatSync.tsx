@@ -15,6 +15,7 @@ import { useSnapchatDiagnostics } from "@/hooks/useSnapchatDiagnostics";
 import SnapchatDataPreview from "@/components/SnapchatDataPreview";
 import SnapchatDiagnostics from "@/components/SnapchatDiagnostics";
 import SyncLogTable from "@/components/SyncLogTable";
+import { getLocalToday, getLocalYesterday, formatLocalDate } from "@/lib/dateUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,15 +71,8 @@ const SnapchatSync = () => {
   const { isLoading: isPreviewLoading, result: previewResult, error: previewError, fetchPreview, clearPreview } = useSnapchatPreview();
   const { isLoading: isDiagnosticsLoading, result: diagnosticsResult, error: diagnosticsError, runDiagnostics, clearDiagnostics } = useSnapchatDiagnostics();
 
-  const getYesterdayDate = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split('T')[0];
-  };
-
-  const getTodayDate = () => {
-    return new Date().toISOString().split('T')[0];
-  };
+  const getYesterdayDate = () => getLocalYesterday();
+  const getTodayDate = () => getLocalToday();
 
   const handleRunSync = async (date?: string) => {
     setIsLoading(true);
@@ -152,7 +146,7 @@ const SnapchatSync = () => {
     const endDate = new Date(end);
 
     while (startDate <= endDate) {
-      dates.push(startDate.toISOString().split('T')[0]);
+      dates.push(formatLocalDate(startDate));
       startDate.setDate(startDate.getDate() + 1);
     }
 
