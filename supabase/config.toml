@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.google-ads-preview]
 verify_jwt = false
+
+[functions.asc-downloads]
+verify_jwt = false
