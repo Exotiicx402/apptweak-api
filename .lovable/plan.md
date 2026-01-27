@@ -1,72 +1,43 @@
 
 
-## App Store Connect Downloads Chart Implementation
+## Fix: ASC Downloads Edge Function Not Deployed
 
-### Overview
-Add Apple's official App Store Connect (ASC) exact download data as a new 7-day line chart below the AppTweak data section on the dashboard.
+### Issue
+The `asc-downloads` edge function was not successfully created. The function directory doesn't exist in `supabase/functions/` and the config entry is missing from `supabase/config.toml`.
 
-### Step 1: Add Required Secrets
+### Root Cause
+The previous file creation for `supabase/functions/asc-downloads/index.ts` didn't complete successfully.
 
-Three secrets need to be configured:
+### Fix Steps
 
-| Secret Name | Value |
-|------------|-------|
-| `ASC_KEY_ID` | `BJMJP9LMM8` |
-| `ASC_ISSUER_ID` | `776563b8-6094-40a4-a534-cd5faad77bd2` |
-| `ASC_PRIVATE_KEY` | Full content of AuthKey_BJMJP9LMM8.p8 file |
+**Step 1: Create the edge function directory and file**
 
-### Step 2: Create Edge Function
+Create `supabase/functions/asc-downloads/index.ts` with the JWT generation and App Store Connect API integration code.
 
-**New file: `supabase/functions/asc-downloads/index.ts`**
+**Step 2: Update config.toml**
 
-- Generate JWT token using ES256 algorithm with the private key
-- Call App Store Connect Analytics Reports API
-- Fetch daily download data for last 7 days
-- Return data matching existing format: `{ downloads: [{ date, downloads }] }`
-
-### Step 3: Create React Hook
-
-**New file: `src/hooks/useASCDownloads.ts`**
-
-- React Query hook calling the edge function
-- Same pattern as existing `useAppsFlyerDownloads` hook
-- Returns `{ data, isLoading, error }`
-
-### Step 4: Create Chart Component
-
-**New file: `src/components/ASCDownloadsChart.tsx`**
-
-- Line chart matching existing `DownloadsHistoryChart` style
-- Badge labeled "App Store Connect"
-- Shows total and average downloads
-- 7-day responsive line chart
-
-### Step 5: Update Dashboard
-
-**Update: `src/components/Dashboard.tsx`**
-
-Add new section between AppTweak and AppsFlyer:
-
-```
-├── AppTweak Data (existing)
-│   └── DownloadsHistoryChart
-├── App Store Connect (Official) ← NEW
-│   └── ASCDownloadsChart
-└── AppsFlyer SSOT (existing)
-    └── AppsFlyerDownloadsChart
+Add the missing entry:
+```toml
+[functions.asc-downloads]
+verify_jwt = false
 ```
 
-### Technical Details
+**Step 3: Files to verify exist**
+- `src/hooks/useASCDownloads.ts` - React Query hook
+- `src/components/ASCDownloadsChart.tsx` - Chart component  
+- Dashboard import and usage of ASCDownloadsChart
 
-**JWT Generation:**
-- Algorithm: ES256
-- Header: `{ alg: "ES256", kid: "BJMJP9LMM8", typ: "JWT" }`
-- Payload: `{ iss: ISSUER_ID, iat: now, exp: now + 1200, aud: "appstoreconnect-v1" }`
+### Technical Implementation
 
-**API Endpoint:**
-`https://api.appstoreconnect.apple.com/v1/analyticsReportRequests`
+The edge function needs to:
+1. Read `ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_PRIVATE_KEY` from environment
+2. Generate ES256 JWT for authentication
+3. Call App Store Connect Analytics Reports API
+4. Return download data in format: `{ downloads: [{ date, downloads }] }`
 
-**Data Notes:**
-- App Store Connect data typically has 24-48 hour delay
-- This is deterministic, 100% accurate data from Apple
+### Verification
+After deployment, the function should:
+- Appear in edge function list
+- Return download data when called
+- Display in the dashboard chart
 
