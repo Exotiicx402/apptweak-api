@@ -1,4 +1,4 @@
-import { RefreshCw, AlertCircle, Settings, Database, BarChart3 } from "lucide-react";
+import { RefreshCw, AlertCircle, Settings, Database, BarChart3, Apple } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
@@ -8,6 +8,7 @@ import { RankingHistoryChart } from "./RankingHistoryChart";
 import { DownloadsHistoryChart } from "./DownloadsHistoryChart";
 import { CompetitorDownloadsChart } from "./CompetitorDownloadsChart";
 import { AppsFlyerDownloadsChart } from "./AppsFlyerDownloadsChart";
+import { ASCDownloadsChart } from "./ASCDownloadsChart";
 import { AppSectionHeader } from "./AppSectionHeader";
 
 // App Store icon URLs
@@ -25,6 +26,7 @@ export const Dashboard = () => {
     queryClient.invalidateQueries({ queryKey: ["apptweak-metrics-history"] });
     queryClient.invalidateQueries({ queryKey: ["competitor-downloads-history"] });
     queryClient.invalidateQueries({ queryKey: ["appsflyer-downloads"] });
+    queryClient.invalidateQueries({ queryKey: ["asc-downloads"] });
   };
 
   return (
@@ -122,6 +124,15 @@ export const Dashboard = () => {
             AppTweak Data
           </h3>
           <DownloadsHistoryChart appId="6648798962" appName="Polymarket" dataSource="AppTweak" />
+        </div>
+
+        {/* App Store Connect Section */}
+        <div className="mb-8">
+          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+            <Apple className="w-4 h-4" />
+            App Store Connect (Official)
+          </h3>
+          <ASCDownloadsChart appName="Polymarket" />
         </div>
 
         {/* AppsFlyer SSOT Section */}

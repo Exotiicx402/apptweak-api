@@ -73,8 +73,8 @@ export const useAppsFlyerDownloads = (points: number = 8) => {
         downloads: dataMap.get(date) ?? 0,
       }));
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchInterval: 5 * 60 * 1000, // 5 minutes
-    retry: 1,
+    staleTime: 30 * 60 * 1000, // 30 minutes - reduce noise from quota limits
+    refetchInterval: false, // Disable auto-refetch to prevent quota spam
+    retry: 0, // Don't retry on failure (quota hit)
   });
 };
