@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, MousePointer, Eye, Users, TrendingUp, BarChart3 } from "lucide-react";
+import { DollarSign, MousePointer, Eye, Users, TrendingUp, BarChart3, Download, Target } from "lucide-react";
 import { useMetaHistory } from "@/hooks/useMetaHistory";
 import { MetricKpiCard } from "./MetricKpiCard";
 import { TimeSeriesChart } from "./TimeSeriesChart";
@@ -45,8 +45,8 @@ export function MetaHistoryDashboard() {
     );
   }
 
-  const totals = data?.totals || { spend: 0, impressions: 0, clicks: 0, reach: 0, cpm: 0, cpc: 0, ctr: 0 };
-  const prevTotals = data?.previousTotals || { spend: 0, impressions: 0, clicks: 0, reach: 0, cpm: 0, cpc: 0, ctr: 0 };
+  const totals = data?.totals || { spend: 0, impressions: 0, clicks: 0, reach: 0, cpm: 0, cpc: 0, ctr: 0, installs: 0, cpi: 0 };
+  const prevTotals = data?.previousTotals || { spend: 0, impressions: 0, clicks: 0, reach: 0, cpm: 0, cpc: 0, ctr: 0, installs: 0, cpi: 0 };
 
   // Prepare chart data
   const spendChartData = data?.daily.map((d) => ({ date: d.date, value: d.spend })) || [];
@@ -55,21 +55,24 @@ export function MetaHistoryDashboard() {
   const cpmChartData = data?.daily.map((d) => ({ date: d.date, value: d.cpm })) || [];
   const cpcChartData = data?.daily.map((d) => ({ date: d.date, value: d.cpc })) || [];
   const ctrChartData = data?.daily.map((d) => ({ date: d.date, value: d.ctr * 100 })) || [];
+  const installsChartData = data?.daily.map((d) => ({ date: d.date, value: d.installs })) || [];
+  const cpiChartData = data?.daily.map((d) => ({ date: d.date, value: d.cpi })) || [];
 
   // Prepare campaign breakdown
   const campaignSpendData = data?.campaigns.map((c) => ({ name: c.campaign_name, value: c.spend })) || [];
   const campaignClicksData = data?.campaigns.map((c) => ({ name: c.campaign_name, value: c.clicks })) || [];
+  const campaignInstallsData = data?.campaigns.map((c) => ({ name: c.campaign_name, value: c.installs })) || [];
 
   // Prepare table data
   const tableData = data?.campaigns.map((c) => ({
     name: c.campaign_name,
     spend: c.spend,
-    installs: 0, // Meta doesn't always have installs in basic metrics
-    cpi: 0,
+    installs: c.installs,
+    cpi: c.cpi,
     clicks: c.clicks,
     impressions: c.impressions,
     ctr: c.clicks / c.impressions || 0,
-    cvr: 0,
+    cvr: c.installs > 0 && c.clicks > 0 ? c.installs / c.clicks : 0,
   })) || [];
 
   return (
@@ -94,7 +97,7 @@ export function MetaHistoryDashboard() {
       </Card>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-8">
         <MetricKpiCard
           title="Total Spend"
           value={totals.spend}
@@ -102,6 +105,24 @@ export function MetaHistoryDashboard() {
           previousValue={prevTotals.spend}
           format="currency"
           icon={<DollarSign className="h-4 w-4" />}
+          loading={isLoading}
+        />
+        <MetricKpiCard
+          title="Installs"
+          value={totals.installs}
+          currentValue={totals.installs}
+          previousValue={prevTotals.installs}
+          format="number"
+          icon={<Download className="h-4 w-4" />}
+          loading={isLoading}
+        />
+        <MetricKpiCard
+          title="CPI"
+          value={totals.cpi}
+          currentValue={totals.cpi}
+          previousValue={prevTotals.cpi}
+          format="currency"
+          icon={<Target className="h-4 w-4" />}
           loading={isLoading}
         />
         <MetricKpiCard
@@ -152,7 +173,7 @@ export function MetaHistoryDashboard() {
       </div>
 
       {/* Time Series Charts */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <TimeSeriesChart
           title="Spend Over Time"
           data={spendChartData}
@@ -160,15 +181,22 @@ export function MetaHistoryDashboard() {
           loading={isLoading}
         />
         <TimeSeriesChart
-          title="Impressions Over Time"
-          data={impressionsChartData}
+          title="Installs Over Time"
+          data={installsChartData}
           format="number"
           color="hsl(142, 76%, 36%)"
           loading={isLoading}
         />
         <TimeSeriesChart
-          title="Clicks Over Time"
-          data={clicksChartData}
+          title="CPI Trend"
+          data={cpiChartData}
+          format="currency"
+          color="hsl(280, 67%, 50%)"
+          loading={isLoading}
+        />
+        <TimeSeriesChart
+          title="Impressions Over Time"
+          data={impressionsChartData}
           format="number"
           color="hsl(48, 96%, 53%)"
           loading={isLoading}
@@ -176,7 +204,14 @@ export function MetaHistoryDashboard() {
       </div>
 
       {/* Additional Metrics Charts */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
+        <TimeSeriesChart
+          title="Clicks Over Time"
+          data={clicksChartData}
+          format="number"
+          color="hsl(200, 80%, 50%)"
+          loading={isLoading}
+        />
         <TimeSeriesChart
           title="CPM Trend"
           data={cpmChartData}
@@ -201,11 +236,17 @@ export function MetaHistoryDashboard() {
       </div>
 
       {/* Campaign Breakdown */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <CampaignBreakdownChart
           title="Spend by Campaign"
           data={campaignSpendData}
           format="currency"
+          loading={isLoading}
+        />
+        <CampaignBreakdownChart
+          title="Installs by Campaign"
+          data={campaignInstallsData}
+          format="number"
           loading={isLoading}
         />
         <CampaignBreakdownChart

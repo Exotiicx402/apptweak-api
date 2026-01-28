@@ -124,7 +124,7 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign_id = '${campaignId}'` : "";
 
-    // Daily metrics query
+    // Daily metrics query with installs extracted from actions JSON
     const dailyQuery = `
       SELECT 
         DATE(timestamp) as date,
@@ -134,7 +134,17 @@ serve(async (req) => {
         SUM(reach) as reach,
         AVG(cpm) as cpm,
         AVG(cpc) as cpc,
-        AVG(ctr) as ctr
+        AVG(ctr) as ctr,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'mobile_app_install'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
       ${campaignFilter}
@@ -142,7 +152,7 @@ serve(async (req) => {
       ORDER BY date
     `;
 
-    // Campaign breakdown query
+    // Campaign breakdown query with installs
     const campaignQuery = `
       SELECT 
         campaign_id,
@@ -153,14 +163,24 @@ serve(async (req) => {
         SUM(reach) as reach,
         AVG(cpm) as cpm,
         AVG(cpc) as cpc,
-        AVG(ctr) as ctr
+        AVG(ctr) as ctr,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'mobile_app_install'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
       GROUP BY campaign_id, campaign_name
       ORDER BY spend DESC
     `;
 
-    // Totals for current period
+    // Totals for current period with installs
     const totalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
@@ -170,13 +190,23 @@ serve(async (req) => {
         AVG(cpm) as avg_cpm,
         AVG(cpc) as avg_cpc,
         AVG(ctr) as avg_ctr,
-        SAFE_DIVIDE(SUM(clicks), SUM(impressions)) as calculated_ctr
+        SAFE_DIVIDE(SUM(clicks), SUM(impressions)) as calculated_ctr,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'mobile_app_install'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as total_installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
       ${campaignFilter}
     `;
 
-    // Totals for previous period
+    // Totals for previous period with installs
     const prevTotalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
@@ -185,7 +215,17 @@ serve(async (req) => {
         SUM(reach) as total_reach,
         AVG(cpm) as avg_cpm,
         AVG(cpc) as avg_cpc,
-        AVG(ctr) as avg_ctr
+        AVG(ctr) as avg_ctr,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'mobile_app_install'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as total_installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
       ${campaignFilter}
@@ -209,27 +249,39 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         data: {
-          daily: dailyData.map((row) => ({
-            date: row.date,
-            spend: parseFloat(row.spend) || 0,
-            impressions: parseInt(row.impressions) || 0,
-            clicks: parseInt(row.clicks) || 0,
-            reach: parseInt(row.reach) || 0,
-            cpm: parseFloat(row.cpm) || 0,
-            cpc: parseFloat(row.cpc) || 0,
-            ctr: parseFloat(row.ctr) || 0,
-          })),
-          campaigns: campaignData.map((row) => ({
-            campaign_id: row.campaign_id,
-            campaign_name: row.campaign_name,
-            spend: parseFloat(row.spend) || 0,
-            impressions: parseInt(row.impressions) || 0,
-            clicks: parseInt(row.clicks) || 0,
-            reach: parseInt(row.reach) || 0,
-            cpm: parseFloat(row.cpm) || 0,
-            cpc: parseFloat(row.cpc) || 0,
-            ctr: parseFloat(row.ctr) || 0,
-          })),
+          daily: dailyData.map((row) => {
+            const spend = parseFloat(row.spend) || 0;
+            const installs = parseInt(row.installs) || 0;
+            return {
+              date: row.date,
+              spend,
+              impressions: parseInt(row.impressions) || 0,
+              clicks: parseInt(row.clicks) || 0,
+              reach: parseInt(row.reach) || 0,
+              cpm: parseFloat(row.cpm) || 0,
+              cpc: parseFloat(row.cpc) || 0,
+              ctr: parseFloat(row.ctr) || 0,
+              installs,
+              cpi: installs > 0 ? spend / installs : 0,
+            };
+          }),
+          campaigns: campaignData.map((row) => {
+            const spend = parseFloat(row.spend) || 0;
+            const installs = parseInt(row.installs) || 0;
+            return {
+              campaign_id: row.campaign_id,
+              campaign_name: row.campaign_name,
+              spend,
+              impressions: parseInt(row.impressions) || 0,
+              clicks: parseInt(row.clicks) || 0,
+              reach: parseInt(row.reach) || 0,
+              cpm: parseFloat(row.cpm) || 0,
+              cpc: parseFloat(row.cpc) || 0,
+              ctr: parseFloat(row.ctr) || 0,
+              installs,
+              cpi: installs > 0 ? spend / installs : 0,
+            };
+          }),
           totals: {
             spend: parseFloat(totals.total_spend) || 0,
             impressions: parseInt(totals.total_impressions) || 0,
@@ -238,6 +290,8 @@ serve(async (req) => {
             cpm: parseFloat(totals.avg_cpm) || 0,
             cpc: parseFloat(totals.avg_cpc) || 0,
             ctr: parseFloat(totals.calculated_ctr) || 0,
+            installs: parseInt(totals.total_installs) || 0,
+            cpi: parseInt(totals.total_installs) > 0 ? parseFloat(totals.total_spend) / parseInt(totals.total_installs) : 0,
           },
           previousTotals: {
             spend: parseFloat(prevTotals.total_spend) || 0,
@@ -247,6 +301,8 @@ serve(async (req) => {
             cpm: parseFloat(prevTotals.avg_cpm) || 0,
             cpc: parseFloat(prevTotals.avg_cpc) || 0,
             ctr: parseFloat(prevTotals.avg_ctr) || 0,
+            installs: parseInt(prevTotals.total_installs) || 0,
+            cpi: parseInt(prevTotals.total_installs) > 0 ? parseFloat(prevTotals.total_spend) / parseInt(prevTotals.total_installs) : 0,
           },
           dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
