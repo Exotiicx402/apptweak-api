@@ -10,6 +10,8 @@ interface DailyMetric {
   cpm: number;
   cpc: number;
   ctr: number;
+  installs: number;
+  cpi: number;
 }
 
 interface CampaignMetric {
@@ -22,6 +24,8 @@ interface CampaignMetric {
   cpm: number;
   cpc: number;
   ctr: number;
+  installs: number;
+  cpi: number;
 }
 
 interface Totals {
@@ -32,6 +36,8 @@ interface Totals {
   cpm: number;
   cpc: number;
   ctr: number;
+  installs: number;
+  cpi: number;
 }
 
 interface MetaHistoryData {
