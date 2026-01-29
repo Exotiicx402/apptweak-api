@@ -96,6 +96,7 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   url.searchParams.set("fields", fields);
   url.searchParams.set("time_range", timeRange);
   url.searchParams.set("level", "campaign");
+  url.searchParams.set("action_attribution_windows", '["7d_click","1d_view"]');
   url.searchParams.set("access_token", accessToken);
 
   console.log(`Fetching Meta insights for date: ${date}`);
