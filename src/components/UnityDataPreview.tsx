@@ -20,7 +20,8 @@ function formatNumber(value: number): string {
 }
 
 export default function UnityDataPreview({ result }: UnityDataPreviewProps) {
-  const { summary, data, date, durationMs } = result;
+  const { summary, data, startDate, endDate, durationMs } = result;
+  const dateDisplay = startDate === endDate ? startDate : `${startDate} to ${endDate}`;
 
   // Prepare chart data - limit to top entries
   const campaignChartData = summary.campaigns.slice(0, 8).map(c => ({
@@ -177,7 +178,7 @@ export default function UnityDataPreview({ result }: UnityDataPreviewProps) {
           <CardTitle className="text-base flex items-center justify-between">
             <span>Raw Data Preview</span>
             <span className="text-sm font-normal text-muted-foreground">
-              Date: {date} • Fetched in {durationMs}ms
+              {dateDisplay} • Fetched in {durationMs}ms
             </span>
           </CardTitle>
         </CardHeader>
