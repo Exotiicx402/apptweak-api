@@ -56,3 +56,18 @@ verify_jwt = false
 
 [functions.asc-downloads]
 verify_jwt = false
+
+[functions.unity-history]
+verify_jwt = false
+
+[functions.snapchat-history]
+verify_jwt = false
+
+[functions.meta-history]
+verify_jwt = false
+
+[functions.manage-schedules]
+verify_jwt = false
+
+[functions.google-ads-history]
+verify_jwt = false
