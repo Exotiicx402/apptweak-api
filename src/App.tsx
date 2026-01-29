@@ -11,6 +11,7 @@ import SnapchatSync from "./pages/SnapchatSync";
 import MetaSync from "./pages/MetaSync";
 import GoogleAdsSync from "./pages/GoogleAdsSync";
 import Schedules from "./pages/Schedules";
+import Reporting from "./pages/Reporting";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -27,6 +28,7 @@ const App = () => (
           <Route path="/meta-sync" element={<MetaSync />} />
           <Route path="/google-ads-sync" element={<GoogleAdsSync />} />
           <Route path="/schedules" element={<Schedules />} />
+          <Route path="/reporting" element={<Reporting />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
