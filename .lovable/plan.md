@@ -1,51 +1,73 @@
 
+## Add Date Range Preview for Unity Ads
 
-## Add Explicit Attribution Window to Meta API Calls
-
-### Problem
-The Meta API calls do not specify an `action_attribution_windows` parameter, meaning install counts rely on Meta's account default settings. To guarantee data consistency with Meta Ads Manager reporting, we need to explicitly set the attribution window.
-
-### Solution
-Add the `action_attribution_windows` parameter to both Meta edge functions to match your Meta Ads Manager settings (7-day click, 1-day view).
+### Overview
+Enable previewing Unity Ads data for a date range (start and end date) instead of just a single day. This will help you verify data across multiple days before syncing.
 
 ---
 
-### Files to Modify
+### Changes Required
 
-| File | Change |
-|------|--------|
-| `supabase/functions/meta-preview/index.ts` | Add `action_attribution_windows` parameter |
-| `supabase/functions/meta-to-bigquery/index.ts` | Add `action_attribution_windows` parameter |
+| Component | Change |
+|-----------|--------|
+| Edge Function | Accept `startDate` and `endDate` parameters, fetch data for the full range |
+| Hook | Update to support date range parameters |
+| UI | Replace single date picker with start/end date pickers |
 
 ---
 
 ### Implementation Details
 
-**Add this parameter to both functions (after line 48 in meta-preview, after line 98 in meta-to-bigquery):**
+#### 1. Edge Function (`supabase/functions/unity-preview/index.ts`)
 
-```javascript
-url.searchParams.set("action_attribution_windows", '["7d_click","1d_view"]');
+**Current behavior:** Accepts a single `date` parameter and fetches one day of data.
+
+**New behavior:** Accept `startDate` and `endDate` parameters. The Unity API already supports date ranges natively (it has `start` and `end` parameters), so we just need to pass them through.
+
+```text
+Request body options:
+- { startDate: "2026-01-20", endDate: "2026-01-28" }  -> Range
+- { date: "2026-01-28" }  -> Single day (backward compatible)
+- {}  -> Yesterday (default)
 ```
 
-This explicitly tells the Meta API to return conversion data using:
-- **7d_click**: Conversions within 7 days of ad click
-- **1d_view**: Conversions within 1 day of ad view (impression)
+The response will include `startDate` and `endDate` fields instead of just `date`.
+
+#### 2. Hook (`src/hooks/useUnityPreview.ts`)
+
+Update the `fetchPreview` function signature:
+- Add optional `startDate` and `endDate` parameters
+- Update the result interface to include the date range
+
+#### 3. UI (`src/pages/UnitySync.tsx`)
+
+Replace the single date picker in the Preview section with:
+- Start Date input
+- End Date input  
+- "Preview Yesterday" button (uses yesterday as both start and end)
+- "Preview Range" button
+
+Add date preset buttons similar to the backfill section for quick selection (Last 7 days, etc.).
 
 ---
 
-### Verification
-After deployment, test with the Jan 25-28 date range to confirm:
-- Installs: ~818
-- Spend: ~$11,909
-- CPI: ~$14.56
+### Technical Details
 
----
+**Unity API Behavior:**
+The Unity Statistics API v2 already accepts `start` and `end` parameters. Currently the edge function adds +1 day to the end date because Unity requires end > start. For true date ranges, we'll pass `endDate + 1 day` to include the full end date in results.
 
-### Technical Notes
+**Aggregation:**
+The summary statistics (total spend, installs, CPI, etc.) will be calculated across the entire date range, giving you an aggregate view.
 
-The `action_attribution_windows` parameter accepts these values:
-- `1d_click`, `7d_click`, `28d_click` - Click attribution windows
-- `1d_view`, `7d_view`, `28d_view` - View (impression) attribution windows
-
-Meta Ads Manager typically defaults to `7d_click` and `1d_view`, which is what we will explicitly set to ensure consistency.
-
+**Response format change:**
+```javascript
+// New response format
+{
+  success: true,
+  data: [...],
+  summary: {...},
+  startDate: "2026-01-20",
+  endDate: "2026-01-28",
+  durationMs: 1234
+}
+```
