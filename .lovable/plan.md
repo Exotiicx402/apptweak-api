@@ -1,73 +1,122 @@
 
-## Add Date Range Preview for Unity Ads
+
+## Client-Facing Reporting Page
 
 ### Overview
-Enable previewing Unity Ads data for a date range (start and end date) instead of just a single day. This will help you verify data across multiple days before syncing.
+A new page at `/reporting` designed for client viewing that displays aggregated performance metrics across all ad platforms. Clean, focused view showing only the essential KPIs: **Spend**, **Installs**, and **CPI**.
 
 ---
 
-### Changes Required
+### Page Layout
 
-| Component | Change |
-|-----------|--------|
-| Edge Function | Accept `startDate` and `endDate` parameters, fetch data for the full range |
-| Hook | Update to support date range parameters |
-| UI | Replace single date picker with start/end date pickers |
+```text
++----------------------------------------------------------+
+|  Performance Report                    [Date Range Picker]|
++----------------------------------------------------------+
+|                                                          |
+|  TOTAL (All Channels)                                    |
+|  +----------------+  +----------------+  +----------------+
+|  |  Total Spend   |  | Total Installs |  |  Blended CPI  |
+|  |   $125,430     |  |    42,350      |  |    $2.96      |
+|  +----------------+  +----------------+  +----------------+
+|                                                          |
++----------------------------------------------------------+
+|                                                          |
+|  BY PLATFORM                                             |
+|                                                          |
+|  Meta Ads                                                |
+|  +----------------+  +----------------+  +----------------+
+|  |    Spend       |  |    Installs    |  |      CPI      |
+|  |   $45,000      |  |    15,000      |  |    $3.00      |
+|  +----------------+  +----------------+  +----------------+
+|                                                          |
+|  Snapchat                                                |
+|  +----------------+  +----------------+  +----------------+
+|  |    Spend       |  |    Installs    |  |      CPI      |
+|  |   $30,000      |  |    12,000      |  |    $2.50      |
+|  +----------------+  +----------------+  +----------------+
+|                                                          |
+|  Unity                                                   |
+|  +----------------+  +----------------+  +----------------+
+|  |    Spend       |  |    Installs    |  |      CPI      |
+|  |   $25,430      |  |     8,350      |  |    $3.05      |
+|  +----------------+  +----------------+  +----------------+
+|                                                          |
+|  Google Ads                                              |
+|  +----------------+  +----------------+  +----------------+
+|  |    Spend       |  |    Installs    |  |      CPI      |
+|  |   $25,000      |  |     7,000      |  |    $3.57      |
+|  +----------------+  +----------------+  +----------------+
+|                                                          |
++----------------------------------------------------------+
+```
+
+---
+
+### Components to Create
+
+| File | Description |
+|------|-------------|
+| `src/pages/Reporting.tsx` | Main reporting page with date range picker and platform sections |
+| `src/components/reporting/PlatformMetricsRow.tsx` | Reusable row showing platform name + 3 KPI cards |
+| `src/components/reporting/TotalMetricsSection.tsx` | Highlighted section for aggregated totals |
+| `src/hooks/useReportingData.ts` | Hook that fetches data from all platforms in parallel |
+| `supabase/functions/google-ads-history/index.ts` | Edge function to query Windsor's Google Ads BigQuery table |
 
 ---
 
 ### Implementation Details
 
-#### 1. Edge Function (`supabase/functions/unity-preview/index.ts`)
+#### 1. Google Ads History Edge Function
 
-**Current behavior:** Accepts a single `date` parameter and fetches one day of data.
+Create a new edge function that queries the `GOOGLE_ADS_BQ_TABLE_ID` (Windsor data). This follows the same pattern as `meta-history`:
 
-**New behavior:** Accept `startDate` and `endDate` parameters. The Unity API already supports date ranges natively (it has `start` and `end` parameters), so we just need to pass them through.
+- Query for daily aggregates: spend, conversions (installs), CPI
+- Windsor typically uses columns like: `date`, `campaign_name`, `metrics_cost_micros`, `metrics_conversions`
+- Returns totals for the selected date range
 
-```text
-Request body options:
-- { startDate: "2026-01-20", endDate: "2026-01-28" }  -> Range
-- { date: "2026-01-28" }  -> Single day (backward compatible)
-- {}  -> Yesterday (default)
+#### 2. Unified Reporting Hook
+
+The hook will:
+- Accept start/end dates
+- Fetch data from all 4 platforms in parallel using existing edge functions:
+  - `meta-history`
+  - `snapchat-history`
+  - `unity-history`
+  - `google-ads-history` (new)
+- Return normalized data with totals for each platform
+- Calculate grand totals across all platforms
+
+#### 3. Page Component
+
+- Date range picker at the top (reuses existing `DateRangePicker`)
+- "Total" section with large KPI cards showing combined metrics
+- Platform sections, each showing spend/installs/CPI
+- Clean, minimal design suitable for client viewing
+- Loading states for each section
+
+#### 4. Router Update
+
+Add the new route to `App.tsx`:
+```typescript
+<Route path="/reporting" element={<Reporting />} />
 ```
-
-The response will include `startDate` and `endDate` fields instead of just `date`.
-
-#### 2. Hook (`src/hooks/useUnityPreview.ts`)
-
-Update the `fetchPreview` function signature:
-- Add optional `startDate` and `endDate` parameters
-- Update the result interface to include the date range
-
-#### 3. UI (`src/pages/UnitySync.tsx`)
-
-Replace the single date picker in the Preview section with:
-- Start Date input
-- End Date input  
-- "Preview Yesterday" button (uses yesterday as both start and end)
-- "Preview Range" button
-
-Add date preset buttons similar to the backfill section for quick selection (Last 7 days, etc.).
 
 ---
 
-### Technical Details
+### Data Flow
 
-**Unity API Behavior:**
-The Unity Statistics API v2 already accepts `start` and `end` parameters. Currently the edge function adds +1 day to the end date because Unity requires end > start. For true date ranges, we'll pass `endDate + 1 day` to include the full end date in results.
+1. User selects date range and clicks Apply
+2. Hook calls all 4 history endpoints in parallel
+3. Each endpoint returns: `{ totals: { spend, installs, cpi } }`
+4. Hook calculates grand totals: sum of spend, sum of installs, weighted CPI
+5. UI displays individual platform metrics and combined totals
 
-**Aggregation:**
-The summary statistics (total spend, installs, CPI, etc.) will be calculated across the entire date range, giving you an aggregate view.
+---
 
-**Response format change:**
-```javascript
-// New response format
-{
-  success: true,
-  data: [...],
-  summary: {...},
-  startDate: "2026-01-20",
-  endDate: "2026-01-28",
-  durationMs: 1234
-}
-```
+### Notes
+
+- **TikTok**: We'll add a placeholder section for TikTok. Once you provide the BigQuery table ID, we can enable it.
+- **No previous period comparison**: For client simplicity, showing current values only (no trend arrows)
+- **Blended CPI**: Calculated as Total Spend / Total Installs across all platforms
+
