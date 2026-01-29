@@ -55,7 +55,8 @@ export interface UnityPreviewResult {
   success: boolean;
   data: UnityRow[];
   summary: UnitySummary;
-  date: string;
+  startDate: string;
+  endDate: string;
   durationMs: number;
   error?: string;
 }
@@ -65,14 +66,24 @@ export function useUnityPreview() {
   const [result, setResult] = useState<UnityPreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchPreview = async (date?: string) => {
+  const fetchPreview = async (startDate?: string, endDate?: string) => {
     setIsLoading(true);
     setError(null);
     setResult(null);
 
     try {
+      // Build request body based on parameters
+      let body: Record<string, string> = {};
+      if (startDate && endDate) {
+        body = { startDate, endDate };
+      } else if (startDate) {
+        // Single date treated as range of 1 day
+        body = { startDate, endDate: startDate };
+      }
+      // If no dates, the edge function defaults to yesterday
+
       const { data, error: fnError } = await supabase.functions.invoke('unity-preview', {
-        body: date ? { date } : {},
+        body,
       });
 
       if (fnError) {

@@ -40,7 +40,8 @@ export default function UnitySync() {
   const [isRunning, setIsRunning] = useState(false);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const [customDate, setCustomDate] = useState("");
-  const [previewDate, setPreviewDate] = useState("");
+  const [previewStartDate, setPreviewStartDate] = useState("");
+  const [previewEndDate, setPreviewEndDate] = useState("");
   const { isLoading: isPreviewLoading, result: previewResult, fetchPreview, clearPreview } = useUnityPreview();
 
   // Backfill state
@@ -92,21 +93,30 @@ export default function UnitySync() {
     handleRunSync(customDate);
   };
 
-  const handlePreview = async (date: string) => {
+  const handlePreview = async (startDate: string, endDate?: string) => {
     try {
-      await fetchPreview(date);
+      await fetchPreview(startDate, endDate || startDate);
       toast.success("Preview loaded");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load preview");
     }
   };
 
-  const handlePreviewCustomDate = () => {
-    if (!previewDate) {
-      toast.error("Please select a date to preview");
+  const handlePreviewRange = () => {
+    if (!previewStartDate || !previewEndDate) {
+      toast.error("Please select both start and end dates");
       return;
     }
-    handlePreview(previewDate);
+    handlePreview(previewStartDate, previewEndDate);
+  };
+
+  const setPreviewPreset = (days: number) => {
+    const end = new Date();
+    end.setDate(end.getDate() - 1); // yesterday
+    const start = new Date(end);
+    start.setDate(start.getDate() - days + 1);
+    setPreviewStartDate(formatLocalDate(start));
+    setPreviewEndDate(formatLocalDate(end));
   };
 
   // Generate array of dates between start and end (inclusive)
@@ -549,41 +559,89 @@ export default function UnitySync() {
               See what data will be synced before sending to BigQuery
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-3">
+          <CardContent className="space-y-4">
+            {/* Preset buttons */}
+            <div className="flex flex-wrap gap-2">
               <Button
-                onClick={() => handlePreview(yesterdayStr)}
-                disabled={isPreviewLoading || backfillProgress.isRunning}
                 variant="outline"
-                className="flex-1"
+                size="sm"
+                onClick={() => handlePreview(yesterdayStr, yesterdayStr)}
+                disabled={isPreviewLoading || backfillProgress.isRunning}
+                className="text-xs"
               >
-                {isPreviewLoading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Eye className="w-4 h-4 mr-2" />
-                )}
-                Preview Yesterday
+                Yesterday
               </Button>
-              <div className="flex gap-2 flex-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPreviewPreset(7)}
+                disabled={isPreviewLoading || backfillProgress.isRunning}
+                className="text-xs"
+              >
+                Last 7 days
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPreviewPreset(14)}
+                disabled={isPreviewLoading || backfillProgress.isRunning}
+                className="text-xs"
+              >
+                Last 14 days
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPreviewPreset(30)}
+                disabled={isPreviewLoading || backfillProgress.isRunning}
+                className="text-xs"
+              >
+                Last 30 days
+              </Button>
+            </div>
+
+            {/* Date range inputs */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="previewStart" className="text-xs text-muted-foreground mb-1 block">Start Date</Label>
                 <Input
+                  id="previewStart"
                   type="date"
-                  value={previewDate}
-                  onChange={(e) => setPreviewDate(e.target.value)}
+                  value={previewStartDate}
+                  onChange={(e) => setPreviewStartDate(e.target.value)}
                   disabled={isPreviewLoading || backfillProgress.isRunning}
                 />
-                <Button
-                  onClick={handlePreviewCustomDate}
-                  disabled={isPreviewLoading || backfillProgress.isRunning || !previewDate}
-                  variant="outline"
-                >
-                  {isPreviewLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    "Preview"
-                  )}
-                </Button>
+              </div>
+              <div>
+                <Label htmlFor="previewEnd" className="text-xs text-muted-foreground mb-1 block">End Date</Label>
+                <Input
+                  id="previewEnd"
+                  type="date"
+                  value={previewEndDate}
+                  onChange={(e) => setPreviewEndDate(e.target.value)}
+                  disabled={isPreviewLoading || backfillProgress.isRunning}
+                />
               </div>
             </div>
+
+            <Button
+              onClick={handlePreviewRange}
+              disabled={isPreviewLoading || backfillProgress.isRunning || !previewStartDate || !previewEndDate}
+              variant="outline"
+              className="w-full"
+            >
+              {isPreviewLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Loading Preview...
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4 mr-2" />
+                  Preview Range
+                </>
+              )}
+            </Button>
           </CardContent>
         </Card>
 
@@ -591,20 +649,15 @@ export default function UnitySync() {
         {previewResult && (
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Data Preview</h2>
+              <h2 className="text-lg font-semibold">
+                Data Preview
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  ({previewResult.startDate === previewResult.endDate 
+                    ? previewResult.startDate 
+                    : `${previewResult.startDate} to ${previewResult.endDate}`})
+                </span>
+              </h2>
               <div className="flex gap-2">
-                <Button
-                  onClick={() => handleRunSync(previewResult.date)}
-                  disabled={isRunning || backfillProgress.isRunning || previewResult.data.length === 0}
-                  size="sm"
-                >
-                  {isRunning ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Play className="w-4 h-4 mr-2" />
-                  )}
-                  Sync This Data
-                </Button>
                 <Button
                   onClick={clearPreview}
                   variant="ghost"

@@ -12,8 +12,31 @@ function getYesterdayDate(): string {
   return yesterday.toISOString().split('T')[0];
 }
 
-// Fetch Unity Ads data
-async function fetchUnityData(date: string): Promise<any[]> {
+// Parse request body and determine date range
+interface DateRange {
+  startDate: string;
+  endDate: string;
+}
+
+function parseDateRange(body: any): DateRange {
+  const yesterday = getYesterdayDate();
+  
+  // New range format: { startDate, endDate }
+  if (body.startDate && body.endDate) {
+    return { startDate: body.startDate, endDate: body.endDate };
+  }
+  
+  // Legacy single date format: { date } - treat as single day range
+  if (body.date) {
+    return { startDate: body.date, endDate: body.date };
+  }
+  
+  // Default: yesterday only
+  return { startDate: yesterday, endDate: yesterday };
+}
+
+// Fetch Unity Ads data for a date range
+async function fetchUnityData(startDate: string, endDate: string): Promise<any[]> {
   const orgId = Deno.env.get('UNITY_ORG_ID');
   const keyId = Deno.env.get('UNITY_KEY_ID');
   const secretKey = Deno.env.get('UNITY_SECRET_KEY');
@@ -24,13 +47,13 @@ async function fetchUnityData(date: string): Promise<any[]> {
 
   const basicAuth = btoa(`${keyId}:${secretKey}`);
   
-  // Unity API requires end date to be after start date
-  const endDate = new Date(`${date}T00:00:00.000Z`);
-  endDate.setUTCDate(endDate.getUTCDate() + 1);
-  const endDateStr = endDate.toISOString().split('T')[0];
+  // Unity API requires end date to be after start date, so add 1 day
+  const endDateObj = new Date(`${endDate}T00:00:00.000Z`);
+  endDateObj.setUTCDate(endDateObj.getUTCDate() + 1);
+  const endDateStr = endDateObj.toISOString().split('T')[0];
   
   const params = new URLSearchParams({
-    start: date,
+    start: startDate,
     end: endDateStr,
     scale: 'day',
     format: 'json',
@@ -46,7 +69,7 @@ async function fetchUnityData(date: string): Promise<any[]> {
 
   const url = `https://services.api.unity.com/advertise/stats/v2/organizations/${orgId}/reports/acquisitions?${params}`;
   
-  console.log(`Fetching Unity preview data for date: ${date}`);
+  console.log(`Fetching Unity preview data for range: ${startDate} to ${endDate}`);
   
   const response = await fetch(url, {
     headers: {
@@ -135,24 +158,22 @@ serve(async (req: Request) => {
   const startTime = Date.now();
   
   try {
-    let targetDate = getYesterdayDate();
+    let dateRange: DateRange = { startDate: getYesterdayDate(), endDate: getYesterdayDate() };
     
     if (req.method === 'POST') {
       try {
         const body = await req.json();
-        if (body.date) {
-          targetDate = body.date;
-        }
+        dateRange = parseDateRange(body);
       } catch {
-        // No body or invalid JSON, use default date
+        // No body or invalid JSON, use default dates
       }
     }
 
     console.log(`=== Unity Preview Started ===`);
-    console.log(`Target date: ${targetDate}`);
+    console.log(`Date range: ${dateRange.startDate} to ${dateRange.endDate}`);
 
-    // Fetch Unity data
-    const unityData = await fetchUnityData(targetDate);
+    // Fetch Unity data for the range
+    const unityData = await fetchUnityData(dateRange.startDate, dateRange.endDate);
     
     if (unityData.length === 0) {
       return new Response(
@@ -169,15 +190,16 @@ serve(async (req: Request) => {
             countries: [],
             platforms: [],
           },
-          date: targetDate,
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
           durationMs: Date.now() - startTime,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Transform data
-    const transformedData = transformData(unityData, targetDate);
+    // Transform data (use startDate as fallback for timestamp)
+    const transformedData = transformData(unityData, dateRange.startDate);
 
     // Calculate summary statistics
     const totalSpend = transformedData.reduce((sum, row) => sum + (row.spend || 0), 0);
@@ -226,7 +248,8 @@ serve(async (req: Request) => {
         success: true,
         data: transformedData,
         summary,
-        date: targetDate,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
         durationMs: duration,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
