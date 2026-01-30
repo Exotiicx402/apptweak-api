@@ -8,6 +8,16 @@ const corsHeaders = {
 const MOLOCO_AUTH_URL = 'https://api.moloco.cloud/cm/v1/auth/tokens';
 const MOLOCO_REPORTS_URL = 'https://api.moloco.cloud/cm/v1/reports';
 
+function getTodayDate(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
 interface MolocoRow {
   date: string;
   campaign?: {
@@ -123,7 +133,6 @@ async function waitForReport(
       throw new Error('Report generation failed');
     }
 
-    // Wait before next attempt
     await new Promise(resolve => setTimeout(resolve, delayMs));
   }
 
@@ -155,6 +164,57 @@ function processRows(rows: MolocoRow[]): ProcessedRow[] {
   }));
 }
 
+// Aggregate rows by date
+function aggregateByDate(rows: ProcessedRow[]): any[] {
+  const dateMap = new Map<string, any>();
+  
+  for (const row of rows) {
+    const existing = dateMap.get(row.date) || {
+      date: row.date,
+      spend: 0,
+      installs: 0,
+      impressions: 0,
+      clicks: 0,
+    };
+    existing.spend += row.spend;
+    existing.installs += row.installs;
+    existing.impressions += row.impressions;
+    existing.clicks += row.clicks;
+    dateMap.set(row.date, existing);
+  }
+  
+  return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Aggregate rows by campaign
+function aggregateByCampaign(rows: ProcessedRow[]): any[] {
+  const campaignMap = new Map<string, any>();
+  
+  for (const row of rows) {
+    const key = row.campaign_id;
+    const existing = campaignMap.get(key) || {
+      campaign_id: row.campaign_id,
+      campaign_name: row.campaign_name,
+      spend: 0,
+      installs: 0,
+      impressions: 0,
+      clicks: 0,
+    };
+    existing.spend += row.spend;
+    existing.installs += row.installs;
+    existing.impressions += row.impressions;
+    existing.clicks += row.clicks;
+    campaignMap.set(key, existing);
+  }
+  
+  return Array.from(campaignMap.values())
+    .map(c => ({
+      ...c,
+      cpi: c.installs > 0 ? c.spend / c.installs : 0,
+    }))
+    .sort((a, b) => b.spend - a.spend);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -168,30 +228,77 @@ serve(async (req) => {
       throw new Error('Moloco credentials not configured');
     }
 
-    // Parse request body
     const { startDate, endDate } = await req.json();
 
     if (!startDate || !endDate) {
       throw new Error('startDate and endDate are required');
     }
 
-    console.log(`Fetching Moloco data from ${startDate} to ${endDate}`);
+    const today = getTodayDate();
+    const includestoday = endDate >= today;
+    
+    // Moloco reports are typically available with some delay
+    // Adjust end date to yesterday if today is included
+    const effectiveEndDate = includestoday ? addDays(today, -1) : endDate;
+    const shouldFetch = startDate <= effectiveEndDate;
 
-    // Step 1: Get access token
+    console.log(`Fetching Moloco data from ${startDate} to ${effectiveEndDate}`);
+
+    // Calculate previous period for comparison
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const prevStart = new Date(start);
+    prevStart.setDate(prevStart.getDate() - daysDiff - 1);
+    const prevEnd = new Date(start);
+    prevEnd.setDate(prevEnd.getDate() - 1);
+    
+    const prevStartStr = prevStart.toISOString().split("T")[0];
+    const prevEndStr = prevEnd.toISOString().split("T")[0];
+
+    if (!shouldFetch) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            daily: [],
+            campaigns: [],
+            totals: { spend: 0, installs: 0, impressions: 0, clicks: 0, cpi: 0 },
+            previousTotals: { spend: 0, installs: 0, impressions: 0, clicks: 0, cpi: 0 },
+            dateRange: { startDate, endDate: effectiveEndDate },
+            previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
+          },
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get access token
     const token = await getAccessToken(apiKey);
 
-    // Step 2: Create report
-    const reportId = await createReport(token, adAccountId, startDate, endDate);
+    // Fetch current period and previous period in parallel
+    const [currentRows, prevRows] = await Promise.all([
+      (async () => {
+        const reportId = await createReport(token, adAccountId, startDate, effectiveEndDate);
+        const jsonUrl = await waitForReport(token, reportId);
+        const rawRows = await downloadReport(jsonUrl);
+        return processRows(rawRows);
+      })(),
+      (async () => {
+        try {
+          const reportId = await createReport(token, adAccountId, prevStartStr, prevEndStr);
+          const jsonUrl = await waitForReport(token, reportId);
+          const rawRows = await downloadReport(jsonUrl);
+          return processRows(rawRows);
+        } catch (error) {
+          console.error('Error fetching previous period:', error);
+          return [];
+        }
+      })(),
+    ]);
 
-    // Step 3: Poll for report status until ready
-    const jsonUrl = await waitForReport(token, reportId);
-
-    // Step 4: Download and process the report
-    const rawRows = await downloadReport(jsonUrl);
-    const rows = processRows(rawRows);
-
-    // Calculate totals
-    const totals = rows.reduce(
+    // Calculate totals for current period
+    const totals = currentRows.reduce(
       (acc, row) => ({
         spend: acc.spend + row.spend,
         installs: acc.installs + row.installs,
@@ -201,17 +308,35 @@ serve(async (req) => {
       { spend: 0, installs: 0, impressions: 0, clicks: 0 }
     );
 
-    console.log(`Processed ${rows.length} rows, total spend: ${totals.spend}`);
+    // Calculate totals for previous period
+    const previousTotals = prevRows.reduce(
+      (acc, row) => ({
+        spend: acc.spend + row.spend,
+        installs: acc.installs + row.installs,
+        impressions: acc.impressions + row.impressions,
+        clicks: acc.clicks + row.clicks,
+      }),
+      { spend: 0, installs: 0, impressions: 0, clicks: 0 }
+    );
+
+    console.log(`Processed ${currentRows.length} rows, total spend: ${totals.spend}`);
 
     return new Response(
       JSON.stringify({ 
         success: true,
         data: { 
-          rows, 
+          daily: aggregateByDate(currentRows),
+          campaigns: aggregateByCampaign(currentRows),
           totals: {
             ...totals,
             cpi: totals.installs > 0 ? totals.spend / totals.installs : 0,
           },
+          previousTotals: {
+            ...previousTotals,
+            cpi: previousTotals.installs > 0 ? previousTotals.spend / previousTotals.installs : 0,
+          },
+          dateRange: { startDate, endDate: effectiveEndDate },
+          previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -220,7 +345,7 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error in moloco-history:', errorMessage);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

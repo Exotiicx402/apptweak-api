@@ -5,7 +5,87 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-async function getAccessToken(): Promise<string> {
+type CachedOAuthToken = { token: string; expiresAtMs: number };
+let snapchatTokenCache: CachedOAuthToken | null = null;
+
+function getTodayDate(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function parseYmd(dateStr: string): { year: number; month: number; day: number } {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) throw new Error(`Invalid date: ${dateStr}`);
+  return { year: y, month: m, day: d };
+}
+
+function addDaysYmd(dateStr: string, days: number): string {
+  const { year, month, day } = parseYmd(dateStr);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().split('T')[0];
+}
+
+function getZonedParts(utcDate: Date, timeZone: string) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  const parts = dtf.formatToParts(utcDate);
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    if (p.type !== 'literal') map[p.type] = p.value;
+  }
+
+  const hour = Number(map.hour);
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: hour === 24 ? 0 : hour,
+    minute: Number(map.minute),
+    second: Number(map.second),
+  };
+}
+
+function getTimeZoneOffsetMs(utcDate: Date, timeZone: string): number {
+  const p = getZonedParts(utcDate, timeZone);
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return asUtc - utcDate.getTime();
+}
+
+function getUtcMsForZonedMidnight(dateStr: string, timeZone: string): number {
+  const { year, month, day } = parseYmd(dateStr);
+  const localMidnightAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
+
+  let utcMs = localMidnightAsUtc;
+  for (let i = 0; i < 3; i++) {
+    const offset = getTimeZoneOffsetMs(new Date(utcMs), timeZone);
+    const nextUtcMs = localMidnightAsUtc - offset;
+    if (Math.abs(nextUtcMs - utcMs) < 1000) break;
+    utcMs = nextUtcMs;
+  }
+
+  return utcMs;
+}
+
+function resolveAccountDayRangeUtc(dateStr: string, timeZone: string): { startTime: string; endTime: string } {
+  const startMs = getUtcMsForZonedMidnight(dateStr, timeZone);
+  const nextDate = addDaysYmd(dateStr, 1);
+  const endMs = getUtcMsForZonedMidnight(nextDate, timeZone);
+  return {
+    startTime: new Date(startMs).toISOString(),
+    endTime: new Date(endMs).toISOString(),
+  };
+}
+
+async function getGoogleAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
   const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
@@ -26,6 +106,44 @@ async function getAccessToken(): Promise<string> {
   }
 
   const data = await response.json();
+  return data.access_token;
+}
+
+async function getSnapchatAccessToken(): Promise<string> {
+  const clientId = Deno.env.get('SNAPCHAT_CLIENT_ID');
+  const clientSecret = Deno.env.get('SNAPCHAT_CLIENT_SECRET');
+  const refreshToken = Deno.env.get('SNAPCHAT_REFRESH_TOKEN');
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error('Missing Snapchat OAuth credentials');
+  }
+
+  if (snapchatTokenCache && Date.now() < snapchatTokenCache.expiresAtMs - 60_000) {
+    return snapchatTokenCache.token;
+  }
+
+  const response = await fetch('https://accounts.snapchat.com/login/oauth2/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to get Snapchat access token: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const expiresInSec = Number(data.expires_in ?? 3600);
+  snapchatTokenCache = {
+    token: data.access_token,
+    expiresAtMs: Date.now() + expiresInSec * 1000,
+  };
   return data.access_token;
 }
 
@@ -95,6 +213,84 @@ async function queryBigQuery(query: string, accessToken: string): Promise<any[]>
   });
 }
 
+// Fetch live Snapchat stats for a specific date
+async function fetchSnapchatLiveStats(accessToken: string, date: string): Promise<any> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  if (!adAccountId) {
+    throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
+  }
+
+  const accountTimeZone = Deno.env.get('SNAPCHAT_ACCOUNT_TIMEZONE') || 'America/Toronto';
+  const { startTime, endTime } = resolveAccountDayRangeUtc(date, accountTimeZone);
+
+  const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
+  url.searchParams.set('granularity', 'DAY');
+  url.searchParams.set('breakdown', 'campaign');
+  url.searchParams.set('start_time', startTime);
+  url.searchParams.set('end_time', endTime);
+  url.searchParams.set('omit_empty', 'false');
+  url.searchParams.set('swipe_up_attribution_window', '28_DAY');
+  url.searchParams.set('view_attribution_window', '1_DAY');
+  url.searchParams.set('action_report_time', 'conversion');
+  url.searchParams.set('fields', 'impressions,swipes,spend,video_views,total_installs');
+
+  console.log(`Fetching live Snapchat data for ${date}`);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Snapchat API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  
+  let totalSpend = 0;
+  let totalImpressions = 0;
+  let totalSwipes = 0;
+  let totalVideoViews = 0;
+  let totalInstalls = 0;
+
+  if (Array.isArray(data.timeseries_stats)) {
+    for (const wrapper of data.timeseries_stats) {
+      const timeseriesStat = wrapper?.timeseries_stat;
+      if (!timeseriesStat) continue;
+
+      const breakdownStats = timeseriesStat.breakdown_stats;
+      if (!breakdownStats?.campaign || !Array.isArray(breakdownStats.campaign)) continue;
+
+      for (const campaign of breakdownStats.campaign) {
+        const timeseries = campaign.timeseries;
+        if (Array.isArray(timeseries)) {
+          for (const dayData of timeseries) {
+            totalSpend += (dayData.stats?.spend || 0) / 1000000;
+            totalImpressions += dayData.stats?.impressions || 0;
+            totalSwipes += dayData.stats?.swipes || 0;
+            totalVideoViews += dayData.stats?.video_views || 0;
+            totalInstalls += dayData.stats?.total_installs || 0;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    date,
+    spend: totalSpend,
+    impressions: totalImpressions,
+    swipes: totalSwipes,
+    video_views: totalVideoViews,
+    installs: totalInstalls,
+    view_completion: 0,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -111,11 +307,18 @@ serve(async (req) => {
       );
     }
 
-    const accessToken = await getAccessToken();
+    const today = getTodayDate();
+    const includestoday = endDate >= today;
+    const bqEndDate = includestoday ? addDaysYmd(today, -1) : endDate;
+    const shouldQueryBigQuery = startDate <= bqEndDate;
+
+    console.log(`Query range: ${startDate} to ${endDate}, today: ${today}, includestoday: ${includestoday}`);
+
+    const googleAccessToken = await getGoogleAccessToken();
     const { projectId, datasetId, tableId } = resolveBigQueryTarget();
     const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
 
-    // Calculate previous period for comparison
+    // Calculate previous period
     const start = new Date(startDate);
     const end = new Date(endDate);
     const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
@@ -129,8 +332,8 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign_id = '${campaignId}'` : "";
 
-    // Daily metrics query
-    const dailyQuery = `
+    // Build queries
+    const dailyQuery = shouldQueryBigQuery ? `
       SELECT 
         DATE(timestamp) as date,
         SUM(spend) as spend,
@@ -138,19 +341,15 @@ serve(async (req) => {
         SUM(swipes) as swipes,
         SUM(video_views) as video_views,
         SUM(total_installs) as installs,
-        SUM(view_completion) as view_completion,
-        SUM(quartile_1) as quartile_1,
-        SUM(quartile_2) as quartile_2,
-        SUM(quartile_3) as quartile_3
+        SUM(view_completion) as view_completion
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
-    `;
+    ` : null;
 
-    // Campaign breakdown query
-    const campaignQuery = `
+    const campaignQuery = shouldQueryBigQuery ? `
       SELECT 
         campaign_id,
         campaign_name,
@@ -161,13 +360,12 @@ serve(async (req) => {
         SUM(total_installs) as installs,
         SUM(view_completion) as view_completion
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       GROUP BY campaign_id, campaign_name
       ORDER BY spend DESC
-    `;
+    ` : null;
 
-    // Totals for current period
-    const totalsQuery = `
+    const totalsQuery = shouldQueryBigQuery ? `
       SELECT 
         SUM(spend) as total_spend,
         SUM(impressions) as total_impressions,
@@ -178,11 +376,10 @@ serve(async (req) => {
         SAFE_DIVIDE(SUM(swipes), SUM(impressions)) as swipe_rate,
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(total_installs), 0)) as cpi
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${campaignFilter}
-    `;
+    ` : null;
 
-    // Totals for previous period
     const prevTotalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
@@ -198,53 +395,89 @@ serve(async (req) => {
       ${campaignFilter}
     `;
 
-    // Execute all queries in parallel
-    const [dailyData, campaignData, totalsData, prevTotalsData] = await Promise.all([
-      queryBigQuery(dailyQuery, accessToken),
-      queryBigQuery(campaignQuery, accessToken),
-      queryBigQuery(totalsQuery, accessToken),
-      queryBigQuery(prevTotalsQuery, accessToken),
-    ]);
+    // Execute queries in parallel
+    const promises: Promise<any>[] = [];
+    
+    if (shouldQueryBigQuery) {
+      promises.push(
+        queryBigQuery(dailyQuery!, googleAccessToken),
+        queryBigQuery(campaignQuery!, googleAccessToken),
+        queryBigQuery(totalsQuery!, googleAccessToken)
+      );
+    } else {
+      promises.push(Promise.resolve([]), Promise.resolve([]), Promise.resolve([]));
+    }
+    
+    promises.push(queryBigQuery(prevTotalsQuery, googleAccessToken));
+    
+    // Fetch live data for today if needed
+    if (includestoday) {
+      const snapchatToken = await getSnapchatAccessToken();
+      promises.push(fetchSnapchatLiveStats(snapchatToken, today));
+    } else {
+      promises.push(Promise.resolve(null));
+    }
 
-    const totals = totalsData[0] || {};
+    const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, liveData] = await Promise.all(promises);
+
+    // Process BigQuery data
+    let dailyData = bqDailyData.map((row: any) => ({
+      date: row.date,
+      spend: parseFloat(row.spend) || 0,
+      impressions: parseInt(row.impressions) || 0,
+      swipes: parseInt(row.swipes) || 0,
+      video_views: parseInt(row.video_views) || 0,
+      installs: parseInt(row.installs) || 0,
+      view_completion: parseInt(row.view_completion) || 0,
+    }));
+
+    let campaignData = bqCampaignData.map((row: any) => ({
+      campaign_id: row.campaign_id,
+      campaign_name: row.campaign_name,
+      spend: parseFloat(row.spend) || 0,
+      impressions: parseInt(row.impressions) || 0,
+      swipes: parseInt(row.swipes) || 0,
+      video_views: parseInt(row.video_views) || 0,
+      installs: parseInt(row.installs) || 0,
+      view_completion: parseInt(row.view_completion) || 0,
+    }));
+
+    const bqTotals = bqTotalsData[0] || {};
+    let totals = {
+      spend: parseFloat(bqTotals.total_spend) || 0,
+      impressions: parseInt(bqTotals.total_impressions) || 0,
+      swipes: parseInt(bqTotals.total_swipes) || 0,
+      video_views: parseInt(bqTotals.total_video_views) || 0,
+      installs: parseInt(bqTotals.total_installs) || 0,
+      view_completion: parseInt(bqTotals.total_view_completion) || 0,
+      swipe_rate: parseFloat(bqTotals.swipe_rate) || 0,
+      cpi: parseFloat(bqTotals.cpi) || 0,
+    };
+
+    // Merge live data for today
+    if (liveData) {
+      dailyData.push(liveData);
+      
+      totals.spend += liveData.spend;
+      totals.impressions += liveData.impressions;
+      totals.swipes += liveData.swipes;
+      totals.video_views += liveData.video_views;
+      totals.installs += liveData.installs;
+      totals.swipe_rate = totals.impressions > 0 ? totals.swipes / totals.impressions : 0;
+      totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
+      
+      console.log(`Added live data for today: spend=${liveData.spend}, installs=${liveData.installs}`);
+    }
+
     const prevTotals = prevTotalsData[0] || {};
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
-          daily: dailyData.map((row) => ({
-            date: row.date,
-            spend: parseFloat(row.spend) || 0,
-            impressions: parseInt(row.impressions) || 0,
-            swipes: parseInt(row.swipes) || 0,
-            video_views: parseInt(row.video_views) || 0,
-            installs: parseInt(row.installs) || 0,
-            view_completion: parseInt(row.view_completion) || 0,
-            quartile_1: parseInt(row.quartile_1) || 0,
-            quartile_2: parseInt(row.quartile_2) || 0,
-            quartile_3: parseInt(row.quartile_3) || 0,
-          })),
-          campaigns: campaignData.map((row) => ({
-            campaign_id: row.campaign_id,
-            campaign_name: row.campaign_name,
-            spend: parseFloat(row.spend) || 0,
-            impressions: parseInt(row.impressions) || 0,
-            swipes: parseInt(row.swipes) || 0,
-            video_views: parseInt(row.video_views) || 0,
-            installs: parseInt(row.installs) || 0,
-            view_completion: parseInt(row.view_completion) || 0,
-          })),
-          totals: {
-            spend: parseFloat(totals.total_spend) || 0,
-            impressions: parseInt(totals.total_impressions) || 0,
-            swipes: parseInt(totals.total_swipes) || 0,
-            video_views: parseInt(totals.total_video_views) || 0,
-            installs: parseInt(totals.total_installs) || 0,
-            view_completion: parseInt(totals.total_view_completion) || 0,
-            swipe_rate: parseFloat(totals.swipe_rate) || 0,
-            cpi: parseFloat(totals.cpi) || 0,
-          },
+          daily: dailyData,
+          campaigns: campaignData,
+          totals,
           previousTotals: {
             spend: parseFloat(prevTotals.total_spend) || 0,
             impressions: parseInt(prevTotals.total_impressions) || 0,

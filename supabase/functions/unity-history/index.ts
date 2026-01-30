@@ -5,7 +5,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-async function getAccessToken(): Promise<string> {
+function getTodayDate(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+async function getGoogleAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
   const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
@@ -34,7 +44,6 @@ function resolveBigQueryTarget(): { projectId: string; datasetId: string; tableI
   let datasetId = (Deno.env.get("BQ_DATASET_ID") || "").trim();
   let tableId = (Deno.env.get("BQ_TABLE_ID") || "").trim();
 
-  // If tableId includes dataset/project, prefer parsing from it
   const tableParts = tableId.split(".").filter(Boolean);
   if (tableParts.length === 3) {
     projectId = tableParts[0];
@@ -88,6 +97,157 @@ async function queryBigQuery(query: string, accessToken: string): Promise<any[]>
   });
 }
 
+// Fetch live Unity data for a date range
+async function fetchUnityLiveData(startDate: string, endDate: string): Promise<any[]> {
+  const orgId = Deno.env.get('UNITY_ORG_ID');
+  const keyId = Deno.env.get('UNITY_KEY_ID');
+  const secretKey = Deno.env.get('UNITY_SECRET_KEY');
+
+  if (!orgId || !keyId || !secretKey) {
+    throw new Error('Missing Unity credentials');
+  }
+
+  const basicAuth = btoa(`${keyId}:${secretKey}`);
+  
+  // Unity API requires end date to be after start date
+  const endDateObj = new Date(`${endDate}T00:00:00.000Z`);
+  endDateObj.setUTCDate(endDateObj.getUTCDate() + 1);
+  const endDateStr = endDateObj.toISOString().split('T')[0];
+  
+  const params = new URLSearchParams({
+    start: startDate,
+    end: endDateStr,
+    scale: 'day',
+    format: 'json',
+    metrics: 'starts,views,clicks,installs,spend,cpi,ctr,cvr,ecpm',
+    breakdowns: 'campaign',
+  });
+
+  const gameIds = Deno.env.get('UNITY_GAME_IDS');
+  const appIds = Deno.env.get('UNITY_APP_IDS');
+  if (gameIds) params.set('gameIds', gameIds);
+  if (appIds) params.set('appIds', appIds);
+
+  const url = `https://services.api.unity.com/advertise/stats/v2/organizations/${orgId}/reports/acquisitions?${params}`;
+  
+  console.log(`Fetching live Unity data for range: ${startDate} to ${endDate}`);
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Basic ${basicAuth}`,
+      'Accept': 'application/json',
+    },
+  });
+
+  if (response.status === 204) {
+    console.log('No Unity data available (204)');
+    return [];
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Unity API error: ${response.status} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  return result.data || [];
+}
+
+// Transform live Unity data to match BigQuery schema
+function transformUnityData(unityData: any[]): {
+  daily: any[];
+  campaigns: any[];
+  totals: any;
+} {
+  const dailyMap = new Map<string, any>();
+  const campaignMap = new Map<string, any>();
+  let totalSpend = 0;
+  let totalInstalls = 0;
+  let totalClicks = 0;
+  let totalViews = 0;
+  let totalStarts = 0;
+
+  for (const row of unityData) {
+    const date = (row.timestamp || row.date || '').split('T')[0];
+    const spend = row.spend ?? 0;
+    const installs = row.installs ?? 0;
+    const clicks = row.clicks ?? 0;
+    const views = row.views ?? 0;
+    const starts = row.starts ?? 0;
+    const campaignId = row.campaignId || '';
+    const campaignName = row.campaignName || '';
+
+    totalSpend += spend;
+    totalInstalls += installs;
+    totalClicks += clicks;
+    totalViews += views;
+    totalStarts += starts;
+
+    // Aggregate by date
+    if (date) {
+      const existing = dailyMap.get(date) || {
+        date,
+        spend: 0,
+        installs: 0,
+        clicks: 0,
+        views: 0,
+        starts: 0,
+      };
+      existing.spend += spend;
+      existing.installs += installs;
+      existing.clicks += clicks;
+      existing.views += views;
+      existing.starts += starts;
+      dailyMap.set(date, existing);
+    }
+
+    // Aggregate by campaign
+    if (campaignId) {
+      const key = campaignId;
+      const existing = campaignMap.get(key) || {
+        campaign_id: campaignId,
+        campaign_name: campaignName,
+        spend: 0,
+        installs: 0,
+        clicks: 0,
+        views: 0,
+      };
+      existing.spend += spend;
+      existing.installs += installs;
+      existing.clicks += clicks;
+      existing.views += views;
+      campaignMap.set(key, existing);
+    }
+  }
+
+  const daily = Array.from(dailyMap.values()).map(d => ({
+    ...d,
+    cpi: d.installs > 0 ? d.spend / d.installs : 0,
+    ctr: d.views > 0 ? d.clicks / d.views : 0,
+    cvr: d.clicks > 0 ? d.installs / d.clicks : 0,
+  }));
+
+  const campaigns = Array.from(campaignMap.values()).map(c => ({
+    ...c,
+    cpi: c.installs > 0 ? c.spend / c.installs : 0,
+    ctr: c.views > 0 ? c.clicks / c.views : 0,
+    cvr: c.clicks > 0 ? c.installs / c.clicks : 0,
+  }));
+
+  const totals = {
+    spend: totalSpend,
+    installs: totalInstalls,
+    clicks: totalClicks,
+    views: totalViews,
+    starts: totalStarts,
+    cpi: totalInstalls > 0 ? totalSpend / totalInstalls : 0,
+    ctr: totalViews > 0 ? totalClicks / totalViews : 0,
+    cvr: totalClicks > 0 ? totalInstalls / totalClicks : 0,
+  };
+
+  return { daily, campaigns, totals };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -104,11 +264,18 @@ serve(async (req) => {
       );
     }
 
-    const accessToken = await getAccessToken();
+    const today = getTodayDate();
+    const includestoday = endDate >= today;
+    const bqEndDate = includestoday ? addDays(today, -1) : endDate;
+    const shouldQueryBigQuery = startDate <= bqEndDate;
+
+    console.log(`Query range: ${startDate} to ${endDate}, today: ${today}, includestoday: ${includestoday}`);
+
+    const googleAccessToken = await getGoogleAccessToken();
     const { projectId, datasetId, tableId } = resolveBigQueryTarget();
     const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
 
-    // Calculate previous period for comparison
+    // Calculate previous period
     const start = new Date(startDate);
     const end = new Date(endDate);
     const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
@@ -122,8 +289,8 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign_id = '${campaignId}'` : "";
 
-    // Daily metrics query
-    const dailyQuery = `
+    // Build queries
+    const dailyQuery = shouldQueryBigQuery ? `
       SELECT 
         DATE(timestamp) as date,
         SUM(spend) as spend,
@@ -140,14 +307,13 @@ serve(async (req) => {
         AVG(d1_retention_rate) as d1_retention,
         AVG(d7_retention_rate) as d7_retention
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
-    `;
+    ` : null;
 
-    // Campaign breakdown query
-    const campaignQuery = `
+    const campaignQuery = shouldQueryBigQuery ? `
       SELECT 
         campaign_id,
         campaign_name,
@@ -161,28 +327,26 @@ serve(async (req) => {
         SUM(d0_ad_revenue) as d0_revenue,
         AVG(d0_total_roas) as d0_roas
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       GROUP BY campaign_id, campaign_name
       ORDER BY spend DESC
-    `;
+    ` : null;
 
-    // Country breakdown query
-    const countryQuery = `
+    const countryQuery = shouldQueryBigQuery ? `
       SELECT 
         country,
         SUM(spend) as spend,
         SUM(installs) as installs,
         AVG(cpi) as cpi
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${campaignFilter}
       GROUP BY country
       ORDER BY spend DESC
       LIMIT 20
-    `;
+    ` : null;
 
-    // Totals for current period
-    const totalsQuery = `
+    const totalsQuery = shouldQueryBigQuery ? `
       SELECT 
         SUM(spend) as total_spend,
         SUM(installs) as total_installs,
@@ -197,11 +361,10 @@ serve(async (req) => {
         AVG(d1_retention_rate) as avg_d1_retention,
         AVG(d7_retention_rate) as avg_d7_retention
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${campaignFilter}
-    `;
+    ` : null;
 
-    // Totals for previous period
     const prevTotalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
@@ -221,71 +384,133 @@ serve(async (req) => {
       ${campaignFilter}
     `;
 
-    // Execute all queries in parallel
-    const [dailyData, campaignData, countryData, totalsData, prevTotalsData] = await Promise.all([
-      queryBigQuery(dailyQuery, accessToken),
-      queryBigQuery(campaignQuery, accessToken),
-      queryBigQuery(countryQuery, accessToken),
-      queryBigQuery(totalsQuery, accessToken),
-      queryBigQuery(prevTotalsQuery, accessToken),
-    ]);
+    // Execute queries in parallel
+    const promises: Promise<any>[] = [];
+    
+    if (shouldQueryBigQuery) {
+      promises.push(
+        queryBigQuery(dailyQuery!, googleAccessToken),
+        queryBigQuery(campaignQuery!, googleAccessToken),
+        queryBigQuery(countryQuery!, googleAccessToken),
+        queryBigQuery(totalsQuery!, googleAccessToken)
+      );
+    } else {
+      promises.push(Promise.resolve([]), Promise.resolve([]), Promise.resolve([]), Promise.resolve([]));
+    }
+    
+    promises.push(queryBigQuery(prevTotalsQuery, googleAccessToken));
+    
+    // Fetch live data for today if needed
+    if (includestoday) {
+      promises.push(fetchUnityLiveData(today, today));
+    } else {
+      promises.push(Promise.resolve([]));
+    }
 
-    const totals = totalsData[0] || {};
+    const [bqDailyData, bqCampaignData, bqCountryData, bqTotalsData, prevTotalsData, liveData] = await Promise.all(promises);
+
+    // Process BigQuery data
+    let dailyData = bqDailyData.map((row: any) => ({
+      date: row.date,
+      spend: parseFloat(row.spend) || 0,
+      installs: parseInt(row.installs) || 0,
+      clicks: parseInt(row.clicks) || 0,
+      views: parseInt(row.views) || 0,
+      starts: parseInt(row.starts) || 0,
+      cpi: parseFloat(row.cpi) || 0,
+      ctr: parseFloat(row.ctr) || 0,
+      cvr: parseFloat(row.cvr) || 0,
+      ecpm: parseFloat(row.ecpm) || 0,
+      d0_revenue: parseFloat(row.d0_revenue) || 0,
+      d0_roas: parseFloat(row.d0_roas) || 0,
+      d1_retention: parseFloat(row.d1_retention) || 0,
+      d7_retention: parseFloat(row.d7_retention) || 0,
+    }));
+
+    let campaignData = bqCampaignData.map((row: any) => ({
+      campaign_id: row.campaign_id,
+      campaign_name: row.campaign_name,
+      spend: parseFloat(row.spend) || 0,
+      installs: parseInt(row.installs) || 0,
+      clicks: parseInt(row.clicks) || 0,
+      views: parseInt(row.views) || 0,
+      cpi: parseFloat(row.cpi) || 0,
+      ctr: parseFloat(row.ctr) || 0,
+      cvr: parseFloat(row.cvr) || 0,
+      d0_revenue: parseFloat(row.d0_revenue) || 0,
+      d0_roas: parseFloat(row.d0_roas) || 0,
+    }));
+
+    const countryData = bqCountryData.map((row: any) => ({
+      country: row.country,
+      spend: parseFloat(row.spend) || 0,
+      installs: parseInt(row.installs) || 0,
+      cpi: parseFloat(row.cpi) || 0,
+    }));
+
+    const bqTotals = bqTotalsData[0] || {};
+    let totals = {
+      spend: parseFloat(bqTotals.total_spend) || 0,
+      installs: parseInt(bqTotals.total_installs) || 0,
+      clicks: parseInt(bqTotals.total_clicks) || 0,
+      views: parseInt(bqTotals.total_views) || 0,
+      starts: parseInt(bqTotals.total_starts) || 0,
+      cpi: parseFloat(bqTotals.avg_cpi) || 0,
+      ctr: parseFloat(bqTotals.avg_ctr) || 0,
+      cvr: parseFloat(bqTotals.avg_cvr) || 0,
+      d0_revenue: parseFloat(bqTotals.total_d0_revenue) || 0,
+      d0_roas: parseFloat(bqTotals.avg_d0_roas) || 0,
+      d1_retention: parseFloat(bqTotals.avg_d1_retention) || 0,
+      d7_retention: parseFloat(bqTotals.avg_d7_retention) || 0,
+    };
+
+    // Merge live data for today
+    if (liveData && liveData.length > 0) {
+      const liveTransformed = transformUnityData(liveData);
+      
+      // Add today's daily data
+      dailyData = [...dailyData, ...liveTransformed.daily];
+      
+      // Merge campaign data
+      for (const liveCampaign of liveTransformed.campaigns) {
+        const existing = campaignData.find((c: any) => c.campaign_id === liveCampaign.campaign_id);
+        if (existing) {
+          existing.spend += liveCampaign.spend;
+          existing.installs += liveCampaign.installs;
+          existing.clicks += liveCampaign.clicks;
+          existing.views += liveCampaign.views;
+          existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
+        } else {
+          campaignData.push(liveCampaign);
+        }
+      }
+      
+      // Update totals
+      totals.spend += liveTransformed.totals.spend;
+      totals.installs += liveTransformed.totals.installs;
+      totals.clicks += liveTransformed.totals.clicks;
+      totals.views += liveTransformed.totals.views;
+      totals.starts += liveTransformed.totals.starts;
+      totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
+      totals.ctr = totals.views > 0 ? totals.clicks / totals.views : 0;
+      totals.cvr = totals.clicks > 0 ? totals.installs / totals.clicks : 0;
+      
+      console.log(`Added live data for today: spend=${liveTransformed.totals.spend}, installs=${liveTransformed.totals.installs}`);
+    }
+
+    // Sort campaign data by spend desc
+    campaignData.sort((a: any, b: any) => b.spend - a.spend);
+
     const prevTotals = prevTotalsData[0] || {};
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
-          daily: dailyData.map((row) => ({
-            date: row.date,
-            spend: parseFloat(row.spend) || 0,
-            installs: parseInt(row.installs) || 0,
-            clicks: parseInt(row.clicks) || 0,
-            views: parseInt(row.views) || 0,
-            starts: parseInt(row.starts) || 0,
-            cpi: parseFloat(row.cpi) || 0,
-            ctr: parseFloat(row.ctr) || 0,
-            cvr: parseFloat(row.cvr) || 0,
-            ecpm: parseFloat(row.ecpm) || 0,
-            d0_revenue: parseFloat(row.d0_revenue) || 0,
-            d0_roas: parseFloat(row.d0_roas) || 0,
-            d1_retention: parseFloat(row.d1_retention) || 0,
-            d7_retention: parseFloat(row.d7_retention) || 0,
-          })),
-          campaigns: campaignData.map((row) => ({
-            campaign_id: row.campaign_id,
-            campaign_name: row.campaign_name,
-            spend: parseFloat(row.spend) || 0,
-            installs: parseInt(row.installs) || 0,
-            clicks: parseInt(row.clicks) || 0,
-            views: parseInt(row.views) || 0,
-            cpi: parseFloat(row.cpi) || 0,
-            ctr: parseFloat(row.ctr) || 0,
-            cvr: parseFloat(row.cvr) || 0,
-            d0_revenue: parseFloat(row.d0_revenue) || 0,
-            d0_roas: parseFloat(row.d0_roas) || 0,
-          })),
-          countries: countryData.map((row) => ({
-            country: row.country,
-            spend: parseFloat(row.spend) || 0,
-            installs: parseInt(row.installs) || 0,
-            cpi: parseFloat(row.cpi) || 0,
-          })),
-          totals: {
-            spend: parseFloat(totals.total_spend) || 0,
-            installs: parseInt(totals.total_installs) || 0,
-            clicks: parseInt(totals.total_clicks) || 0,
-            views: parseInt(totals.total_views) || 0,
-            starts: parseInt(totals.total_starts) || 0,
-            cpi: parseFloat(totals.avg_cpi) || 0,
-            ctr: parseFloat(totals.avg_ctr) || 0,
-            cvr: parseFloat(totals.avg_cvr) || 0,
-            d0_revenue: parseFloat(totals.total_d0_revenue) || 0,
-            d0_roas: parseFloat(totals.avg_d0_roas) || 0,
-            d1_retention: parseFloat(totals.avg_d1_retention) || 0,
-            d7_retention: parseFloat(totals.avg_d7_retention) || 0,
-          },
+          daily: dailyData,
+          campaigns: campaignData,
+          countries: countryData,
+          totals,
           previousTotals: {
             spend: parseFloat(prevTotals.total_spend) || 0,
             installs: parseInt(prevTotals.total_installs) || 0,

@@ -5,6 +5,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function getTodayDate(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
@@ -97,6 +107,10 @@ async function queryBigQuery(query: string, accessToken: string): Promise<any[]>
   });
 }
 
+// Note: TikTok does not have a preview function that we can use for live data
+// For now, TikTok will only show BigQuery data (no live today data)
+// This is because TikTok data comes from Windsor which syncs periodically
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -110,6 +124,33 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "startDate and endDate are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const today = getTodayDate();
+    const includestoday = endDate >= today;
+    // For TikTok, we only query BQ data (no live API available)
+    // Adjust end date to yesterday if today is included
+    const effectiveEndDate = includestoday ? addDays(today, -1) : endDate;
+    const shouldQueryBigQuery = startDate <= effectiveEndDate;
+
+    console.log(`Query range: ${startDate} to ${endDate}, effective BQ end: ${effectiveEndDate}`);
+
+    if (!shouldQueryBigQuery) {
+      // If only querying for today and we have no live API, return empty
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            daily: [],
+            campaigns: [],
+            totals: { spend: 0, impressions: 0, clicks: 0, installs: 0, cpi: 0, ctr: 0 },
+            previousTotals: { spend: 0, impressions: 0, clicks: 0, installs: 0, cpi: 0, ctr: 0 },
+            dateRange: { startDate, endDate },
+            previousDateRange: { startDate: "", endDate: "" },
+          },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -133,14 +174,6 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign = '${campaignId}'` : "";
 
-    // Windsor TikTok schema (assumed based on Windsor patterns):
-    // - date (DATE column)
-    // - campaign (STRING - campaign name)
-    // - spend (NUMERIC)
-    // - impressions (INTEGER)
-    // - clicks (INTEGER)
-    // - conversions (INTEGER - installs)
-    
     // Daily metrics query
     const dailyQuery = `
       SELECT 
@@ -150,7 +183,7 @@ serve(async (req) => {
         SUM(clicks) as clicks,
         SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${endDate}'
+      WHERE date BETWEEN '${startDate}' AND '${effectiveEndDate}'
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
@@ -165,7 +198,7 @@ serve(async (req) => {
         SUM(clicks) as clicks,
         SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${endDate}'
+      WHERE date BETWEEN '${startDate}' AND '${effectiveEndDate}'
       GROUP BY campaign
       ORDER BY spend DESC
     `;
@@ -180,7 +213,7 @@ serve(async (req) => {
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
         SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) as ctr
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${endDate}'
+      WHERE date BETWEEN '${startDate}' AND '${effectiveEndDate}'
       ${campaignFilter}
     `;
 
@@ -213,14 +246,14 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         data: {
-          daily: dailyData.map((row) => ({
+          daily: dailyData.map((row: any) => ({
             date: row.date,
             spend: parseFloat(row.spend) || 0,
             impressions: parseInt(row.impressions) || 0,
             clicks: parseInt(row.clicks) || 0,
             installs: parseFloat(row.installs) || 0,
           })),
-          campaigns: campaignData.map((row) => ({
+          campaigns: campaignData.map((row: any) => ({
             campaign_name: row.campaign_name,
             spend: parseFloat(row.spend) || 0,
             impressions: parseInt(row.impressions) || 0,
@@ -244,7 +277,7 @@ serve(async (req) => {
             cpi: parseFloat(prevTotals.cpi) || 0,
             ctr: parseFloat(prevTotals.ctr) || 0,
           },
-          dateRange: { startDate, endDate },
+          dateRange: { startDate, endDate: effectiveEndDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
         },
       }),
