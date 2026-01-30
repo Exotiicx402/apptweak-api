@@ -1,102 +1,71 @@
 
-# Plan: Add Period-over-Period Percentage Changes
+# Fix: Meta Ads Failing to Load on Reporting Page
 
-This adds percentage change indicators to both the Slack daily report and the Reporting page, showing how each metric (Spend, Installs, CPI) changed compared to the previous equivalent period.
+## Problem
 
-## Overview
+The Meta Ads data is intermittently failing with "Failed to send a request to the Edge Function". This is caused by **12 parallel API requests** being made when only **6 are needed**.
 
-For a 1-day report (e.g., Jan 29), it compares against the previous day (Jan 28). For a 7-day range, it compares against the 7 days before that.
+Currently, `useReportingData.ts` calls each platform endpoint **twice** - once for the current period and once for the previous period. However, all platform endpoints (including `meta-history`) **already calculate and return `previousTotals`** in their response.
 
----
+This causes:
+- Cold start race conditions (edge functions booting up)
+- Potential rate limiting
+- Unnecessary API load
+
+## Solution
+
+Simplify `useReportingData.ts` to:
+1. Make only **6 requests** (one per platform) instead of 12
+2. Extract both `totals` and `previousTotals` from each single response
+3. Match how `MetaHistoryDashboard` already works correctly
 
 ## Changes
 
-### 1. Update Moloco Endpoint for Previous Period Support
+### File: `src/hooks/useReportingData.ts`
 
-The `moloco-history` endpoint currently doesn't return previous period data. Update it to:
-- Calculate the previous date range (same logic as other platforms)
-- Make a second API call for the previous period
-- Return `previousTotals` alongside `totals`
-
-### 2. Enhance the Slack Daily Report
-
-Update `slack-daily-report` to:
-- Fetch data for both yesterday AND the day before yesterday
-- Calculate percentage change for each metric per platform
-- Add a "% Change" column to the table or show delta below each value
-- Use visual indicators (arrows or +/- prefixes)
-
-**Updated Slack message format:**
-```text
-Platform         Spend        Installs      CPI
---------------------------------------------
-Meta             $12,450      3,200         $3.89
-                 +8.2%        +12.5%        -3.8%
-Snapchat         $8,320       2,150         $3.87
-                 -2.1%        +5.3%         -7.0%
-...
+**Current approach (inefficient):**
+```typescript
+// 12 parallel requests
+const [metaResult, snapchatResult, ..., prevMetaResult, prevSnapchatResult, ...] = 
+  await Promise.allSettled([
+    invoke("meta-history", { startDate, endDate }),
+    // ... 5 more current period calls
+    invoke("meta-history", { startDate: previousStart, endDate: previousEnd }),
+    // ... 5 more previous period calls
+  ]);
 ```
 
-### 3. Update the Reporting Page Components
-
-**useReportingData hook:**
-- Extend `PlatformMetrics` interface to include `previousSpend`, `previousInstalls`, `previousCpi`
-- Extract `previousTotals` from API responses during processing
-- Calculate and store both current and previous values
-
-**PlatformMetricsRow component:**
-- Add percentage change display below each metric value
-- Show green up arrow for increases, red down arrow for decreases
-- Display the change percentage (e.g., "+12.5%" or "-3.8%")
-- Consider that CPI increases are typically "bad" (red), decreases are "good" (green)
-
-**TotalMetricsSection component:**
-- Same treatment for the totals row - show blended previous period comparison
-
----
-
-## Technical Details
-
-### Percentage Calculation Logic
+**New approach (efficient):**
 ```typescript
-const calculateChange = (current: number, previous: number): { percent: number; direction: 'up' | 'down' | 'neutral' } => {
-  if (previous === 0) return { percent: 0, direction: 'neutral' };
-  const change = ((current - previous) / previous) * 100;
+// 6 parallel requests - endpoints already return previousTotals
+const [metaResult, snapchatResult, unityResult, googleAdsResult, tiktokResult, molocoResult] = 
+  await Promise.allSettled([
+    invoke("meta-history", { body: { startDate, endDate } }),
+    invoke("snapchat-history", { body: { startDate, endDate } }),
+    invoke("unity-history", { body: { startDate, endDate } }),
+    invoke("google-ads-history", { body: { startDate, endDate } }),
+    invoke("tiktok-history", { body: { startDate, endDate } }),
+    invoke("moloco-history", { body: { startDate, endDate } }),
+  ]);
+
+// Extract both current and previous from single response
+const extractMetrics = (result) => {
+  const totals = result.data?.totals || {};
+  const previousTotals = result.data?.previousTotals || {};
   return {
-    percent: Math.abs(change),
-    direction: change > 0 ? 'up' : change < 0 ? 'down' : 'neutral',
+    spend: totals.spend,
+    installs: totals.installs,
+    cpi: totals.cpi,
+    previousSpend: previousTotals.spend,
+    previousInstalls: previousTotals.installs,
+    previousCpi: previousTotals.cpi,
   };
 };
 ```
 
-### Color Coding
-- **Spend**: Up = red (more cost), Down = green (savings)
-- **Installs**: Up = green (growth), Down = red (decline)
-- **CPI**: Up = red (less efficient), Down = green (more efficient)
-
-### Files to Modify
-
-| File | Change |
-|------|--------|
-| `supabase/functions/moloco-history/index.ts` | Add previous period fetch and `previousTotals` |
-| `supabase/functions/slack-daily-report/index.ts` | Fetch previous day, add % change to message |
-| `src/hooks/useReportingData.ts` | Extract and store `previousTotals` per platform |
-| `src/components/reporting/PlatformMetricsRow.tsx` | Display % change with arrows |
-| `src/components/reporting/TotalMetricsSection.tsx` | Display % change for totals |
-
----
-
 ## Result
 
-**Slack Report** will show:
-```
-Platform         Spend        Installs      CPI
---------------------------------------------
-Meta             $12,450      3,200         $3.89
-                 +8.2%        +12.5%        -3.8%
-...
-TOTAL            $36,470      9,700         $3.76
-                 +5.1%        +8.2%         -2.9%
-```
-
-**Reporting Page** will show each metric card with a small percentage indicator below the value, similar to the existing `MetricKpiCard` component's change display.
+- **50% fewer API calls** (6 instead of 12)
+- Eliminates race conditions from parallel cold starts
+- More reliable data loading
+- Faster page load time
