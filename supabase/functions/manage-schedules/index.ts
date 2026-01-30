@@ -24,6 +24,7 @@ function getJobName(command: string): string {
   if (command.includes("snapchat-to-bigquery")) return "Snapchat";
   if (command.includes("meta-to-bigquery")) return "Meta";
   if (command.includes("apptweak-rank-to-sheets")) return "AppTweak Rankings";
+  if (command.includes("slack-daily-report")) return "Slack Daily Report";
   return "Unknown";
 }
 
@@ -33,6 +34,12 @@ function parseSchedule(schedule: string): string {
   if (schedule === "0 0 * * *") return "Daily at midnight";
   if (schedule === "*/5 * * * *") return "Every 5 minutes";
   if (schedule === "*/30 * * * *") return "Every 30 minutes";
+  if (schedule === "0 12 * * *") return "Daily at 7:00 AM EST";
+  if (schedule === "0 13 * * *") return "Daily at 8:00 AM EST";
+  if (schedule === "0 14 * * *") return "Daily at 9:00 AM EST";
+  if (schedule === "0 15 * * *") return "Daily at 10:00 AM EST";
+  if (schedule === "0 16 * * *") return "Daily at 11:00 AM EST";
+  if (schedule === "0 17 * * *") return "Daily at 12:00 PM EST";
   return schedule;
 }
 

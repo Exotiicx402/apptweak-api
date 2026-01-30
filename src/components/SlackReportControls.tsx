@@ -37,6 +37,7 @@ const SlackReportControls = () => {
 
   // Find the Slack report schedule
   const slackSchedule = schedules?.find(s => 
+    s.name === 'Slack Daily Report' ||
     s.name.toLowerCase().includes('slack') || 
     s.name.toLowerCase().includes('daily report')
   );
