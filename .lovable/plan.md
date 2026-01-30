@@ -1,71 +1,64 @@
 
-# Fix: Meta Ads Failing to Load on Reporting Page
+# Add Spacing Between Platforms in Slack Report
 
 ## Problem
 
-The Meta Ads data is intermittently failing with "Failed to send a request to the Edge Function". This is caused by **12 parallel API requests** being made when only **6 are needed**.
-
-Currently, `useReportingData.ts` calls each platform endpoint **twice** - once for the current period and once for the previous period. However, all platform endpoints (including `meta-history`) **already calculate and return `previousTotals`** in their response.
-
-This causes:
-- Cold start race conditions (edge functions booting up)
-- Potential rate limiting
-- Unnecessary API load
+With the percentage change rows now included, the Slack report looks cramped. Each platform's metrics and its percentage change row flows directly into the next platform with no visual separation.
 
 ## Solution
 
-Simplify `useReportingData.ts` to:
-1. Make only **6 requests** (one per platform) instead of 12
-2. Extract both `totals` and `previousTotals` from each single response
-3. Match how `MetaHistoryDashboard` already works correctly
+Add a blank line between each platform's data block (value row + percentage row) to create visual breathing room.
 
 ## Changes
 
-### File: `src/hooks/useReportingData.ts`
+### File: `supabase/functions/slack-daily-report/index.ts`
 
-**Current approach (inefficient):**
+In the `buildSlackMessage` function, modify the loop that builds rows to add an empty line after each platform's percentage change row:
+
+**Current (lines 186-199):**
 ```typescript
-// 12 parallel requests
-const [metaResult, snapchatResult, ..., prevMetaResult, prevSnapchatResult, ...] = 
-  await Promise.allSettled([
-    invoke("meta-history", { startDate, endDate }),
-    // ... 5 more current period calls
-    invoke("meta-history", { startDate: previousStart, endDate: previousEnd }),
-    // ... 5 more previous period calls
-  ]);
+for (const r of sortedResults) {
+  // ... add value row
+  rows.push(`${platform}${spend}${installs}${cpi}`);
+  
+  // Add percentage change row
+  if (!r.error) {
+    rows.push(`${''.padEnd(16)}${spendChange}${installsChange}${cpiChange}`);
+  }
+}
 ```
 
-**New approach (efficient):**
+**Updated:**
 ```typescript
-// 6 parallel requests - endpoints already return previousTotals
-const [metaResult, snapchatResult, unityResult, googleAdsResult, tiktokResult, molocoResult] = 
-  await Promise.allSettled([
-    invoke("meta-history", { body: { startDate, endDate } }),
-    invoke("snapchat-history", { body: { startDate, endDate } }),
-    invoke("unity-history", { body: { startDate, endDate } }),
-    invoke("google-ads-history", { body: { startDate, endDate } }),
-    invoke("tiktok-history", { body: { startDate, endDate } }),
-    invoke("moloco-history", { body: { startDate, endDate } }),
-  ]);
+for (const r of sortedResults) {
+  // ... add value row
+  rows.push(`${platform}${spend}${installs}${cpi}`);
+  
+  // Add percentage change row
+  if (!r.error) {
+    rows.push(`${''.padEnd(16)}${spendChange}${installsChange}${cpiChange}`);
+  }
+  
+  // Add blank line for spacing between platforms
+  rows.push('');
+}
+```
 
-// Extract both current and previous from single response
-const extractMetrics = (result) => {
-  const totals = result.data?.totals || {};
-  const previousTotals = result.data?.previousTotals || {};
-  return {
-    spend: totals.spend,
-    installs: totals.installs,
-    cpi: totals.cpi,
-    previousSpend: previousTotals.spend,
-    previousInstalls: previousTotals.installs,
-    previousCpi: previousTotals.cpi,
-  };
-};
+This adds an empty line after each platform block, creating visual separation like:
+
+```text
+Platform         Spend        Installs      CPI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Meta             $1,824          90       $20.26
+                 -37.1%      -54.3%       +37.6%
+
+Snapchat         $7,048         329       $21.42
+                 +43.9%      -13.4%       +66.2%
+
+Unity            $1,819         175       $10.39
+...
 ```
 
 ## Result
 
-- **50% fewer API calls** (6 instead of 12)
-- Eliminates race conditions from parallel cold starts
-- More reliable data loading
-- Faster page load time
+Each platform's data block will be visually separated by a blank line, making the report easier to scan and read.
