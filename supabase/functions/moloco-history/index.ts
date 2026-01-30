@@ -235,14 +235,18 @@ serve(async (req) => {
     }
 
     const today = getTodayDate();
+    const yesterday = addDays(today, -1);
     const includestoday = endDate >= today;
     
     // Moloco reports are typically available with some delay
-    // Adjust end date to yesterday if today is included
-    const effectiveEndDate = includestoday ? addDays(today, -1) : endDate;
-    const shouldFetch = startDate <= effectiveEndDate;
+    // Cap end date at yesterday for the API query
+    const effectiveEndDate = endDate >= today ? yesterday : endDate;
+    // Adjust start date if it's in the future
+    const effectiveStartDate = startDate > yesterday ? yesterday : startDate;
+    // Only skip if the entire range would be invalid
+    const shouldFetch = effectiveStartDate <= effectiveEndDate;
 
-    console.log(`Fetching Moloco data from ${startDate} to ${effectiveEndDate}`);
+    console.log(`Moloco query: ${effectiveStartDate} to ${effectiveEndDate}, shouldFetch: ${shouldFetch}`);
 
     // Track if today is in range but we have no live API
     const todayDataUnavailable = includestoday;
@@ -260,6 +264,7 @@ serve(async (req) => {
     const prevStartStr = prevStart.toISOString().split("T")[0];
     const prevEndStr = prevEnd.toISOString().split("T")[0];
 
+    // If no valid date range, return empty with flag
     if (!shouldFetch) {
       return new Response(
         JSON.stringify({
@@ -282,26 +287,30 @@ serve(async (req) => {
     // Get access token
     const token = await getAccessToken(apiKey);
 
-    // Fetch current period and previous period in parallel
-    const [currentRows, prevRows] = await Promise.all([
-      (async () => {
-        const reportId = await createReport(token, adAccountId, startDate, effectiveEndDate);
-        const jsonUrl = await waitForReport(token, reportId);
-        const rawRows = await downloadReport(jsonUrl);
-        return processRows(rawRows);
-      })(),
-      (async () => {
-        try {
-          const reportId = await createReport(token, adAccountId, prevStartStr, prevEndStr);
-          const jsonUrl = await waitForReport(token, reportId);
-          const rawRows = await downloadReport(jsonUrl);
-          return processRows(rawRows);
-        } catch (error) {
-          console.error('Error fetching previous period:', error);
-          return [];
-        }
-      })(),
-    ]);
+    // Fetch current period and previous period SEQUENTIALLY to avoid rate limiting
+    let currentRows: ProcessedRow[] = [];
+    let prevRows: ProcessedRow[] = [];
+    
+    try {
+      const reportId = await createReport(token, adAccountId, effectiveStartDate, effectiveEndDate);
+      const jsonUrl = await waitForReport(token, reportId);
+      const rawRows = await downloadReport(jsonUrl);
+      currentRows = processRows(rawRows);
+    } catch (error) {
+      console.error('Error fetching current period:', error);
+    }
+    
+    // Small delay between requests to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    try {
+      const reportId = await createReport(token, adAccountId, prevStartStr, prevEndStr);
+      const jsonUrl = await waitForReport(token, reportId);
+      const rawRows = await downloadReport(jsonUrl);
+      prevRows = processRows(rawRows);
+    } catch (error) {
+      console.error('Error fetching previous period:', error);
+    }
 
     // Calculate totals for current period
     const totals = currentRows.reduce(

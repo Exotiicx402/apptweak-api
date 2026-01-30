@@ -253,11 +253,17 @@ serve(async (req) => {
     }
 
     const today = getTodayDate();
+    const yesterday = addDays(today, -1);
     const includestoday = endDate >= today;
-    const bqEndDate = includestoday ? addDays(today, -1) : endDate;
-    const shouldQueryBigQuery = startDate <= bqEndDate;
+    
+    // Cap end date at yesterday for BQ query
+    const bqEndDate = endDate >= today ? yesterday : endDate;
+    // Adjust start date if it's in the future
+    const bqStartDate = startDate > yesterday ? yesterday : startDate;
+    // Only skip if the entire range would be invalid
+    const shouldQueryBigQuery = bqStartDate <= bqEndDate;
 
-    console.log(`Query range: ${startDate} to ${endDate}, today: ${today}, includestoday: ${includestoday}`);
+    console.log(`Query range: ${startDate} to ${endDate}, BQ query: ${bqStartDate} to ${bqEndDate}, shouldQuery: ${shouldQueryBigQuery}`);
 
     const accessToken = await getAccessToken();
     const { projectId, datasetId, tableId } = resolveBigQueryTarget();
