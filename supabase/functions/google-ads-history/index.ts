@@ -133,24 +133,24 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign_name = '${campaignId}'` : "";
 
-    // Windsor Google Ads schema typically uses:
-    // - segments_date or date
+    // Windsor Google Ads schema uses simplified column names:
+    // - timestamp (datetime column)
     // - campaign_name
-    // - metrics_cost_micros (cost in micros, divide by 1,000,000)
-    // - metrics_clicks
-    // - metrics_impressions
-    // - metrics_conversions (installs)
+    // - spend (already in currency units)
+    // - clicks
+    // - impressions
+    // - conversions (installs)
     
     // Daily metrics query
     const dailyQuery = `
       SELECT 
-        DATE(segments_date) as date,
-        SUM(metrics_cost_micros) / 1000000 as spend,
-        SUM(metrics_impressions) as impressions,
-        SUM(metrics_clicks) as clicks,
-        SUM(metrics_conversions) as installs
+        DATE(timestamp) as date,
+        SUM(spend) as spend,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE DATE(segments_date) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
@@ -160,12 +160,12 @@ serve(async (req) => {
     const campaignQuery = `
       SELECT 
         campaign_name,
-        SUM(metrics_cost_micros) / 1000000 as spend,
-        SUM(metrics_impressions) as impressions,
-        SUM(metrics_clicks) as clicks,
-        SUM(metrics_conversions) as installs
+        SUM(spend) as spend,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE DATE(segments_date) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
       GROUP BY campaign_name
       ORDER BY spend DESC
     `;
@@ -173,28 +173,28 @@ serve(async (req) => {
     // Totals for current period
     const totalsQuery = `
       SELECT 
-        SUM(metrics_cost_micros) / 1000000 as total_spend,
-        SUM(metrics_impressions) as total_impressions,
-        SUM(metrics_clicks) as total_clicks,
-        SUM(metrics_conversions) as total_installs,
-        SAFE_DIVIDE(SUM(metrics_cost_micros) / 1000000, NULLIF(SUM(metrics_conversions), 0)) as cpi,
-        SAFE_DIVIDE(SUM(metrics_clicks), NULLIF(SUM(metrics_impressions), 0)) as ctr
+        SUM(spend) as total_spend,
+        SUM(impressions) as total_impressions,
+        SUM(clicks) as total_clicks,
+        SUM(conversions) as total_installs,
+        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
+        SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) as ctr
       FROM ${fullTable}
-      WHERE DATE(segments_date) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
       ${campaignFilter}
     `;
 
     // Totals for previous period
     const prevTotalsQuery = `
       SELECT 
-        SUM(metrics_cost_micros) / 1000000 as total_spend,
-        SUM(metrics_impressions) as total_impressions,
-        SUM(metrics_clicks) as total_clicks,
-        SUM(metrics_conversions) as total_installs,
-        SAFE_DIVIDE(SUM(metrics_cost_micros) / 1000000, NULLIF(SUM(metrics_conversions), 0)) as cpi,
-        SAFE_DIVIDE(SUM(metrics_clicks), NULLIF(SUM(metrics_impressions), 0)) as ctr
+        SUM(spend) as total_spend,
+        SUM(impressions) as total_impressions,
+        SUM(clicks) as total_clicks,
+        SUM(conversions) as total_installs,
+        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
+        SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) as ctr
       FROM ${fullTable}
-      WHERE DATE(segments_date) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
+      WHERE DATE(timestamp) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
       ${campaignFilter}
     `;
 
