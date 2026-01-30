@@ -1,64 +1,94 @@
 
-# Add Spacing Between Platforms in Slack Report
 
-## Problem
+# Fix: Reporting Page Shows 0 for Today's Data
 
-With the percentage change rows now included, the Slack report looks cramped. Each platform's metrics and its percentage change row flows directly into the next platform with no visual separation.
+## Problem Summary
+
+The Reporting page shows 0 metrics for Meta (and potentially other platforms) when the date range includes **today**. This happens because:
+
+1. **Reporting page** queries **BigQuery** via `meta-history` edge function
+2. **Scheduled sync** (every 15 min) only syncs **yesterday's** data by default
+3. **Today's data** is only in BigQuery if someone manually clicked "Sync Today" on the Meta Sync page
+4. **Meta Sync page "Preview Today"** works because it calls `meta-preview` which queries the **live Meta API**
+
+The user expects consistent data - if the Meta Sync page shows today's data, the Reporting page should too.
 
 ## Solution
 
-Add a blank line between each platform's data block (value row + percentage row) to create visual breathing room.
+The cleanest approach is to have the Reporting page query the **live API** for today's data (same as meta-preview does), while continuing to use BigQuery for historical dates. This avoids extra manual sync steps and matches user expectations.
 
-## Changes
+### Implementation Approach
 
-### File: `supabase/functions/slack-daily-report/index.ts`
+Create a new edge function or modify `meta-history` to:
+1. Check if `endDate` includes **today**
+2. For today's data: call Meta API directly (like `meta-preview`)
+3. For historical data: query BigQuery as usual  
+4. Combine the results
 
-In the `buildSlackMessage` function, modify the loop that builds rows to add an empty line after each platform's percentage change row:
+This pattern should be applied to all platforms for consistency.
 
-**Current (lines 186-199):**
-```typescript
-for (const r of sortedResults) {
-  // ... add value row
-  rows.push(`${platform}${spend}${installs}${cpi}`);
-  
-  // Add percentage change row
-  if (!r.error) {
-    rows.push(`${''.padEnd(16)}${spendChange}${installsChange}${cpiChange}`);
-  }
-}
-```
+---
 
-**Updated:**
-```typescript
-for (const r of sortedResults) {
-  // ... add value row
-  rows.push(`${platform}${spend}${installs}${cpi}`);
-  
-  // Add percentage change row
-  if (!r.error) {
-    rows.push(`${''.padEnd(16)}${spendChange}${installsChange}${cpiChange}`);
-  }
-  
-  // Add blank line for spacing between platforms
-  rows.push('');
-}
-```
+## Technical Details
 
-This adds an empty line after each platform block, creating visual separation like:
+### Files to Modify
+
+**1. supabase/functions/meta-history/index.ts**
+
+Add logic to detect if today is within the date range and fetch from Meta API directly for that day:
 
 ```text
-Platform         Spend        Installs      CPI
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Meta             $1,824          90       $20.26
-                 -37.1%      -54.3%       +37.6%
+Current Flow:
+  meta-history → BigQuery only
 
-Snapchat         $7,048         329       $21.42
-                 +43.9%      -13.4%       +66.2%
-
-Unity            $1,819         175       $10.39
-...
+New Flow:
+  meta-history
+    ├── For dates < today → Query BigQuery
+    └── For today → Call Meta API directly
+    └── Combine results
 ```
 
-## Result
+Key changes:
+- Import same Meta API fetch logic from `meta-preview`
+- At the start of the function, check if `endDate >= today`
+- If today is included, make a parallel call to fetch today's data from Meta API
+- Merge today's data into the BigQuery results before returning
 
-Each platform's data block will be visually separated by a blank line, making the report easier to scan and read.
+**2. Apply same pattern to other platforms**
+
+Modify these edge functions similarly:
+- `supabase/functions/snapchat-history/index.ts` 
+- `supabase/functions/unity-history/index.ts`
+- `supabase/functions/google-ads-history/index.ts`
+- `supabase/functions/tiktok-history/index.ts`
+- `supabase/functions/moloco-history/index.ts`
+
+---
+
+## Implementation Steps
+
+1. **Update `meta-history` edge function**:
+   - Add `fetchMetaInsights()` function (copy from meta-preview)
+   - Add helper to check if today is in date range
+   - Modify query logic to:
+     - Query BigQuery for dates before today
+     - Call Meta API for today's data
+     - Combine into unified response
+
+2. **Test the meta-history changes**:
+   - Query with date range ending yesterday → should use BigQuery only
+   - Query with date range including today → should include live Meta data
+
+3. **Apply same pattern to other platform-history functions** (if they have the same issue)
+
+---
+
+## Alternative Considered
+
+**Change default date range to end at "yesterday"**: 
+- Simpler but doesn't solve the core issue
+- Users would still get 0 if they manually select today
+- Creates inconsistency with Meta Sync page which CAN show today's data
+
+The proposed solution provides a better user experience by making data consistently available regardless of which page is used.
+
