@@ -5,6 +5,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function getTodayDate(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
@@ -97,6 +107,135 @@ async function queryBigQuery(query: string, accessToken: string): Promise<any[]>
   });
 }
 
+// Fetch live Google Ads data for a specific date
+async function fetchGoogleAdsLiveData(date: string, accessToken: string): Promise<any[]> {
+  const developerToken = Deno.env.get("GOOGLE_ADS_DEVELOPER_TOKEN");
+  const customerId = Deno.env.get("GOOGLE_ADS_CUSTOMER_ID")?.replace(/-/g, "");
+
+  if (!developerToken || !customerId) {
+    console.log("Missing Google Ads credentials, skipping live data fetch");
+    return [];
+  }
+
+  const query = `
+    SELECT
+      campaign.id,
+      campaign.name,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.cost_micros,
+      metrics.conversions,
+      segments.date
+    FROM campaign
+    WHERE segments.date = '${date}'
+    AND campaign.status != 'REMOVED'
+  `;
+
+  console.log(`Fetching live Google Ads data for ${date}`);
+
+  try {
+    const response = await fetch(
+      `https://googleads.googleapis.com/v22/customers/${customerId}/googleAds:searchStream`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "developer-token": developerToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Google Ads API error:", errorText);
+      // Return empty array instead of throwing to allow BQ data to still be returned
+      return [];
+    }
+
+    const data = await response.json();
+    const results: any[] = [];
+
+    if (Array.isArray(data)) {
+      for (const batch of data) {
+        if (batch.results) {
+          for (const result of batch.results) {
+            const campaign = result.campaign || {};
+            const metrics = result.metrics || {};
+
+            const costMicros = Number(metrics.costMicros || 0);
+            const spend = costMicros / 1_000_000;
+            const installs = Number(metrics.conversions || 0);
+            const impressions = Number(metrics.impressions || 0);
+            const clicks = Number(metrics.clicks || 0);
+
+            results.push({
+              campaign_name: campaign.name || "",
+              impressions,
+              clicks,
+              spend,
+              installs: Math.round(installs),
+            });
+          }
+        }
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error("Failed to fetch live Google Ads data:", error);
+    return [];
+  }
+}
+
+// Transform live data to daily format
+function transformLiveData(liveData: any[], date: string): {
+  daily: any;
+  campaigns: any[];
+  totals: any;
+} {
+  let totalSpend = 0;
+  let totalImpressions = 0;
+  let totalClicks = 0;
+  let totalInstalls = 0;
+
+  const campaigns = liveData.map(row => {
+    totalSpend += row.spend;
+    totalImpressions += row.impressions;
+    totalClicks += row.clicks;
+    totalInstalls += row.installs;
+
+    return {
+      campaign_name: row.campaign_name,
+      spend: row.spend,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      installs: row.installs,
+      cpi: row.installs > 0 ? row.spend / row.installs : 0,
+    };
+  });
+
+  const daily = {
+    date,
+    spend: totalSpend,
+    impressions: totalImpressions,
+    clicks: totalClicks,
+    installs: totalInstalls,
+  };
+
+  const totals = {
+    spend: totalSpend,
+    impressions: totalImpressions,
+    clicks: totalClicks,
+    installs: totalInstalls,
+    cpi: totalInstalls > 0 ? totalSpend / totalInstalls : 0,
+    ctr: totalImpressions > 0 ? totalClicks / totalImpressions : 0,
+  };
+
+  return { daily, campaigns, totals };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -112,6 +251,13 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const today = getTodayDate();
+    const includestoday = endDate >= today;
+    const bqEndDate = includestoday ? addDays(today, -1) : endDate;
+    const shouldQueryBigQuery = startDate <= bqEndDate;
+
+    console.log(`Query range: ${startDate} to ${endDate}, today: ${today}, includestoday: ${includestoday}`);
 
     const accessToken = await getAccessToken();
     const { projectId, datasetId, tableId } = resolveBigQueryTarget();
@@ -133,19 +279,8 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign = '${campaignId}'` : "";
 
-    // Windsor Google Ads schema (from BigQuery):
-    // - date (DATE column)
-    // - campaign (STRING - campaign name)
-    // - spend (BIGNUMERIC)
-    // - clicks (BIGNUMERIC)
-    // - conversions (BIGNUMERIC - installs)
-    // - ctr (STRING)
-    // - cpc (BIGNUMERIC)
-    // - average_cpm (BIGNUMERIC)
-    // Note: impressions not directly available, calculate from spend/average_cpm if needed
-    
-    // Daily metrics query
-    const dailyQuery = `
+    // Build queries
+    const dailyQuery = shouldQueryBigQuery ? `
       SELECT 
         date,
         SUM(spend) as spend,
@@ -153,14 +288,13 @@ serve(async (req) => {
         SUM(clicks) as clicks,
         SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${endDate}'
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
-    `;
+    ` : null;
 
-    // Campaign breakdown query
-    const campaignQuery = `
+    const campaignQuery = shouldQueryBigQuery ? `
       SELECT 
         campaign as campaign_name,
         SUM(spend) as spend,
@@ -168,13 +302,12 @@ serve(async (req) => {
         SUM(clicks) as clicks,
         SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${endDate}'
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
       GROUP BY campaign
       ORDER BY spend DESC
-    `;
+    ` : null;
 
-    // Totals for current period
-    const totalsQuery = `
+    const totalsQuery = shouldQueryBigQuery ? `
       SELECT 
         SUM(spend) as total_spend,
         CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as total_impressions,
@@ -183,11 +316,10 @@ serve(async (req) => {
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
         SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${endDate}'
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
       ${campaignFilter}
-    `;
+    ` : null;
 
-    // Totals for previous period
     const prevTotalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
@@ -201,44 +333,102 @@ serve(async (req) => {
       ${campaignFilter}
     `;
 
-    // Execute all queries in parallel
-    const [dailyData, campaignData, totalsData, prevTotalsData] = await Promise.all([
-      queryBigQuery(dailyQuery, accessToken),
-      queryBigQuery(campaignQuery, accessToken),
-      queryBigQuery(totalsQuery, accessToken),
-      queryBigQuery(prevTotalsQuery, accessToken),
-    ]);
+    // Execute queries in parallel
+    const promises: Promise<any>[] = [];
+    
+    if (shouldQueryBigQuery) {
+      promises.push(
+        queryBigQuery(dailyQuery!, accessToken),
+        queryBigQuery(campaignQuery!, accessToken),
+        queryBigQuery(totalsQuery!, accessToken)
+      );
+    } else {
+      promises.push(Promise.resolve([]), Promise.resolve([]), Promise.resolve([]));
+    }
+    
+    promises.push(queryBigQuery(prevTotalsQuery, accessToken));
+    
+    // Fetch live data for today if needed
+    if (includestoday) {
+      promises.push(fetchGoogleAdsLiveData(today, accessToken));
+    } else {
+      promises.push(Promise.resolve([]));
+    }
 
-    const totals = totalsData[0] || {};
+    const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, liveData] = await Promise.all(promises);
+
+    // Process BigQuery data
+    let dailyData = bqDailyData.map((row: any) => ({
+      date: row.date,
+      spend: parseFloat(row.spend) || 0,
+      impressions: parseInt(row.impressions) || 0,
+      clicks: parseInt(row.clicks) || 0,
+      installs: parseFloat(row.installs) || 0,
+    }));
+
+    let campaignData = bqCampaignData.map((row: any) => ({
+      campaign_name: row.campaign_name,
+      spend: parseFloat(row.spend) || 0,
+      impressions: parseInt(row.impressions) || 0,
+      clicks: parseInt(row.clicks) || 0,
+      installs: parseFloat(row.installs) || 0,
+      cpi: row.installs > 0 ? parseFloat(row.spend) / parseFloat(row.installs) : 0,
+    }));
+
+    const bqTotals = bqTotalsData[0] || {};
+    let totals = {
+      spend: parseFloat(bqTotals.total_spend) || 0,
+      impressions: parseInt(bqTotals.total_impressions) || 0,
+      clicks: parseInt(bqTotals.total_clicks) || 0,
+      installs: parseFloat(bqTotals.total_installs) || 0,
+      cpi: parseFloat(bqTotals.cpi) || 0,
+      ctr: parseFloat(bqTotals.ctr) || 0,
+    };
+
+    // Merge live data for today
+    if (liveData && liveData.length > 0) {
+      const liveTransformed = transformLiveData(liveData, today);
+      
+      // Add today's daily data
+      dailyData.push(liveTransformed.daily);
+      
+      // Merge campaign data
+      for (const liveCampaign of liveTransformed.campaigns) {
+        const existing = campaignData.find((c: any) => c.campaign_name === liveCampaign.campaign_name);
+        if (existing) {
+          existing.spend += liveCampaign.spend;
+          existing.impressions += liveCampaign.impressions;
+          existing.clicks += liveCampaign.clicks;
+          existing.installs += liveCampaign.installs;
+          existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
+        } else {
+          campaignData.push(liveCampaign);
+        }
+      }
+      
+      // Update totals
+      totals.spend += liveTransformed.totals.spend;
+      totals.impressions += liveTransformed.totals.impressions;
+      totals.clicks += liveTransformed.totals.clicks;
+      totals.installs += liveTransformed.totals.installs;
+      totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
+      totals.ctr = totals.impressions > 0 ? totals.clicks / totals.impressions : 0;
+      
+      console.log(`Added live data for today: spend=${liveTransformed.totals.spend}, installs=${liveTransformed.totals.installs}`);
+    }
+
+    // Sort campaign data by spend desc
+    campaignData.sort((a: any, b: any) => b.spend - a.spend);
+
     const prevTotals = prevTotalsData[0] || {};
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
-          daily: dailyData.map((row) => ({
-            date: row.date,
-            spend: parseFloat(row.spend) || 0,
-            impressions: parseInt(row.impressions) || 0,
-            clicks: parseInt(row.clicks) || 0,
-            installs: parseFloat(row.installs) || 0,
-          })),
-          campaigns: campaignData.map((row) => ({
-            campaign_name: row.campaign_name,
-            spend: parseFloat(row.spend) || 0,
-            impressions: parseInt(row.impressions) || 0,
-            clicks: parseInt(row.clicks) || 0,
-            installs: parseFloat(row.installs) || 0,
-            cpi: row.installs > 0 ? parseFloat(row.spend) / parseFloat(row.installs) : 0,
-          })),
-          totals: {
-            spend: parseFloat(totals.total_spend) || 0,
-            impressions: parseInt(totals.total_impressions) || 0,
-            clicks: parseInt(totals.total_clicks) || 0,
-            installs: parseFloat(totals.total_installs) || 0,
-            cpi: parseFloat(totals.cpi) || 0,
-            ctr: parseFloat(totals.ctr) || 0,
-          },
+          daily: dailyData,
+          campaigns: campaignData,
+          totals,
           previousTotals: {
             spend: parseFloat(prevTotals.total_spend) || 0,
             impressions: parseInt(prevTotals.total_impressions) || 0,
