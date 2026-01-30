@@ -20,7 +20,8 @@ export default function Reporting() {
     data.meta.isLoading || 
     data.snapchat.isLoading || 
     data.unity.isLoading || 
-    data.googleAds.isLoading;
+    data.googleAds.isLoading ||
+    data.tiktok.isLoading;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -100,6 +101,15 @@ export default function Reporting() {
                 loading={data.googleAds.isLoading}
                 error={data.googleAds.error}
               />
+
+              <PlatformMetricsRow
+                platform="TikTok"
+                spend={data.tiktok.spend}
+                installs={data.tiktok.installs}
+                cpi={data.tiktok.cpi}
+                loading={data.tiktok.isLoading}
+                error={data.tiktok.error}
+              />
             </div>
           </>
         )}
@@ -108,7 +118,7 @@ export default function Reporting() {
         {!anyPlatformLoading && data.totals.spend === 0 && (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-lg mb-2">Select a date range and click Apply to view metrics</p>
-            <p className="text-sm">Data will be fetched from Meta, Snapchat, Unity, and Google Ads</p>
+            <p className="text-sm">Data will be fetched from Meta, Snapchat, Unity, Google Ads, and TikTok</p>
           </div>
         )}
       </div>
