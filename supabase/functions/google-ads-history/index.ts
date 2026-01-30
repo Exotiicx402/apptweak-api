@@ -252,18 +252,12 @@ serve(async (req) => {
       );
     }
 
-    const today = getTodayDate();
-    const yesterday = addDays(today, -1);
-    const includestoday = endDate >= today;
-    
-    // Cap end date at yesterday for BQ query
-    const bqEndDate = endDate >= today ? yesterday : endDate;
-    // Adjust start date if it's in the future
-    const bqStartDate = startDate > yesterday ? yesterday : startDate;
-    // Only skip if the entire range would be invalid
-    const shouldQueryBigQuery = bqStartDate <= bqEndDate;
+    // Google Ads data is synced to BigQuery including today via Windsor.ai - no need to cap
+    const bqStartDate = startDate;
+    const bqEndDate = endDate;
+    const shouldQueryBigQuery = true;
 
-    console.log(`Query range: ${startDate} to ${endDate}, BQ query: ${bqStartDate} to ${bqEndDate}, shouldQuery: ${shouldQueryBigQuery}`);
+    console.log(`Query range: ${startDate} to ${endDate}, querying BigQuery for full range`);
 
     const accessToken = await getAccessToken();
     const { projectId, datasetId, tableId } = resolveBigQueryTarget();
@@ -353,15 +347,8 @@ serve(async (req) => {
     }
     
     promises.push(queryBigQuery(prevTotalsQuery, accessToken));
-    
-    // Fetch live data for today if needed
-    if (includestoday) {
-      promises.push(fetchGoogleAdsLiveData(today, accessToken));
-    } else {
-      promises.push(Promise.resolve([]));
-    }
 
-    const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, liveData] = await Promise.all(promises);
+    const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData] = await Promise.all(promises);
 
     // Process BigQuery data
     let dailyData = bqDailyData.map((row: any) => ({
@@ -382,7 +369,7 @@ serve(async (req) => {
     }));
 
     const bqTotals = bqTotalsData[0] || {};
-    let totals = {
+    const totals = {
       spend: parseFloat(bqTotals.total_spend) || 0,
       impressions: parseInt(bqTotals.total_impressions) || 0,
       clicks: parseInt(bqTotals.total_clicks) || 0,
@@ -390,49 +377,6 @@ serve(async (req) => {
       cpi: parseFloat(bqTotals.cpi) || 0,
       ctr: parseFloat(bqTotals.ctr) || 0,
     };
-
-    // Track if today's data is unavailable
-    let todayDataUnavailable = false;
-    let unavailableReason = "";
-
-    // Merge live data for today
-    if (includestoday) {
-      if (liveData && liveData.length > 0) {
-        const liveTransformed = transformLiveData(liveData, today);
-        
-        // Add today's daily data
-        dailyData.push(liveTransformed.daily);
-        
-        // Merge campaign data
-        for (const liveCampaign of liveTransformed.campaigns) {
-          const existing = campaignData.find((c: any) => c.campaign_name === liveCampaign.campaign_name);
-          if (existing) {
-            existing.spend += liveCampaign.spend;
-            existing.impressions += liveCampaign.impressions;
-            existing.clicks += liveCampaign.clicks;
-            existing.installs += liveCampaign.installs;
-            existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
-          } else {
-            campaignData.push(liveCampaign);
-          }
-        }
-        
-        // Update totals
-        totals.spend += liveTransformed.totals.spend;
-        totals.impressions += liveTransformed.totals.impressions;
-        totals.clicks += liveTransformed.totals.clicks;
-        totals.installs += liveTransformed.totals.installs;
-        totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
-        totals.ctr = totals.impressions > 0 ? totals.clicks / totals.impressions : 0;
-        
-        console.log(`Added live data for today: spend=${liveTransformed.totals.spend}, installs=${liveTransformed.totals.installs}`);
-      } else {
-        // Live API failed or returned no data - flag as unavailable
-        todayDataUnavailable = true;
-        unavailableReason = "Google Ads API requires production access; today's data syncs overnight";
-        console.log("Today's data unavailable: live API returned no data");
-      }
-    }
 
     // Sort campaign data by spend desc
     campaignData.sort((a: any, b: any) => b.spend - a.spend);
@@ -456,8 +400,6 @@ serve(async (req) => {
           },
           dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
-          todayDataUnavailable,
-          unavailableReason,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
