@@ -61,7 +61,7 @@ export function TotalMetricsSection({
               Total Spend
             </div>
             <div className="text-3xl font-bold text-foreground">{formatCurrency(spend)}</div>
-            <PercentChange current={spend} previous={previousSpend} invertColors className="mt-2" />
+            <PercentChange current={spend} previous={previousSpend} className="mt-2" />
           </CardContent>
         </Card>
         
@@ -83,7 +83,7 @@ export function TotalMetricsSection({
               Blended CPI
             </div>
             <div className="text-3xl font-bold text-foreground">{formatCurrency(cpi)}</div>
-            <PercentChange current={cpi} previous={previousCpi} invertColors className="mt-2" />
+            <PercentChange current={cpi} previous={previousCpi} className="mt-2" />
           </CardContent>
         </Card>
       </div>
