@@ -1,131 +1,125 @@
 
 
-# Fix: Moloco, TikTok, and Google Ads Showing 0 for Today
+# Fix: Platforms Showing 0 When "Today" Is Included in Date Range
 
-## Problem Summary
+## Problem Identified
 
-When the date range includes **only today** (2026-01-30 to 2026-01-30), these three platforms return 0:
+When a user selects a date range that includes **today** (e.g., Jan 22 - Jan 30), the TikTok, Google Ads, and Moloco history functions incorrectly return 0 metrics because of flawed date handling logic.
 
-| Platform | Root Cause |
-|----------|------------|
-| **Google Ads** | Developer Token not approved for production; live API fails with `DEVELOPER_TOKEN_NOT_APPROVED`, and there's no BigQuery data for today |
-| **TikTok** | No live API available (data comes from Windsor.ai sync which runs periodically) |
-| **Moloco** | Async reporting API has delay; today's data isn't immediately available |
+### Root Cause
 
-## Current Behavior
+The current logic in `tiktok-history` and `google-ads-history`:
 
-When the user selects "Today" as the date range:
-1. The functions check if `endDate >= today` 
-2. For platforms without live API access, they set `effectiveEndDate = yesterday`
-3. Since `startDate (today) > effectiveEndDate (yesterday)`, the query returns nothing
-4. Result: 0 for all metrics
-
-## Solution Options
-
-### Option A: Show "Data Unavailable" Message (Recommended)
-Instead of showing 0 (which looks like an error), indicate that today's data is not yet available for these platforms.
-
-**Changes:**
-- Update `useReportingData.ts` to detect when platforms return 0 due to data unavailability vs. actual 0 spend
-- Add a `dataUnavailable: boolean` flag in the response from each affected function
-- Display a "Data not yet available" indicator in the UI for these platforms
-
-### Option B: Default to Yesterday's Date Range
-Change the default date range to end at yesterday so users see complete data by default.
-
-**Changes:**
-- Update `src/pages/Reporting.tsx` to default `endDate` to yesterday
-- Users can still manually select today, but they'll see the limitation
-
-### Option C: Fix Google Ads API Access + Document Limitations
-For Google Ads, the actual fix would be getting the Developer Token approved. For TikTok and Moloco, document that today's data has a delay.
-
----
-
-## Recommended Implementation (Option A + B Combined)
-
-### Step 1: Update Edge Functions to Return Availability Flag
-
-**Files to modify:**
-- `supabase/functions/google-ads-history/index.ts`
-- `supabase/functions/tiktok-history/index.ts`  
-- `supabase/functions/moloco-history/index.ts`
-
-Add a `todayDataUnavailable: boolean` flag to the response when:
-- The date range includes today
-- No live data could be fetched
-
-```typescript
-// Example response structure
-{
-  success: true,
-  data: {
-    daily: [...],
-    totals: {...},
-    previousTotals: {...},
-    todayDataUnavailable: true,  // NEW FLAG
-    unavailableReason: "Data syncs daily; today's data will be available tomorrow"
-  }
-}
+```text
+effectiveEndDate = includestoday ? yesterday : endDate
+shouldQueryBigQuery = startDate <= effectiveEndDate
 ```
 
-### Step 2: Update Reporting Page Default
+When the user selects **only today** as the date range:
+- `startDate = 2026-01-30`, `endDate = 2026-01-30`
+- `effectiveEndDate` becomes `2026-01-29`
+- `shouldQueryBigQuery` = `2026-01-30 <= 2026-01-29` = **FALSE**
+- Result: BigQuery query is skipped entirely → 0 metrics returned
 
-**File:** `src/pages/Reporting.tsx`
+**Moloco Issue**: Separate problem - the Moloco API is returning HTTP 429 (rate limit exceeded). This is a quota issue with the Moloco API, not a code bug.
 
-Change default `endDate` from `getLocalToday()` to `getLocalYesterday()` so users see complete data by default.
+## Solution
 
-### Step 3: Update UI to Show Availability Status
+### 1. Fix TikTok History Function
 
-**Files to modify:**
-- `src/hooks/useReportingData.ts` - Parse the `todayDataUnavailable` flag
-- `src/components/reporting/PlatformMetricsRow.tsx` - Show indicator when data is unavailable
+Update the logic to **always query BigQuery** when there's historical data available, even if "today" is part of the range:
 
-Add visual indicator (e.g., tooltip or badge) when a platform's data is unavailable for the selected date range.
+```text
+Current (broken):
+  effectiveEndDate = yesterday if today included
+  skip BQ query if startDate > effectiveEndDate
+
+Fixed:
+  bqEndDate = min(endDate, yesterday)  -- cap at yesterday
+  bqStartDate = startDate
+  skip BQ query ONLY if bqStartDate > bqEndDate
+```
+
+**Key Changes:**
+- Remove the premature return when only "today" is selected
+- Instead, query BigQuery with the available date range (capped at yesterday)
+- Show data for the days we have, set `todayDataUnavailable` flag only when today is specifically requested
+
+### 2. Fix Google Ads History Function
+
+Same logic fix - the current `shouldQueryBigQuery` check is too aggressive.
+
+### 3. Fix Moloco History Function
+
+Two changes needed:
+- Apply the same date range fix as TikTok/Google Ads
+- Add retry logic or reduce concurrent API calls to avoid rate limiting
 
 ---
 
 ## Technical Details
 
-### Google Ads - Why Live API Fails
+### Files to Modify
 
-The error log shows:
+**1. `supabase/functions/tiktok-history/index.ts`**
+
+Lines 130-161 need to be updated:
+
+```typescript
+// BEFORE (lines 130-136)
+const today = getTodayDate();
+const includestoday = endDate >= today;
+const effectiveEndDate = includestoday ? addDays(today, -1) : endDate;
+const shouldQueryBigQuery = startDate <= effectiveEndDate;
+
+// AFTER
+const today = getTodayDate();
+const yesterday = addDays(today, -1);
+const includestoday = endDate >= today;
+
+// Cap end date at yesterday for BQ query, but don't skip if start is also recent
+const bqEndDate = endDate >= today ? yesterday : endDate;
+const bqStartDate = startDate;
+
+// Only skip if the entire range is in the future (which shouldn't happen)
+// or if start > yesterday AND we're only asking for today
+const shouldQueryBigQuery = bqStartDate <= bqEndDate;
 ```
-DEVELOPER_TOKEN_NOT_APPROVED - The developer token is only approved for use with test accounts
-```
 
-**Long-term fix:** Apply for Basic or Standard access at Google Ads API Center.
+Also fix the edge case at lines 143-161 to not return early with empty data, but instead continue to query BQ for whatever historical range is available.
 
-**Short-term fix:** Continue using BigQuery data from Windsor.ai (same as TikTok pattern). The current implementation already falls back to BQ data when the API fails, but when querying for only today there's nothing in BQ yet.
+**2. `supabase/functions/google-ads-history/index.ts`**
 
-### TikTok - No Direct API
+Similar fix at lines 255-258:
+- Change `bqEndDate` calculation to cap at yesterday properly
+- Ensure BigQuery query runs for historical dates even when "today" is in the range
 
-TikTok data flows through Windsor.ai which syncs periodically (typically daily for yesterday's data). There's no live API to query.
+**3. `supabase/functions/moloco-history/index.ts`**
 
-### Moloco - Async Reporting Delay
-
-Moloco's reporting API is asynchronous - you create a report request, poll for status, then download when ready. Today's data may not be immediately available in their system.
+Two fixes:
+- Apply same date range logic fix
+- **Rate limiting**: The Moloco API has a quota limit. Options:
+  - Add exponential backoff/retry on 429 errors
+  - Cache the access token longer
+  - Reduce concurrent requests (don't fetch both periods in parallel)
 
 ---
 
-## Files to Change
+## Expected Behavior After Fix
 
-1. **`supabase/functions/google-ads-history/index.ts`**
-   - Add `todayDataUnavailable` flag when only today is selected and no data is available
+| User Selects | What Happens | Result |
+|--------------|--------------|--------|
+| Jan 22 - Jan 29 | Query BQ for full range | ✅ Shows data |
+| Jan 22 - Jan 30 | Query BQ for Jan 22-29, flag today unavailable | ✅ Shows data + "partial" badge |
+| Jan 30 only | Query BQ returns empty (no data for today), flag today unavailable | ✅ Shows message "today's data not yet available" |
 
-2. **`supabase/functions/tiktok-history/index.ts`**
-   - Add `todayDataUnavailable` flag when only today is selected
+---
 
-3. **`supabase/functions/moloco-history/index.ts`**
-   - Add `todayDataUnavailable` flag when only today is selected
+## Implementation Steps
 
-4. **`src/pages/Reporting.tsx`**
-   - Change default `endDate` to `getLocalYesterday()`
-
-5. **`src/hooks/useReportingData.ts`**
-   - Parse the new `todayDataUnavailable` flag from responses
-   - Add `dataUnavailable` property to `PlatformMetrics` interface
-
-6. **`src/components/reporting/PlatformMetricsRow.tsx`**
-   - Show visual indicator when data is not available
+1. Update `tiktok-history` - fix date range logic
+2. Update `google-ads-history` - fix date range logic  
+3. Update `moloco-history` - fix date range logic + add retry for rate limits
+4. Deploy all three functions
+5. Test with date ranges including today
 
