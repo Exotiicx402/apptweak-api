@@ -21,7 +21,8 @@ export default function Reporting() {
     data.snapchat?.isLoading || 
     data.unity?.isLoading || 
     data.googleAds?.isLoading ||
-    data.tiktok?.isLoading;
+    data.tiktok?.isLoading ||
+    data.moloco?.isLoading;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -109,6 +110,15 @@ export default function Reporting() {
                 cpi={data.tiktok.cpi}
                 loading={data.tiktok.isLoading}
                 error={data.tiktok.error}
+              />
+
+              <PlatformMetricsRow
+                platform="Moloco"
+                spend={data.moloco?.spend || 0}
+                installs={data.moloco?.installs || 0}
+                cpi={data.moloco?.cpi || 0}
+                loading={data.moloco?.isLoading}
+                error={data.moloco?.error}
               />
             </div>
           </>
