@@ -244,6 +244,10 @@ serve(async (req) => {
 
     console.log(`Fetching Moloco data from ${startDate} to ${effectiveEndDate}`);
 
+    // Track if today is in range but we have no live API
+    const todayDataUnavailable = includestoday;
+    const unavailableReason = includestoday ? "Moloco reports have a delay; today's data will be available tomorrow" : "";
+
     // Calculate previous period for comparison
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -267,6 +271,8 @@ serve(async (req) => {
             previousTotals: { spend: 0, installs: 0, impressions: 0, clicks: 0, cpi: 0 },
             dateRange: { startDate, endDate: effectiveEndDate },
             previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
+            todayDataUnavailable,
+            unavailableReason,
           },
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -337,6 +343,8 @@ serve(async (req) => {
           },
           dateRange: { startDate, endDate: effectiveEndDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
+          todayDataUnavailable,
+          unavailableReason,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

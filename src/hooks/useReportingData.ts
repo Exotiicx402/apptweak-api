@@ -10,6 +10,8 @@ interface PlatformMetrics {
   previousCpi: number;
   isLoading: boolean;
   error: string | null;
+  dataUnavailable?: boolean;
+  unavailableReason?: string;
 }
 
 interface ReportingData {
@@ -95,6 +97,8 @@ export function useReportingData() {
       
       const totals = responseData.data?.totals || {};
       const previousTotals = responseData.data?.previousTotals || {};
+      const todayDataUnavailable = responseData.data?.todayDataUnavailable || false;
+      const unavailableReason = responseData.data?.unavailableReason || "";
       
       return {
         spend: totals.spend || 0,
@@ -105,6 +109,8 @@ export function useReportingData() {
         previousCpi: previousTotals.cpi || (previousTotals.spend && previousTotals.installs ? previousTotals.spend / previousTotals.installs : 0),
         isLoading: false,
         error: null,
+        dataUnavailable: todayDataUnavailable,
+        unavailableReason: unavailableReason,
       };
     };
 

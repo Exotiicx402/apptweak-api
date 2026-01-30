@@ -1,6 +1,12 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, DollarSign, Download, TrendingUp } from "lucide-react";
+import { AlertCircle, DollarSign, Download, TrendingUp, Clock } from "lucide-react";
 import { PercentChange } from "./PercentChange";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface PlatformMetricsRowProps {
   platform: string;
@@ -13,6 +19,8 @@ interface PlatformMetricsRowProps {
   previousCpi?: number;
   loading?: boolean;
   error?: string | null;
+  dataUnavailable?: boolean;
+  unavailableReason?: string;
 }
 
 export function PlatformMetricsRow({
@@ -26,6 +34,8 @@ export function PlatformMetricsRow({
   previousCpi = 0,
   loading,
   error,
+  dataUnavailable,
+  unavailableReason,
 }: PlatformMetricsRowProps) {
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-US", {
@@ -81,6 +91,21 @@ export function PlatformMetricsRow({
       <h3 className="text-md font-medium mb-3 flex items-center gap-2 text-foreground">
         {logo && <img src={logo} alt={platform} className="h-5 w-auto object-contain" />}
         {platform}
+        {dataUnavailable && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                  <Clock className="h-3 w-3" />
+                  Partial data
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs max-w-xs">{unavailableReason || "Today's data is not yet available"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
