@@ -1,94 +1,131 @@
 
 
-# Fix: Reporting Page Shows 0 for Today's Data
+# Fix: Moloco, TikTok, and Google Ads Showing 0 for Today
 
 ## Problem Summary
 
-The Reporting page shows 0 metrics for Meta (and potentially other platforms) when the date range includes **today**. This happens because:
+When the date range includes **only today** (2026-01-30 to 2026-01-30), these three platforms return 0:
 
-1. **Reporting page** queries **BigQuery** via `meta-history` edge function
-2. **Scheduled sync** (every 15 min) only syncs **yesterday's** data by default
-3. **Today's data** is only in BigQuery if someone manually clicked "Sync Today" on the Meta Sync page
-4. **Meta Sync page "Preview Today"** works because it calls `meta-preview` which queries the **live Meta API**
+| Platform | Root Cause |
+|----------|------------|
+| **Google Ads** | Developer Token not approved for production; live API fails with `DEVELOPER_TOKEN_NOT_APPROVED`, and there's no BigQuery data for today |
+| **TikTok** | No live API available (data comes from Windsor.ai sync which runs periodically) |
+| **Moloco** | Async reporting API has delay; today's data isn't immediately available |
 
-The user expects consistent data - if the Meta Sync page shows today's data, the Reporting page should too.
+## Current Behavior
 
-## Solution
+When the user selects "Today" as the date range:
+1. The functions check if `endDate >= today` 
+2. For platforms without live API access, they set `effectiveEndDate = yesterday`
+3. Since `startDate (today) > effectiveEndDate (yesterday)`, the query returns nothing
+4. Result: 0 for all metrics
 
-The cleanest approach is to have the Reporting page query the **live API** for today's data (same as meta-preview does), while continuing to use BigQuery for historical dates. This avoids extra manual sync steps and matches user expectations.
+## Solution Options
 
-### Implementation Approach
+### Option A: Show "Data Unavailable" Message (Recommended)
+Instead of showing 0 (which looks like an error), indicate that today's data is not yet available for these platforms.
 
-Create a new edge function or modify `meta-history` to:
-1. Check if `endDate` includes **today**
-2. For today's data: call Meta API directly (like `meta-preview`)
-3. For historical data: query BigQuery as usual  
-4. Combine the results
+**Changes:**
+- Update `useReportingData.ts` to detect when platforms return 0 due to data unavailability vs. actual 0 spend
+- Add a `dataUnavailable: boolean` flag in the response from each affected function
+- Display a "Data not yet available" indicator in the UI for these platforms
 
-This pattern should be applied to all platforms for consistency.
+### Option B: Default to Yesterday's Date Range
+Change the default date range to end at yesterday so users see complete data by default.
+
+**Changes:**
+- Update `src/pages/Reporting.tsx` to default `endDate` to yesterday
+- Users can still manually select today, but they'll see the limitation
+
+### Option C: Fix Google Ads API Access + Document Limitations
+For Google Ads, the actual fix would be getting the Developer Token approved. For TikTok and Moloco, document that today's data has a delay.
+
+---
+
+## Recommended Implementation (Option A + B Combined)
+
+### Step 1: Update Edge Functions to Return Availability Flag
+
+**Files to modify:**
+- `supabase/functions/google-ads-history/index.ts`
+- `supabase/functions/tiktok-history/index.ts`  
+- `supabase/functions/moloco-history/index.ts`
+
+Add a `todayDataUnavailable: boolean` flag to the response when:
+- The date range includes today
+- No live data could be fetched
+
+```typescript
+// Example response structure
+{
+  success: true,
+  data: {
+    daily: [...],
+    totals: {...},
+    previousTotals: {...},
+    todayDataUnavailable: true,  // NEW FLAG
+    unavailableReason: "Data syncs daily; today's data will be available tomorrow"
+  }
+}
+```
+
+### Step 2: Update Reporting Page Default
+
+**File:** `src/pages/Reporting.tsx`
+
+Change default `endDate` from `getLocalToday()` to `getLocalYesterday()` so users see complete data by default.
+
+### Step 3: Update UI to Show Availability Status
+
+**Files to modify:**
+- `src/hooks/useReportingData.ts` - Parse the `todayDataUnavailable` flag
+- `src/components/reporting/PlatformMetricsRow.tsx` - Show indicator when data is unavailable
+
+Add visual indicator (e.g., tooltip or badge) when a platform's data is unavailable for the selected date range.
 
 ---
 
 ## Technical Details
 
-### Files to Modify
+### Google Ads - Why Live API Fails
 
-**1. supabase/functions/meta-history/index.ts**
-
-Add logic to detect if today is within the date range and fetch from Meta API directly for that day:
-
-```text
-Current Flow:
-  meta-history → BigQuery only
-
-New Flow:
-  meta-history
-    ├── For dates < today → Query BigQuery
-    └── For today → Call Meta API directly
-    └── Combine results
+The error log shows:
+```
+DEVELOPER_TOKEN_NOT_APPROVED - The developer token is only approved for use with test accounts
 ```
 
-Key changes:
-- Import same Meta API fetch logic from `meta-preview`
-- At the start of the function, check if `endDate >= today`
-- If today is included, make a parallel call to fetch today's data from Meta API
-- Merge today's data into the BigQuery results before returning
+**Long-term fix:** Apply for Basic or Standard access at Google Ads API Center.
 
-**2. Apply same pattern to other platforms**
+**Short-term fix:** Continue using BigQuery data from Windsor.ai (same as TikTok pattern). The current implementation already falls back to BQ data when the API fails, but when querying for only today there's nothing in BQ yet.
 
-Modify these edge functions similarly:
-- `supabase/functions/snapchat-history/index.ts` 
-- `supabase/functions/unity-history/index.ts`
-- `supabase/functions/google-ads-history/index.ts`
-- `supabase/functions/tiktok-history/index.ts`
-- `supabase/functions/moloco-history/index.ts`
+### TikTok - No Direct API
+
+TikTok data flows through Windsor.ai which syncs periodically (typically daily for yesterday's data). There's no live API to query.
+
+### Moloco - Async Reporting Delay
+
+Moloco's reporting API is asynchronous - you create a report request, poll for status, then download when ready. Today's data may not be immediately available in their system.
 
 ---
 
-## Implementation Steps
+## Files to Change
 
-1. **Update `meta-history` edge function**:
-   - Add `fetchMetaInsights()` function (copy from meta-preview)
-   - Add helper to check if today is in date range
-   - Modify query logic to:
-     - Query BigQuery for dates before today
-     - Call Meta API for today's data
-     - Combine into unified response
+1. **`supabase/functions/google-ads-history/index.ts`**
+   - Add `todayDataUnavailable` flag when only today is selected and no data is available
 
-2. **Test the meta-history changes**:
-   - Query with date range ending yesterday → should use BigQuery only
-   - Query with date range including today → should include live Meta data
+2. **`supabase/functions/tiktok-history/index.ts`**
+   - Add `todayDataUnavailable` flag when only today is selected
 
-3. **Apply same pattern to other platform-history functions** (if they have the same issue)
+3. **`supabase/functions/moloco-history/index.ts`**
+   - Add `todayDataUnavailable` flag when only today is selected
 
----
+4. **`src/pages/Reporting.tsx`**
+   - Change default `endDate` to `getLocalYesterday()`
 
-## Alternative Considered
+5. **`src/hooks/useReportingData.ts`**
+   - Parse the new `todayDataUnavailable` flag from responses
+   - Add `dataUnavailable` property to `PlatformMetrics` interface
 
-**Change default date range to end at "yesterday"**: 
-- Simpler but doesn't solve the core issue
-- Users would still get 0 if they manually select today
-- Creates inconsistency with Meta Sync page which CAN show today's data
-
-The proposed solution provides a better user experience by making data consistently available regardless of which page is used.
+6. **`src/components/reporting/PlatformMetricsRow.tsx`**
+   - Show visual indicator when data is not available
 
