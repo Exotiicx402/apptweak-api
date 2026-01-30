@@ -55,16 +55,6 @@ export function useReportingData() {
   const fetchAllPlatforms = useCallback(async (startDate: string, endDate: string) => {
     setIsLoading(true);
     
-    // Calculate previous period (same duration before the start date)
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const durationMs = end.getTime() - start.getTime();
-    const previousEnd = new Date(start.getTime() - 1); // Day before start
-    const previousStart = new Date(previousEnd.getTime() - durationMs);
-    
-    const previousStartDate = previousStart.toISOString().split('T')[0];
-    const previousEndDate = previousEnd.toISOString().split('T')[0];
-    
     // Set all platforms to loading
     setData(prev => ({
       ...prev,
@@ -76,75 +66,54 @@ export function useReportingData() {
       moloco: { ...emptyMetrics, isLoading: true },
     }));
 
-    // Fetch all platforms for both current and previous periods in parallel
-    const [
-      metaResult, snapchatResult, unityResult, googleAdsResult, tiktokResult, molocoResult,
-      prevMetaResult, prevSnapchatResult, prevUnityResult, prevGoogleAdsResult, prevTiktokResult, prevMolocoResult
-    ] = await Promise.allSettled([
-      supabase.functions.invoke("meta-history", { body: { startDate, endDate } }),
-      supabase.functions.invoke("snapchat-history", { body: { startDate, endDate } }),
-      supabase.functions.invoke("unity-history", { body: { startDate, endDate } }),
-      supabase.functions.invoke("google-ads-history", { body: { startDate, endDate } }),
-      supabase.functions.invoke("tiktok-history", { body: { startDate, endDate } }),
-      supabase.functions.invoke("moloco-history", { body: { startDate, endDate } }),
-      supabase.functions.invoke("meta-history", { body: { startDate: previousStartDate, endDate: previousEndDate } }),
-      supabase.functions.invoke("snapchat-history", { body: { startDate: previousStartDate, endDate: previousEndDate } }),
-      supabase.functions.invoke("unity-history", { body: { startDate: previousStartDate, endDate: previousEndDate } }),
-      supabase.functions.invoke("google-ads-history", { body: { startDate: previousStartDate, endDate: previousEndDate } }),
-      supabase.functions.invoke("tiktok-history", { body: { startDate: previousStartDate, endDate: previousEndDate } }),
-      supabase.functions.invoke("moloco-history", { body: { startDate: previousStartDate, endDate: previousEndDate } }),
-    ]);
+    // Only 6 requests - each endpoint already returns both totals and previousTotals
+    const [metaResult, snapchatResult, unityResult, googleAdsResult, tiktokResult, molocoResult] = 
+      await Promise.allSettled([
+        supabase.functions.invoke("meta-history", { body: { startDate, endDate } }),
+        supabase.functions.invoke("snapchat-history", { body: { startDate, endDate } }),
+        supabase.functions.invoke("unity-history", { body: { startDate, endDate } }),
+        supabase.functions.invoke("google-ads-history", { body: { startDate, endDate } }),
+        supabase.functions.invoke("tiktok-history", { body: { startDate, endDate } }),
+        supabase.functions.invoke("moloco-history", { body: { startDate, endDate } }),
+      ]);
 
-    // Extract totals from a result
-    const extractTotals = (result: PromiseSettledResult<any>): { spend: number; installs: number; cpi: number; error?: string } => {
+    // Extract both current and previous totals from a single response
+    const extractMetrics = (result: PromiseSettledResult<any>): PlatformMetrics => {
       if (result.status === "rejected") {
-        return { spend: 0, installs: 0, cpi: 0, error: result.reason?.message || "Failed to fetch" };
+        return { ...emptyMetrics, error: result.reason?.message || "Failed to fetch" };
       }
       
       const { data: responseData, error } = result.value;
       
       if (error) {
-        return { spend: 0, installs: 0, cpi: 0, error: error.message };
+        return { ...emptyMetrics, error: error.message };
       }
       
       if (!responseData?.success) {
-        return { spend: 0, installs: 0, cpi: 0, error: responseData?.error || "Failed to fetch" };
+        return { ...emptyMetrics, error: responseData?.error || "Failed to fetch" };
       }
       
       const totals = responseData.data?.totals || {};
+      const previousTotals = responseData.data?.previousTotals || {};
+      
       return {
         spend: totals.spend || 0,
         installs: totals.installs || 0,
         cpi: totals.cpi || (totals.spend && totals.installs ? totals.spend / totals.installs : 0),
-      };
-    };
-
-    // Process results for each platform
-    const processResults = (
-      currentResult: PromiseSettledResult<any>,
-      previousResult: PromiseSettledResult<any>
-    ): PlatformMetrics => {
-      const current = extractTotals(currentResult);
-      const previous = extractTotals(previousResult);
-      
-      return {
-        spend: current.spend,
-        installs: current.installs,
-        cpi: current.cpi,
-        previousSpend: previous.spend,
-        previousInstalls: previous.installs,
-        previousCpi: previous.cpi,
+        previousSpend: previousTotals.spend || 0,
+        previousInstalls: previousTotals.installs || 0,
+        previousCpi: previousTotals.cpi || (previousTotals.spend && previousTotals.installs ? previousTotals.spend / previousTotals.installs : 0),
         isLoading: false,
-        error: current.error || null,
+        error: null,
       };
     };
 
-    const meta = processResults(metaResult, prevMetaResult);
-    const snapchat = processResults(snapchatResult, prevSnapchatResult);
-    const unity = processResults(unityResult, prevUnityResult);
-    const googleAds = processResults(googleAdsResult, prevGoogleAdsResult);
-    const tiktok = processResults(tiktokResult, prevTiktokResult);
-    const moloco = processResults(molocoResult, prevMolocoResult);
+    const meta = extractMetrics(metaResult);
+    const snapchat = extractMetrics(snapchatResult);
+    const unity = extractMetrics(unityResult);
+    const googleAds = extractMetrics(googleAdsResult);
+    const tiktok = extractMetrics(tiktokResult);
+    const moloco = extractMetrics(molocoResult);
 
     // Calculate totals (only from platforms without errors)
     const platforms = [meta, snapchat, unity, googleAds, tiktok, moloco];
