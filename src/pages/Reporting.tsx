@@ -7,6 +7,13 @@ import { PlatformMetricsRow } from "@/components/reporting/PlatformMetricsRow";
 import { useReportingData } from "@/hooks/useReportingData";
 import { getLocalDaysAgo, getLocalToday } from "@/lib/dateUtils";
 
+import metaLogo from "@/assets/logos/meta.png";
+import snapchatLogo from "@/assets/logos/snapchat.png";
+import unityLogo from "@/assets/logos/unity.png";
+import googleAdsLogo from "@/assets/logos/google-ads.png";
+import tiktokLogo from "@/assets/logos/tiktok.png";
+import molocoLogo from "@/assets/logos/moloco.webp";
+
 export default function Reporting() {
   const [startDate, setStartDate] = useState(getLocalDaysAgo(7));
   const [endDate, setEndDate] = useState(getLocalToday());
@@ -69,6 +76,7 @@ export default function Reporting() {
               
               <PlatformMetricsRow
                 platform="Meta Ads"
+                logo={metaLogo}
                 spend={data.meta.spend}
                 installs={data.meta.installs}
                 cpi={data.meta.cpi}
@@ -78,6 +86,7 @@ export default function Reporting() {
 
               <PlatformMetricsRow
                 platform="Snapchat"
+                logo={snapchatLogo}
                 spend={data.snapchat.spend}
                 installs={data.snapchat.installs}
                 cpi={data.snapchat.cpi}
@@ -87,6 +96,7 @@ export default function Reporting() {
 
               <PlatformMetricsRow
                 platform="Unity"
+                logo={unityLogo}
                 spend={data.unity.spend}
                 installs={data.unity.installs}
                 cpi={data.unity.cpi}
@@ -96,6 +106,7 @@ export default function Reporting() {
 
               <PlatformMetricsRow
                 platform="Google Ads"
+                logo={googleAdsLogo}
                 spend={data.googleAds.spend}
                 installs={data.googleAds.installs}
                 cpi={data.googleAds.cpi}
@@ -105,6 +116,7 @@ export default function Reporting() {
 
               <PlatformMetricsRow
                 platform="TikTok"
+                logo={tiktokLogo}
                 spend={data.tiktok.spend}
                 installs={data.tiktok.installs}
                 cpi={data.tiktok.cpi}
@@ -114,6 +126,7 @@ export default function Reporting() {
 
               <PlatformMetricsRow
                 platform="Moloco"
+                logo={molocoLogo}
                 spend={data.moloco?.spend || 0}
                 installs={data.moloco?.installs || 0}
                 cpi={data.moloco?.cpi || 0}
