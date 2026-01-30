@@ -109,34 +109,42 @@ const SlackReportControls = () => {
             <Label className="text-sm font-medium">Automated Schedule</Label>
           </div>
           
-          {schedulesLoading ? (
+        {schedulesLoading ? (
             <Skeleton className="h-10 w-full" />
           ) : slackSchedule ? (
-            <div className="flex items-center gap-3">
-              <Select
-                value={slackSchedule.schedule}
-                onValueChange={handleScheduleChange}
-              >
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select schedule" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCHEDULE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Select
+                  value={slackSchedule.schedule}
+                  onValueChange={handleScheduleChange}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select schedule" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <div className="flex items-center gap-2">
+                  <Badge variant={slackSchedule.active ? "default" : "secondary"}>
+                    {slackSchedule.active ? "Active" : "Paused"}
+                  </Badge>
+                  <Switch
+                    checked={slackSchedule.active}
+                    onCheckedChange={handleToggleSchedule}
+                  />
+                </div>
+              </div>
               
-              <div className="flex items-center gap-2">
-                <Badge variant={slackSchedule.active ? "default" : "secondary"}>
-                  {slackSchedule.active ? "Active" : "Paused"}
-                </Badge>
-                <Switch
-                  checked={slackSchedule.active}
-                  onCheckedChange={handleToggleSchedule}
-                />
+              <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3 space-y-1">
+                <p><span className="font-medium text-foreground">Report Date:</span> Previous day's data</p>
+                <p><span className="font-medium text-foreground">Comparison:</span> Day-over-day % change</p>
+                <p><span className="font-medium text-foreground">Platforms:</span> Meta, Snapchat, Unity, Google Ads, TikTok, Moloco</p>
               </div>
             </div>
           ) : (
