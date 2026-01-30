@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAppTweakRankingHistory } from "@/hooks/useAppTweakRankingHistory";
+import SlackReportControls from "@/components/SlackReportControls";
 
 const Controls = () => {
   const queryClient = useQueryClient();
@@ -113,6 +114,11 @@ const Controls = () => {
           <p className="text-muted-foreground">
             Manage sync operations and refresh data
           </p>
+        </div>
+
+        {/* Slack Report Controls */}
+        <div className="mb-8">
+          <SlackReportControls />
         </div>
 
         {/* Quick Actions */}

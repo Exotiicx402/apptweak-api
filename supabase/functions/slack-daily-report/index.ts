@@ -150,7 +150,12 @@ function formatDateForDisplay(dateStr: string): string {
   });
 }
 
-function buildSlackMessage(results: PlatformResult[], date: string): object {
+interface FormatOptions {
+  showPercentChanges: boolean;
+  showPlatformSpacing: boolean;
+}
+
+function buildSlackMessage(results: PlatformResult[], date: string, options: FormatOptions): object {
   const displayDate = formatDateForDisplay(date);
   
   // Calculate totals for current and previous period
@@ -190,23 +195,31 @@ function buildSlackMessage(results: PlatformResult[], date: string): object {
     const cpi = r.error ? '-'.padStart(10) : formatCPI(r.spend, r.installs).padStart(10);
     rows.push(`${platform}${spend}${installs}${cpi}`);
     
-    // Add percentage change row
-    if (!r.error) {
+    // Add percentage change row if enabled
+    if (options.showPercentChanges && !r.error) {
       const spendChange = calculatePercentChange(r.spend, r.previousSpend).padStart(12);
       const installsChange = calculatePercentChange(r.installs, r.previousInstalls).padStart(12);
       const cpiChange = calculatePercentChange(r.cpi, r.previousCpi).padStart(10);
       rows.push(`${''.padEnd(16)}${spendChange}${installsChange}${cpiChange}`);
     }
     
-    // Add blank line for spacing between platforms
-    rows.push('');
+    // Add blank line for spacing between platforms if enabled
+    if (options.showPlatformSpacing) {
+      rows.push('');
+    }
   }
 
-  // Total row with % change
+  // Total row
   const totalRow = `${'TOTAL'.padEnd(16)}${formatCurrency(totals.spend).padStart(12)}${formatNumber(totals.installs).padStart(12)}${formatCPI(totals.spend, totals.installs).padStart(10)}`;
-  const totalChangeRow = `${''.padEnd(16)}${calculatePercentChange(totals.spend, totals.previousSpend).padStart(12)}${calculatePercentChange(totals.installs, totals.previousInstalls).padStart(12)}${calculatePercentChange(totalCpi, previousTotalCpi).padStart(10)}`;
+  
+  // Total change row if enabled
+  const totalRows = [totalRow];
+  if (options.showPercentChanges) {
+    const totalChangeRow = `${''.padEnd(16)}${calculatePercentChange(totals.spend, totals.previousSpend).padStart(12)}${calculatePercentChange(totals.installs, totals.previousInstalls).padStart(12)}${calculatePercentChange(totalCpi, previousTotalCpi).padStart(10)}`;
+    totalRows.push(totalChangeRow);
+  }
 
-  const tableContent = [header, separator, ...rows, separator, totalRow, totalChangeRow].join('\n');
+  const tableContent = [header, separator, ...rows, separator, ...totalRows].join('\n');
 
   return {
     blocks: [
@@ -247,9 +260,38 @@ serve(async (req) => {
       throw new Error('Supabase credentials not configured');
     }
 
-    const yesterday = getDateEST(1);
-    const dayBeforeYesterday = getDateEST(2);
-    console.log(`Generating report for: ${yesterday} (comparing to ${dayBeforeYesterday})`);
+    // Parse request body for custom options
+    let customDate: string | null = null;
+    let formatOptions: FormatOptions = {
+      showPercentChanges: true,
+      showPlatformSpacing: true,
+    };
+
+    if (req.method === 'POST') {
+      try {
+        const body = await req.json();
+        if (body.date) {
+          customDate = body.date;
+        }
+        if (typeof body.showPercentChanges === 'boolean') {
+          formatOptions.showPercentChanges = body.showPercentChanges;
+        }
+        if (typeof body.showPlatformSpacing === 'boolean') {
+          formatOptions.showPlatformSpacing = body.showPlatformSpacing;
+        }
+      } catch {
+        // No body or invalid JSON, use defaults
+      }
+    }
+
+    // Use custom date or default to yesterday
+    const reportDate = customDate || getDateEST(1);
+    const previousDate = customDate 
+      ? new Date(new Date(customDate + 'T12:00:00').getTime() - 86400000).toISOString().split('T')[0]
+      : getDateEST(2);
+    
+    console.log(`Generating report for: ${reportDate} (comparing to ${previousDate})`);
+    console.log(`Format options:`, formatOptions);
 
     // Fetch all platform data in parallel (both current and previous day)
     const platforms = [
@@ -262,13 +304,13 @@ serve(async (req) => {
     ];
 
     const results = await Promise.all(
-      platforms.map(p => fetchPlatformData(p.name, p.endpoint, supabaseUrl, anonKey, yesterday, dayBeforeYesterday))
+      platforms.map(p => fetchPlatformData(p.name, p.endpoint, supabaseUrl, anonKey, reportDate, previousDate))
     );
 
     console.log('Platform results:', JSON.stringify(results, null, 2));
 
     // Build and send Slack message
-    const slackMessage = buildSlackMessage(results, yesterday);
+    const slackMessage = buildSlackMessage(results, reportDate, formatOptions);
     
     const slackResponse = await fetch(slackWebhookUrl, {
       method: 'POST',
@@ -284,7 +326,7 @@ serve(async (req) => {
     console.log('Slack message sent successfully');
 
     return new Response(
-      JSON.stringify({ success: true, date: yesterday, results }),
+      JSON.stringify({ success: true, date: reportDate, formatOptions, results }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
