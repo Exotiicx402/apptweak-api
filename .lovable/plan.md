@@ -1,83 +1,82 @@
 
 
-# Fix: Google Ads Should Query BigQuery for Today's Data
+# Fix: TikTok Should Query BigQuery for Today's Data (Same as Google Ads)
 
 ## Problem
 
-The `google-ads-history` function is unnecessarily capping the BigQuery query date range to **yesterday**, even though today's data already exists in BigQuery via Windsor.ai sync.
+The `tiktok-history` function is still showing "Partial data" because:
 
-**Current behavior (line 260):**
-```typescript
-const bqEndDate = endDate >= today ? yesterday : endDate;
-```
+1. **Line 136**: Caps the BigQuery query end date at yesterday
+   ```typescript
+   const bqEndDate = endDate >= today ? yesterday : endDate;
+   ```
 
-This means when a user selects a date range including today:
-- BigQuery query only fetches up to yesterday
-- The code tries to fetch "today" via live Google Ads API
-- Live API fails (developer token not approved)
-- Result: today's data is missing, even though it's in BigQuery
+2. **Lines 145-146**: Always sets `todayDataUnavailable = true` when today is in the range
+   ```typescript
+   const todayDataUnavailable = includestoday;
+   const unavailableReason = includestoday ? "TikTok data syncs daily; today's data will be available tomorrow" : "";
+   ```
 
-## Solution
-
-For Google Ads specifically, **always query BigQuery with the full date range** (including today) since the data is available there. Remove the logic that caps at yesterday and removes the live API fallback.
+Since TikTok data is synced to BigQuery via Windsor.ai (same as Google Ads) and **today's data is already available**, we should apply the same fix.
 
 ---
 
-## Files to Modify
+## Solution
 
-**`supabase/functions/google-ads-history/index.ts`**
+Apply the identical fix from Google Ads to TikTok:
 
-### Changes:
+1. **Remove date capping** - Query BigQuery with the full `startDate` to `endDate` range
+2. **Remove `todayDataUnavailable` flag** - Data IS available in BigQuery
 
-1. **Remove date capping logic** - Query BigQuery with the actual `startDate` and `endDate` requested
-2. **Remove live API fallback** - Since data is in BigQuery, we don't need the Google Ads live API call
-3. **Remove `todayDataUnavailable` flag** - Data IS available, so this flag is no longer needed
+---
 
-### Before (lines 255-264):
+## File to Modify
+
+**`supabase/functions/tiktok-history/index.ts`**
+
+### Before (lines 130-146):
 ```typescript
 const today = getTodayDate();
 const yesterday = addDays(today, -1);
 const includestoday = endDate >= today;
 
+// For TikTok, we only query BQ data (no live API available)
+// Cap end date at yesterday for BQ query
 const bqEndDate = endDate >= today ? yesterday : endDate;
+// Adjust start date if it's in the future (shouldn't happen but handle gracefully)
 const bqStartDate = startDate > yesterday ? yesterday : startDate;
+// Only skip if the entire range would be invalid
 const shouldQueryBigQuery = bqStartDate <= bqEndDate;
+
+console.log(`Query range: ${startDate} to ${endDate}, BQ query: ${bqStartDate} to ${bqEndDate}, shouldQuery: ${shouldQueryBigQuery}`);
+
+// Track if today is in range but we have no live API
+const todayDataUnavailable = includestoday;
+const unavailableReason = includestoday ? "TikTok data syncs daily; today's data will be available tomorrow" : "";
 ```
 
 ### After:
 ```typescript
-const today = getTodayDate();
-
-// Google Ads data is synced to BigQuery including today - no need to cap
+// TikTok data is synced to BigQuery including today via Windsor.ai - no need to cap
 const bqStartDate = startDate;
 const bqEndDate = endDate;
-const shouldQueryBigQuery = true;  // Always query BigQuery
+const shouldQueryBigQuery = true;
+
+console.log(`Query range: ${startDate} to ${endDate}, querying BigQuery for full range`);
 ```
 
-### Also remove:
-- Lines 357-362: Live API fetch for today (not needed)
-- Lines 394-435: Live data merging logic (not needed)
-- The `fetchGoogleAdsLiveData` and `transformLiveData` functions can be kept for potential future use, or removed entirely
-
----
-
-## Implementation
-
-### Step 1: Simplify date handling
-Remove the yesterday capping logic and always use the requested date range for BigQuery.
-
-### Step 2: Remove live API attempt
-Since BigQuery has today's data, skip the live Google Ads API call entirely.
-
-### Step 3: Clean up response
-Remove `todayDataUnavailable` flag since data is always available via BigQuery.
+### Also remove from response (lines 273-274):
+```typescript
+todayDataUnavailable,
+unavailableReason,
+```
 
 ---
 
 ## Expected Result
 
 After this fix:
-- User selects Jan 22 - Jan 30 → BigQuery queried for full range → Shows all data including today
-- User selects Jan 30 only → BigQuery queried for today → Shows today's data
-- No more "Partial data" badge for Google Ads
+- TikTok queries BigQuery for the full date range including today
+- No more "Partial data" badge for TikTok
+- Consistent behavior with the updated Google Ads function
 
