@@ -1,14 +1,26 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, Download, TrendingUp } from "lucide-react";
+import { PercentChange } from "./PercentChange";
 
 interface TotalMetricsSectionProps {
   spend: number;
   installs: number;
   cpi: number;
+  previousSpend?: number;
+  previousInstalls?: number;
+  previousCpi?: number;
   loading?: boolean;
 }
 
-export function TotalMetricsSection({ spend, installs, cpi, loading }: TotalMetricsSectionProps) {
+export function TotalMetricsSection({ 
+  spend, 
+  installs, 
+  cpi, 
+  previousSpend = 0,
+  previousInstalls = 0,
+  previousCpi = 0,
+  loading 
+}: TotalMetricsSectionProps) {
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -49,6 +61,7 @@ export function TotalMetricsSection({ spend, installs, cpi, loading }: TotalMetr
               Total Spend
             </div>
             <div className="text-3xl font-bold text-foreground">{formatCurrency(spend)}</div>
+            <PercentChange current={spend} previous={previousSpend} invertColors className="mt-2" />
           </CardContent>
         </Card>
         
@@ -59,6 +72,7 @@ export function TotalMetricsSection({ spend, installs, cpi, loading }: TotalMetr
               Total Installs
             </div>
             <div className="text-3xl font-bold text-foreground">{formatNumber(installs)}</div>
+            <PercentChange current={installs} previous={previousInstalls} className="mt-2" />
           </CardContent>
         </Card>
         
@@ -69,6 +83,7 @@ export function TotalMetricsSection({ spend, installs, cpi, loading }: TotalMetr
               Blended CPI
             </div>
             <div className="text-3xl font-bold text-foreground">{formatCurrency(cpi)}</div>
+            <PercentChange current={cpi} previous={previousCpi} invertColors className="mt-2" />
           </CardContent>
         </Card>
       </div>
