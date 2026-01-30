@@ -75,20 +75,30 @@ async function fetchPlatformData(
       throw new Error(`HTTP ${response.status}`);
     }
 
-    const data = await response.json();
+    const responseData = await response.json();
     
-    // Extract totals from the response - structure varies by platform
+    // Extract totals from the response
+    // Most platforms return: { success: true, data: { totals: {...} } }
+    // Moloco returns: { success: true, data: { totals: {...} } }
     let spend = 0;
     let installs = 0;
 
-    if (data.rows && Array.isArray(data.rows)) {
-      for (const row of data.rows) {
+    // Handle standard format: { success: true, data: { totals: {...} } }
+    if (responseData.success && responseData.data?.totals) {
+      spend = responseData.data.totals.spend || 0;
+      installs = responseData.data.totals.installs || 0;
+    }
+    // Fallback for direct totals format
+    else if (responseData.totals) {
+      spend = responseData.totals.spend || 0;
+      installs = responseData.totals.installs || 0;
+    }
+    // Fallback for rows format
+    else if (responseData.rows && Array.isArray(responseData.rows)) {
+      for (const row of responseData.rows) {
         spend += row.spend || 0;
         installs += row.installs || 0;
       }
-    } else if (data.totals) {
-      spend = data.totals.spend || 0;
-      installs = data.totals.installs || 0;
     }
 
     return {
