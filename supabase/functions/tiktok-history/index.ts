@@ -128,37 +128,22 @@ serve(async (req) => {
     }
 
     const today = getTodayDate();
+    const yesterday = addDays(today, -1);
     const includestoday = endDate >= today;
+    
     // For TikTok, we only query BQ data (no live API available)
-    // Adjust end date to yesterday if today is included
-    const effectiveEndDate = includestoday ? addDays(today, -1) : endDate;
-    const shouldQueryBigQuery = startDate <= effectiveEndDate;
+    // Cap end date at yesterday for BQ query
+    const bqEndDate = endDate >= today ? yesterday : endDate;
+    // Adjust start date if it's in the future (shouldn't happen but handle gracefully)
+    const bqStartDate = startDate > yesterday ? yesterday : startDate;
+    // Only skip if the entire range would be invalid
+    const shouldQueryBigQuery = bqStartDate <= bqEndDate;
 
-    console.log(`Query range: ${startDate} to ${endDate}, effective BQ end: ${effectiveEndDate}`);
+    console.log(`Query range: ${startDate} to ${endDate}, BQ query: ${bqStartDate} to ${bqEndDate}, shouldQuery: ${shouldQueryBigQuery}`);
 
     // Track if today is in range but we have no live API
     const todayDataUnavailable = includestoday;
     const unavailableReason = includestoday ? "TikTok data syncs daily; today's data will be available tomorrow" : "";
-
-    if (!shouldQueryBigQuery) {
-      // If only querying for today and we have no live API, return empty with flag
-      return new Response(
-        JSON.stringify({
-          success: true,
-          data: {
-            daily: [],
-            campaigns: [],
-            totals: { spend: 0, impressions: 0, clicks: 0, installs: 0, cpi: 0, ctr: 0 },
-            previousTotals: { spend: 0, impressions: 0, clicks: 0, installs: 0, cpi: 0, ctr: 0 },
-            dateRange: { startDate, endDate },
-            previousDateRange: { startDate: "", endDate: "" },
-            todayDataUnavailable,
-            unavailableReason,
-          },
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     const accessToken = await getAccessToken();
     const { projectId, datasetId, tableId } = resolveBigQueryTarget();
@@ -189,7 +174,7 @@ serve(async (req) => {
         SUM(clicks) as clicks,
         SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${effectiveEndDate}'
+      WHERE date BETWEEN '${bqStartDate}' AND '${bqEndDate}'
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
@@ -204,7 +189,7 @@ serve(async (req) => {
         SUM(clicks) as clicks,
         SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${effectiveEndDate}'
+      WHERE date BETWEEN '${bqStartDate}' AND '${bqEndDate}'
       GROUP BY campaign
       ORDER BY spend DESC
     `;
@@ -219,7 +204,7 @@ serve(async (req) => {
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
         SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) as ctr
       FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${effectiveEndDate}'
+      WHERE date BETWEEN '${bqStartDate}' AND '${bqEndDate}'
       ${campaignFilter}
     `;
 
@@ -283,7 +268,7 @@ serve(async (req) => {
             cpi: parseFloat(prevTotals.cpi) || 0,
             ctr: parseFloat(prevTotals.ctr) || 0,
           },
-          dateRange: { startDate, endDate: effectiveEndDate },
+          dateRange: { startDate, endDate: bqEndDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
           todayDataUnavailable,
           unavailableReason,
