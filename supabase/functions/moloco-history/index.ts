@@ -234,23 +234,12 @@ serve(async (req) => {
       throw new Error('startDate and endDate are required');
     }
 
-    const today = getTodayDate();
-    const yesterday = addDays(today, -1);
-    const includestoday = endDate >= today;
-    
-    // Moloco reports are typically available with some delay
-    // Cap end date at yesterday for the API query
-    const effectiveEndDate = endDate >= today ? yesterday : endDate;
-    // Adjust start date if it's in the future
-    const effectiveStartDate = startDate > yesterday ? yesterday : startDate;
-    // Only skip if the entire range would be invalid
-    const shouldFetch = effectiveStartDate <= effectiveEndDate;
+    // Query Moloco API with the full date range - let API return whatever data is available
+    const effectiveStartDate = startDate;
+    const effectiveEndDate = endDate;
+    const shouldFetch = true;
 
-    console.log(`Moloco query: ${effectiveStartDate} to ${effectiveEndDate}, shouldFetch: ${shouldFetch}`);
-
-    // Track if today is in range but we have no live API
-    const todayDataUnavailable = includestoday;
-    const unavailableReason = includestoday ? "Moloco reports have a delay; today's data will be available tomorrow" : "";
+    console.log(`Moloco query: ${effectiveStartDate} to ${effectiveEndDate}`);
 
     // Calculate previous period for comparison
     const start = new Date(startDate);
@@ -276,8 +265,6 @@ serve(async (req) => {
             previousTotals: { spend: 0, installs: 0, impressions: 0, clicks: 0, cpi: 0 },
             dateRange: { startDate, endDate: effectiveEndDate },
             previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
-            todayDataUnavailable,
-            unavailableReason,
           },
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -352,8 +339,6 @@ serve(async (req) => {
           },
           dateRange: { startDate, endDate: effectiveEndDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
-          todayDataUnavailable,
-          unavailableReason,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
