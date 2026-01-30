@@ -127,23 +127,12 @@ serve(async (req) => {
       );
     }
 
-    const today = getTodayDate();
-    const yesterday = addDays(today, -1);
-    const includestoday = endDate >= today;
-    
-    // For TikTok, we only query BQ data (no live API available)
-    // Cap end date at yesterday for BQ query
-    const bqEndDate = endDate >= today ? yesterday : endDate;
-    // Adjust start date if it's in the future (shouldn't happen but handle gracefully)
-    const bqStartDate = startDate > yesterday ? yesterday : startDate;
-    // Only skip if the entire range would be invalid
-    const shouldQueryBigQuery = bqStartDate <= bqEndDate;
+    // TikTok data is synced to BigQuery including today via Windsor.ai - no need to cap
+    const bqStartDate = startDate;
+    const bqEndDate = endDate;
+    const shouldQueryBigQuery = true;
 
-    console.log(`Query range: ${startDate} to ${endDate}, BQ query: ${bqStartDate} to ${bqEndDate}, shouldQuery: ${shouldQueryBigQuery}`);
-
-    // Track if today is in range but we have no live API
-    const todayDataUnavailable = includestoday;
-    const unavailableReason = includestoday ? "TikTok data syncs daily; today's data will be available tomorrow" : "";
+    console.log(`Query range: ${startDate} to ${endDate}, querying BigQuery for full range`);
 
     const accessToken = await getAccessToken();
     const { projectId, datasetId, tableId } = resolveBigQueryTarget();
@@ -270,8 +259,6 @@ serve(async (req) => {
           },
           dateRange: { startDate, endDate: bqEndDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
-          todayDataUnavailable,
-          unavailableReason,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
