@@ -5,7 +5,7 @@ import { DateRangePicker } from "@/components/dashboard/DateRangePicker";
 import { TotalMetricsSection } from "@/components/reporting/TotalMetricsSection";
 import { PlatformMetricsRow } from "@/components/reporting/PlatformMetricsRow";
 import { useReportingData } from "@/hooks/useReportingData";
-import { getLocalDaysAgo, getLocalToday } from "@/lib/dateUtils";
+import { getLocalDaysAgo, getLocalYesterday } from "@/lib/dateUtils";
 
 import metaLogo from "@/assets/logos/meta.png";
 import snapchatLogo from "@/assets/logos/snapchat.png";
@@ -15,8 +15,8 @@ import tiktokLogo from "@/assets/logos/tiktok.png";
 import molocoLogo from "@/assets/logos/moloco.webp";
 
 export default function Reporting() {
-  const [startDate, setStartDate] = useState(getLocalDaysAgo(7));
-  const [endDate, setEndDate] = useState(getLocalToday());
+  const [startDate, setStartDate] = useState(getLocalDaysAgo(8));
+  const [endDate, setEndDate] = useState(getLocalYesterday());
   const { data, isLoading, fetchAllPlatforms } = useReportingData();
 
   const handleApply = () => {
@@ -127,6 +127,8 @@ export default function Reporting() {
                 previousCpi={data.googleAds.previousCpi}
                 loading={data.googleAds.isLoading}
                 error={data.googleAds.error}
+                dataUnavailable={data.googleAds.dataUnavailable}
+                unavailableReason={data.googleAds.unavailableReason}
               />
 
               <PlatformMetricsRow
@@ -140,6 +142,8 @@ export default function Reporting() {
                 previousCpi={data.tiktok.previousCpi}
                 loading={data.tiktok.isLoading}
                 error={data.tiktok.error}
+                dataUnavailable={data.tiktok.dataUnavailable}
+                unavailableReason={data.tiktok.unavailableReason}
               />
 
               <PlatformMetricsRow
@@ -153,6 +157,8 @@ export default function Reporting() {
                 previousCpi={data.moloco?.previousCpi || 0}
                 loading={data.moloco?.isLoading}
                 error={data.moloco?.error}
+                dataUnavailable={data.moloco?.dataUnavailable}
+                unavailableReason={data.moloco?.unavailableReason}
               />
             </div>
           </>

@@ -136,8 +136,12 @@ serve(async (req) => {
 
     console.log(`Query range: ${startDate} to ${endDate}, effective BQ end: ${effectiveEndDate}`);
 
+    // Track if today is in range but we have no live API
+    const todayDataUnavailable = includestoday;
+    const unavailableReason = includestoday ? "TikTok data syncs daily; today's data will be available tomorrow" : "";
+
     if (!shouldQueryBigQuery) {
-      // If only querying for today and we have no live API, return empty
+      // If only querying for today and we have no live API, return empty with flag
       return new Response(
         JSON.stringify({
           success: true,
@@ -148,6 +152,8 @@ serve(async (req) => {
             previousTotals: { spend: 0, impressions: 0, clicks: 0, installs: 0, cpi: 0, ctr: 0 },
             dateRange: { startDate, endDate },
             previousDateRange: { startDate: "", endDate: "" },
+            todayDataUnavailable,
+            unavailableReason,
           },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -279,6 +285,8 @@ serve(async (req) => {
           },
           dateRange: { startDate, endDate: effectiveEndDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
+          todayDataUnavailable,
+          unavailableReason,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

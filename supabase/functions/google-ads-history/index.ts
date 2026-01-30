@@ -385,36 +385,47 @@ serve(async (req) => {
       ctr: parseFloat(bqTotals.ctr) || 0,
     };
 
+    // Track if today's data is unavailable
+    let todayDataUnavailable = false;
+    let unavailableReason = "";
+
     // Merge live data for today
-    if (liveData && liveData.length > 0) {
-      const liveTransformed = transformLiveData(liveData, today);
-      
-      // Add today's daily data
-      dailyData.push(liveTransformed.daily);
-      
-      // Merge campaign data
-      for (const liveCampaign of liveTransformed.campaigns) {
-        const existing = campaignData.find((c: any) => c.campaign_name === liveCampaign.campaign_name);
-        if (existing) {
-          existing.spend += liveCampaign.spend;
-          existing.impressions += liveCampaign.impressions;
-          existing.clicks += liveCampaign.clicks;
-          existing.installs += liveCampaign.installs;
-          existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
-        } else {
-          campaignData.push(liveCampaign);
+    if (includestoday) {
+      if (liveData && liveData.length > 0) {
+        const liveTransformed = transformLiveData(liveData, today);
+        
+        // Add today's daily data
+        dailyData.push(liveTransformed.daily);
+        
+        // Merge campaign data
+        for (const liveCampaign of liveTransformed.campaigns) {
+          const existing = campaignData.find((c: any) => c.campaign_name === liveCampaign.campaign_name);
+          if (existing) {
+            existing.spend += liveCampaign.spend;
+            existing.impressions += liveCampaign.impressions;
+            existing.clicks += liveCampaign.clicks;
+            existing.installs += liveCampaign.installs;
+            existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
+          } else {
+            campaignData.push(liveCampaign);
+          }
         }
+        
+        // Update totals
+        totals.spend += liveTransformed.totals.spend;
+        totals.impressions += liveTransformed.totals.impressions;
+        totals.clicks += liveTransformed.totals.clicks;
+        totals.installs += liveTransformed.totals.installs;
+        totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
+        totals.ctr = totals.impressions > 0 ? totals.clicks / totals.impressions : 0;
+        
+        console.log(`Added live data for today: spend=${liveTransformed.totals.spend}, installs=${liveTransformed.totals.installs}`);
+      } else {
+        // Live API failed or returned no data - flag as unavailable
+        todayDataUnavailable = true;
+        unavailableReason = "Google Ads API requires production access; today's data syncs overnight";
+        console.log("Today's data unavailable: live API returned no data");
       }
-      
-      // Update totals
-      totals.spend += liveTransformed.totals.spend;
-      totals.impressions += liveTransformed.totals.impressions;
-      totals.clicks += liveTransformed.totals.clicks;
-      totals.installs += liveTransformed.totals.installs;
-      totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
-      totals.ctr = totals.impressions > 0 ? totals.clicks / totals.impressions : 0;
-      
-      console.log(`Added live data for today: spend=${liveTransformed.totals.spend}, installs=${liveTransformed.totals.installs}`);
     }
 
     // Sort campaign data by spend desc
@@ -439,6 +450,8 @@ serve(async (req) => {
           },
           dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
+          todayDataUnavailable,
+          unavailableReason,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
