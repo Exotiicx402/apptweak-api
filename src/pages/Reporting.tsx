@@ -67,6 +67,9 @@ export default function Reporting() {
               spend={data.totals.spend}
               installs={data.totals.installs}
               cpi={data.totals.cpi}
+              previousSpend={data.totals.previousSpend}
+              previousInstalls={data.totals.previousInstalls}
+              previousCpi={data.totals.previousCpi}
               loading={anyPlatformLoading}
             />
 
@@ -80,6 +83,9 @@ export default function Reporting() {
                 spend={data.meta.spend}
                 installs={data.meta.installs}
                 cpi={data.meta.cpi}
+                previousSpend={data.meta.previousSpend}
+                previousInstalls={data.meta.previousInstalls}
+                previousCpi={data.meta.previousCpi}
                 loading={data.meta.isLoading}
                 error={data.meta.error}
               />
@@ -90,6 +96,9 @@ export default function Reporting() {
                 spend={data.snapchat.spend}
                 installs={data.snapchat.installs}
                 cpi={data.snapchat.cpi}
+                previousSpend={data.snapchat.previousSpend}
+                previousInstalls={data.snapchat.previousInstalls}
+                previousCpi={data.snapchat.previousCpi}
                 loading={data.snapchat.isLoading}
                 error={data.snapchat.error}
               />
@@ -100,6 +109,9 @@ export default function Reporting() {
                 spend={data.unity.spend}
                 installs={data.unity.installs}
                 cpi={data.unity.cpi}
+                previousSpend={data.unity.previousSpend}
+                previousInstalls={data.unity.previousInstalls}
+                previousCpi={data.unity.previousCpi}
                 loading={data.unity.isLoading}
                 error={data.unity.error}
               />
@@ -110,6 +122,9 @@ export default function Reporting() {
                 spend={data.googleAds.spend}
                 installs={data.googleAds.installs}
                 cpi={data.googleAds.cpi}
+                previousSpend={data.googleAds.previousSpend}
+                previousInstalls={data.googleAds.previousInstalls}
+                previousCpi={data.googleAds.previousCpi}
                 loading={data.googleAds.isLoading}
                 error={data.googleAds.error}
               />
@@ -120,6 +135,9 @@ export default function Reporting() {
                 spend={data.tiktok.spend}
                 installs={data.tiktok.installs}
                 cpi={data.tiktok.cpi}
+                previousSpend={data.tiktok.previousSpend}
+                previousInstalls={data.tiktok.previousInstalls}
+                previousCpi={data.tiktok.previousCpi}
                 loading={data.tiktok.isLoading}
                 error={data.tiktok.error}
               />
@@ -130,6 +148,9 @@ export default function Reporting() {
                 spend={data.moloco?.spend || 0}
                 installs={data.moloco?.installs || 0}
                 cpi={data.moloco?.cpi || 0}
+                previousSpend={data.moloco?.previousSpend || 0}
+                previousInstalls={data.moloco?.previousInstalls || 0}
+                previousCpi={data.moloco?.previousCpi || 0}
                 loading={data.moloco?.isLoading}
                 error={data.moloco?.error}
               />
@@ -141,7 +162,7 @@ export default function Reporting() {
         {!anyPlatformLoading && data.totals.spend === 0 && (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-lg mb-2">Select a date range and click Apply to view metrics</p>
-            <p className="text-sm">Data will be fetched from Meta, Snapchat, Unity, Google Ads, and TikTok</p>
+            <p className="text-sm">Data will be fetched from Meta, Snapchat, Unity, Google Ads, TikTok, and Moloco</p>
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle, DollarSign, Download, TrendingUp } from "lucide-react";
+import { PercentChange } from "./PercentChange";
 
 interface PlatformMetricsRowProps {
   platform: string;
@@ -7,6 +8,9 @@ interface PlatformMetricsRowProps {
   spend: number;
   installs: number;
   cpi: number;
+  previousSpend?: number;
+  previousInstalls?: number;
+  previousCpi?: number;
   loading?: boolean;
   error?: string | null;
 }
@@ -17,6 +21,9 @@ export function PlatformMetricsRow({
   spend,
   installs,
   cpi,
+  previousSpend = 0,
+  previousInstalls = 0,
+  previousCpi = 0,
   loading,
   error,
 }: PlatformMetricsRowProps) {
@@ -83,6 +90,7 @@ export function PlatformMetricsRow({
               Spend
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(spend)}</div>
+            <PercentChange current={spend} previous={previousSpend} invertColors className="mt-1" />
           </CardContent>
         </Card>
         
@@ -93,6 +101,7 @@ export function PlatformMetricsRow({
               Installs
             </div>
             <div className="text-xl font-semibold text-foreground">{formatNumber(installs)}</div>
+            <PercentChange current={installs} previous={previousInstalls} className="mt-1" />
           </CardContent>
         </Card>
         
@@ -103,6 +112,7 @@ export function PlatformMetricsRow({
               CPI
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cpi)}</div>
+            <PercentChange current={cpi} previous={previousCpi} invertColors className="mt-1" />
           </CardContent>
         </Card>
       </div>

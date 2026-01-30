@@ -10,12 +10,17 @@ interface PlatformResult {
   spend: number;
   installs: number;
   cpi: number;
+  previousSpend: number;
+  previousInstalls: number;
+  previousCpi: number;
   error?: string;
 }
 
-function getYesterdayEST(): string {
-  // Get current time in EST/EDT (America/New_York)
+function getDateEST(daysAgo: number): string {
   const now = new Date();
+  const target = new Date(now);
+  target.setDate(target.getDate() - daysAgo);
+  
   const estFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
@@ -23,12 +28,7 @@ function getYesterdayEST(): string {
     day: '2-digit',
   });
   
-  // Get yesterday in EST
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  // Format as YYYY-MM-DD
-  return estFormatter.format(yesterday);
+  return estFormatter.format(target);
 }
 
 function formatCurrency(value: number): string {
@@ -54,13 +54,20 @@ function formatCPI(spend: number, installs: number): string {
   }).format(spend / installs);
 }
 
-async function fetchPlatformData(
+function calculatePercentChange(current: number, previous: number): string {
+  if (previous === 0) return '-';
+  const change = ((current - previous) / previous) * 100;
+  const sign = change >= 0 ? '+' : '';
+  return `${sign}${change.toFixed(1)}%`;
+}
+
+async function fetchPlatformDataForDate(
   platform: string,
   endpoint: string,
   supabaseUrl: string,
   anonKey: string,
   date: string
-): Promise<PlatformResult> {
+): Promise<{ spend: number; installs: number; cpi: number; error?: string }> {
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/${endpoint}`, {
       method: 'POST',
@@ -77,24 +84,16 @@ async function fetchPlatformData(
 
     const responseData = await response.json();
     
-    // Extract totals from the response
-    // Most platforms return: { success: true, data: { totals: {...} } }
-    // Moloco returns: { success: true, data: { totals: {...} } }
     let spend = 0;
     let installs = 0;
 
-    // Handle standard format: { success: true, data: { totals: {...} } }
     if (responseData.success && responseData.data?.totals) {
       spend = responseData.data.totals.spend || 0;
       installs = responseData.data.totals.installs || 0;
-    }
-    // Fallback for direct totals format
-    else if (responseData.totals) {
+    } else if (responseData.totals) {
       spend = responseData.totals.spend || 0;
       installs = responseData.totals.installs || 0;
-    }
-    // Fallback for rows format
-    else if (responseData.rows && Array.isArray(responseData.rows)) {
+    } else if (responseData.rows && Array.isArray(responseData.rows)) {
       for (const row of responseData.rows) {
         spend += row.spend || 0;
         installs += row.installs || 0;
@@ -102,21 +101,44 @@ async function fetchPlatformData(
     }
 
     return {
-      platform,
       spend,
       installs,
       cpi: installs > 0 ? spend / installs : 0,
     };
   } catch (error) {
-    console.error(`Error fetching ${platform}:`, error);
+    console.error(`Error fetching ${platform} for ${date}:`, error);
     return {
-      platform,
       spend: 0,
       installs: 0,
       cpi: 0,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
+}
+
+async function fetchPlatformData(
+  platform: string,
+  endpoint: string,
+  supabaseUrl: string,
+  anonKey: string,
+  currentDate: string,
+  previousDate: string
+): Promise<PlatformResult> {
+  const [current, previous] = await Promise.all([
+    fetchPlatformDataForDate(platform, endpoint, supabaseUrl, anonKey, currentDate),
+    fetchPlatformDataForDate(platform, endpoint, supabaseUrl, anonKey, previousDate),
+  ]);
+
+  return {
+    platform,
+    spend: current.spend,
+    installs: current.installs,
+    cpi: current.cpi,
+    previousSpend: previous.spend,
+    previousInstalls: previous.installs,
+    previousCpi: previous.cpi,
+    error: current.error,
+  };
 }
 
 function formatDateForDisplay(dateStr: string): string {
@@ -131,36 +153,57 @@ function formatDateForDisplay(dateStr: string): string {
 function buildSlackMessage(results: PlatformResult[], date: string): object {
   const displayDate = formatDateForDisplay(date);
   
-  // Calculate totals
+  // Calculate totals for current and previous period
   const totals = results.reduce(
     (acc, r) => ({
       spend: acc.spend + r.spend,
       installs: acc.installs + r.installs,
+      previousSpend: acc.previousSpend + r.previousSpend,
+      previousInstalls: acc.previousInstalls + r.previousInstalls,
     }),
-    { spend: 0, installs: 0 }
+    { spend: 0, installs: 0, previousSpend: 0, previousInstalls: 0 }
   );
+
+  const totalCpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
+  const previousTotalCpi = totals.previousInstalls > 0 ? totals.previousSpend / totals.previousInstalls : 0;
 
   // Build the table rows
   const platformOrder = ['Meta', 'Snapchat', 'Unity', 'Google Ads', 'TikTok', 'Moloco'];
   const sortedResults = platformOrder.map(
-    p => results.find(r => r.platform === p) || { platform: p, spend: 0, installs: 0, cpi: 0, error: 'No data' }
+    p => results.find(r => r.platform === p) || { 
+      platform: p, spend: 0, installs: 0, cpi: 0, 
+      previousSpend: 0, previousInstalls: 0, previousCpi: 0, 
+      error: 'No data' 
+    }
   );
 
   // Format table with fixed-width columns
   const header = 'Platform         Spend        Installs      CPI';
   const separator = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
   
-  const rows = sortedResults.map(r => {
+  const rows: string[] = [];
+  
+  for (const r of sortedResults) {
     const platform = r.platform.padEnd(16);
     const spend = r.error ? 'Error'.padStart(12) : formatCurrency(r.spend).padStart(12);
     const installs = r.error ? '-'.padStart(12) : formatNumber(r.installs).padStart(12);
     const cpi = r.error ? '-'.padStart(10) : formatCPI(r.spend, r.installs).padStart(10);
-    return `${platform}${spend}${installs}${cpi}`;
-  });
+    rows.push(`${platform}${spend}${installs}${cpi}`);
+    
+    // Add percentage change row
+    if (!r.error) {
+      const spendChange = calculatePercentChange(r.spend, r.previousSpend).padStart(12);
+      const installsChange = calculatePercentChange(r.installs, r.previousInstalls).padStart(12);
+      const cpiChange = calculatePercentChange(r.cpi, r.previousCpi).padStart(10);
+      rows.push(`${''.padEnd(16)}${spendChange}${installsChange}${cpiChange}`);
+    }
+  }
 
+  // Total row with % change
   const totalRow = `${'TOTAL'.padEnd(16)}${formatCurrency(totals.spend).padStart(12)}${formatNumber(totals.installs).padStart(12)}${formatCPI(totals.spend, totals.installs).padStart(10)}`;
+  const totalChangeRow = `${''.padEnd(16)}${calculatePercentChange(totals.spend, totals.previousSpend).padStart(12)}${calculatePercentChange(totals.installs, totals.previousInstalls).padStart(12)}${calculatePercentChange(totalCpi, previousTotalCpi).padStart(10)}`;
 
-  const tableContent = [header, separator, ...rows, separator, totalRow].join('\n');
+  const tableContent = [header, separator, ...rows, separator, totalRow, totalChangeRow].join('\n');
 
   return {
     blocks: [
@@ -201,10 +244,11 @@ serve(async (req) => {
       throw new Error('Supabase credentials not configured');
     }
 
-    const yesterday = getYesterdayEST();
-    console.log(`Generating report for: ${yesterday}`);
+    const yesterday = getDateEST(1);
+    const dayBeforeYesterday = getDateEST(2);
+    console.log(`Generating report for: ${yesterday} (comparing to ${dayBeforeYesterday})`);
 
-    // Fetch all platform data in parallel
+    // Fetch all platform data in parallel (both current and previous day)
     const platforms = [
       { name: 'Meta', endpoint: 'meta-history' },
       { name: 'Snapchat', endpoint: 'snapchat-history' },
@@ -215,7 +259,7 @@ serve(async (req) => {
     ];
 
     const results = await Promise.all(
-      platforms.map(p => fetchPlatformData(p.name, p.endpoint, supabaseUrl, anonKey, yesterday))
+      platforms.map(p => fetchPlatformData(p.name, p.endpoint, supabaseUrl, anonKey, yesterday, dayBeforeYesterday))
     );
 
     console.log('Platform results:', JSON.stringify(results, null, 2));
