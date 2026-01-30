@@ -131,26 +131,29 @@ serve(async (req) => {
     const prevStartStr = prevStart.toISOString().split("T")[0];
     const prevEndStr = prevEnd.toISOString().split("T")[0];
 
-    const campaignFilter = campaignId ? `AND campaign_name = '${campaignId}'` : "";
+    const campaignFilter = campaignId ? `AND campaign = '${campaignId}'` : "";
 
-    // Windsor Google Ads schema uses simplified column names:
-    // - timestamp (datetime column)
-    // - campaign_name
-    // - spend (already in currency units)
-    // - clicks
-    // - impressions
-    // - conversions (installs)
+    // Windsor Google Ads schema (from BigQuery):
+    // - date (DATE column)
+    // - campaign (STRING - campaign name)
+    // - spend (BIGNUMERIC)
+    // - clicks (BIGNUMERIC)
+    // - conversions (BIGNUMERIC - installs)
+    // - ctr (STRING)
+    // - cpc (BIGNUMERIC)
+    // - average_cpm (BIGNUMERIC)
+    // Note: impressions not directly available, calculate from spend/average_cpm if needed
     
     // Daily metrics query
     const dailyQuery = `
       SELECT 
-        DATE(timestamp) as date,
+        date,
         SUM(spend) as spend,
-        SUM(impressions) as impressions,
+        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
         SUM(clicks) as clicks,
         SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE date BETWEEN '${startDate}' AND '${endDate}'
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
@@ -159,14 +162,14 @@ serve(async (req) => {
     // Campaign breakdown query
     const campaignQuery = `
       SELECT 
-        campaign_name,
+        campaign as campaign_name,
         SUM(spend) as spend,
-        SUM(impressions) as impressions,
+        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
         SUM(clicks) as clicks,
         SUM(conversions) as installs
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
-      GROUP BY campaign_name
+      WHERE date BETWEEN '${startDate}' AND '${endDate}'
+      GROUP BY campaign
       ORDER BY spend DESC
     `;
 
@@ -174,13 +177,13 @@ serve(async (req) => {
     const totalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
-        SUM(impressions) as total_impressions,
+        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(conversions) as total_installs,
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
-        SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) as ctr
+        SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
+      WHERE date BETWEEN '${startDate}' AND '${endDate}'
       ${campaignFilter}
     `;
 
@@ -188,13 +191,13 @@ serve(async (req) => {
     const prevTotalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
-        SUM(impressions) as total_impressions,
+        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(conversions) as total_installs,
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
-        SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) as ctr
+        SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr
       FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
+      WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
       ${campaignFilter}
     `;
 
