@@ -1,74 +1,73 @@
 
 
-## Client-Facing Reporting Page
+## Fix Google Ads History Edge Function
 
-### Overview
-A new page at `/reporting` designed for client viewing that displays aggregated performance metrics across all ad platforms. Clean, focused view showing only the essential KPIs: **Spend**, **Installs**, and **CPI**.
+### Problem
+The `google-ads-history` edge function uses Google Ads API column names (`segments_date`, `metrics_cost_micros`, `metrics_conversions`) but Windsor syncs data with simplified column names matching the pattern used in Meta and Snapchat tables.
+
+### Solution
+Update the SQL queries to use Windsor's standard column naming convention, matching the pattern from your working Snapchat and Meta integrations.
 
 ---
 
-### Page Layout
+### Changes to Make
 
-```text
-+----------------------------------------------------------+
-|  Performance Report                    [Date Range Picker]|
-+----------------------------------------------------------+
-|                                                          |
-|  TOTAL (All Channels)                                    |
-|  +----------------+  +----------------+  +----------------+
-|  |  Total Spend   |  | Total Installs |  |  Blended CPI  |
-|  |   $125,430     |  |    42,350      |  |    $2.96      |
-|  +----------------+  +----------------+  +----------------+
-|                                                          |
-+----------------------------------------------------------+
-|                                                          |
-|  BY PLATFORM                                             |
-|                                                          |
-|  Meta Ads                                                |
-|  +----------------+  +----------------+  +----------------+
-|  |    Spend       |  |    Installs    |  |      CPI      |
-|  |   $45,000      |  |    15,000      |  |    $3.00      |
-|  +----------------+  +----------------+  +----------------+
-|                                                          |
-|  Snapchat                                                |
-|  +----------------+  +----------------+  +----------------+
-|  |    Spend       |  |    Installs    |  |      CPI      |
-|  |   $30,000      |  |    12,000      |  |    $2.50      |
-|  +----------------+  +----------------+  +----------------+
-|                                                          |
-|  Unity                                                   |
-|  +----------------+  +----------------+  +----------------+
-|  |    Spend       |  |    Installs    |  |      CPI      |
-|  |   $25,430      |  |     8,350      |  |    $3.05      |
-|  +----------------+  +----------------+  +----------------+
-|                                                          |
-|  Google Ads                                              |
-|  +----------------+  +----------------+  +----------------+
-|  |    Spend       |  |    Installs    |  |      CPI      |
-|  |   $25,000      |  |     7,000      |  |    $3.57      |
-|  +----------------+  +----------------+  +----------------+
-|                                                          |
-+----------------------------------------------------------+
+**File:** `supabase/functions/google-ads-history/index.ts`
+
+Update all SQL queries to use Windsor column names:
+
+| Current (Google Ads API style) | New (Windsor style) |
+|-------------------------------|---------------------|
+| `segments_date` | `timestamp` or `date` |
+| `metrics_cost_micros / 1000000` | `spend` |
+| `metrics_impressions` | `impressions` |
+| `metrics_clicks` | `clicks` |
+| `metrics_conversions` | `conversions` or `installs` |
+
+---
+
+### Updated Queries
+
+**Daily Query:**
+```sql
+SELECT 
+  DATE(timestamp) as date,
+  SUM(spend) as spend,
+  SUM(impressions) as impressions,
+  SUM(clicks) as clicks,
+  SUM(conversions) as installs
+FROM `project.dataset.google`
+WHERE DATE(timestamp) BETWEEN '2025-01-01' AND '2025-01-30'
+GROUP BY date
+ORDER BY date
+```
+
+**Totals Query:**
+```sql
+SELECT 
+  SUM(spend) as total_spend,
+  SUM(impressions) as total_impressions,
+  SUM(clicks) as total_clicks,
+  SUM(conversions) as total_installs,
+  SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
+FROM `project.dataset.google`
+WHERE DATE(timestamp) BETWEEN '2025-01-01' AND '2025-01-30'
 ```
 
 ---
 
-### ✅ Implemented Components
+### Configuration Update
 
-| File | Description |
-|------|-------------|
-| `src/pages/Reporting.tsx` | Main reporting page with date range picker and platform sections |
-| `src/components/reporting/PlatformMetricsRow.tsx` | Reusable row showing platform name + 3 KPI cards |
-| `src/components/reporting/TotalMetricsSection.tsx` | Highlighted section for aggregated totals |
-| `src/hooks/useReportingData.ts` | Hook that fetches data from all platforms in parallel |
-| `supabase/functions/google-ads-history/index.ts` | Edge function to query Windsor's Google Ads BigQuery table |
+Since you said the table name is "google" (not "google_Final"), I'll also update the edge function to handle both:
+- Using `GOOGLE_ADS_BQ_TABLE_ID` if set to a full path like `project.dataset.google`
+- Or falling back to `BQ_PROJECT_ID.BQ_DATASET_ID.google`
 
 ---
 
-### Notes
+### Technical Note
 
-- **TikTok**: Ready to add once BigQuery table ID is provided
-- **No previous period comparison**: For client simplicity, showing current values only (no trend arrows)
-- **Blended CPI**: Calculated as Total Spend / Total Installs across all platforms
-
+If the column names differ from what I've assumed (based on Meta/Snapchat patterns), the error message will tell us the exact column name that doesn't exist, and we can adjust. Common Windsor variations:
+- `date` instead of `timestamp`
+- `installs` instead of `conversions`
+- `cost` instead of `spend`
 
