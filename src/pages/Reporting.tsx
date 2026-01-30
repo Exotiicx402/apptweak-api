@@ -17,11 +17,11 @@ export default function Reporting() {
   };
 
   const anyPlatformLoading = 
-    data.meta.isLoading || 
-    data.snapchat.isLoading || 
-    data.unity.isLoading || 
-    data.googleAds.isLoading ||
-    data.tiktok.isLoading;
+    data.meta?.isLoading || 
+    data.snapchat?.isLoading || 
+    data.unity?.isLoading || 
+    data.googleAds?.isLoading ||
+    data.tiktok?.isLoading;
 
   return (
     <div className="min-h-screen bg-background p-6">
