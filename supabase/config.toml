@@ -1,5 +1,8 @@
 project_id = "agususzieosizftucxxq"
 
+[functions.slack-daily-report]
+verify_jwt = false
+
 [functions.apptweak-ranking]
 verify_jwt = false
 
