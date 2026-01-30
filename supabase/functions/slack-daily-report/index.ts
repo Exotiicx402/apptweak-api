@@ -197,6 +197,9 @@ function buildSlackMessage(results: PlatformResult[], date: string): object {
       const cpiChange = calculatePercentChange(r.cpi, r.previousCpi).padStart(10);
       rows.push(`${''.padEnd(16)}${spendChange}${installsChange}${cpiChange}`);
     }
+    
+    // Add blank line for spacing between platforms
+    rows.push('');
   }
 
   // Total row with % change
