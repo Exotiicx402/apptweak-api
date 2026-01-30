@@ -28,7 +28,6 @@ const SCHEDULE_OPTIONS = [
 const SlackReportControls = () => {
   const [date, setDate] = useState<Date>(subDays(new Date(), 1));
   const [showPercentChanges, setShowPercentChanges] = useState(true);
-  const [showPlatformSpacing, setShowPlatformSpacing] = useState(true);
   const [isSending, setIsSending] = useState(false);
 
   const { data: schedules, isLoading: schedulesLoading } = useSchedules();
@@ -51,7 +50,7 @@ const SlackReportControls = () => {
         body: { 
           date: dateStr,
           showPercentChanges,
-          showPlatformSpacing,
+          showPlatformSpacing: true,
         }
       });
 
@@ -201,17 +200,6 @@ const SlackReportControls = () => {
                 id="show-percent"
                 checked={showPercentChanges}
                 onCheckedChange={setShowPercentChanges}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="show-spacing" className="font-normal cursor-pointer">
-                Add spacing between platforms
-              </Label>
-              <Switch
-                id="show-spacing"
-                checked={showPlatformSpacing}
-                onCheckedChange={setShowPlatformSpacing}
               />
             </div>
           </div>
