@@ -1,73 +1,61 @@
 
 
-## Fix Google Ads History Edge Function
+## Fix Google Ads History BigQuery Schema Mismatch
 
-### Problem
-The `google-ads-history` edge function uses Google Ads API column names (`segments_date`, `metrics_cost_micros`, `metrics_conversions`) but Windsor syncs data with simplified column names matching the pattern used in Meta and Snapchat tables.
+### Problem Analysis
 
-### Solution
-Update the SQL queries to use Windsor's standard column naming convention, matching the pattern from your working Snapchat and Meta integrations.
+The edge function is querying the table `google_Final` but the column `date` doesn't exist in that table. The screenshot showed a schema with a `date` column, but that appears to be from a different table than what's actually being queried (`google_Final` vs `google`).
 
----
+**Evidence:**
+- Edge function logs show: `Querying Google Ads data from: polymarket-data-house.polymarket_hours.google_Final`
+- BigQuery error: `Unrecognized name: date at [10:13]`
+- The `GOOGLE_ADS_BQ_TABLE_ID` secret is set to `google_Final`, not `google`
 
-### Changes to Make
+### Root Cause
 
-**File:** `supabase/functions/google-ads-history/index.ts`
+There are two possibilities:
+1. The `google_Final` table uses a different column name for dates (e.g., `timestamp`, `day`, `report_date`)
+2. The screenshot you shared was from the wrong table
 
-Update all SQL queries to use Windsor column names:
+### Solution Options
 
-| Current (Google Ads API style) | New (Windsor style) |
-|-------------------------------|---------------------|
-| `segments_date` | `timestamp` or `date` |
-| `metrics_cost_micros / 1000000` | `spend` |
-| `metrics_impressions` | `impressions` |
-| `metrics_clicks` | `clicks` |
-| `metrics_conversions` | `conversions` or `installs` |
+**Option A: Query the actual schema**
+I can create a temporary diagnostic query to fetch the exact schema of `google_Final` so we know the correct column names.
 
----
+**Option B: Update the table name**
+If the screenshot you shared (showing the `date` column) is from the correct table named `google` (not `google_Final`), then we need to update the `GOOGLE_ADS_BQ_TABLE_ID` secret from `google_Final` to `google`.
 
-### Updated Queries
+**Option C: Manual schema sharing**
+You can run this query in BigQuery and share the results:
+```sql
+SELECT column_name, data_type 
+FROM `polymarket-data-house.polymarket_hours.INFORMATION_SCHEMA.COLUMNS`
+WHERE table_name = 'google_Final'
+ORDER BY ordinal_position
+```
 
-**Daily Query:**
+### Recommended Approach
+
+**I recommend Option B** - Update the secret to point to `google` instead of `google_Final`, since:
+1. You explicitly said "The table name in big qquery for google is 'google'"
+2. The screenshot shows a table with the schema we expect (date, campaign, spend, clicks, conversions, etc.)
+3. This is the quickest fix
+
+### Changes Required
+
+1. **Update Secret**: Change `GOOGLE_ADS_BQ_TABLE_ID` from `google_Final` to `google` (or the full path `polymarket-data-house.polymarket_hours.google`)
+
+2. **No code changes needed** - The edge function is already correctly written for the schema shown in your screenshot
+
+### Alternative: If google_Final is the correct table
+
+If `google_Final` IS the correct table to use, then we need to know its actual schema. The most likely scenario is that it uses `timestamp` instead of `date`, in which case the queries would need to use:
 ```sql
 SELECT 
   DATE(timestamp) as date,
-  SUM(spend) as spend,
-  SUM(impressions) as impressions,
-  SUM(clicks) as clicks,
-  SUM(conversions) as installs
-FROM `project.dataset.google`
-WHERE DATE(timestamp) BETWEEN '2025-01-01' AND '2025-01-30'
-GROUP BY date
-ORDER BY date
-```
-
-**Totals Query:**
-```sql
-SELECT 
-  SUM(spend) as total_spend,
-  SUM(impressions) as total_impressions,
-  SUM(clicks) as total_clicks,
-  SUM(conversions) as total_installs,
-  SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
-FROM `project.dataset.google`
+  ...
 WHERE DATE(timestamp) BETWEEN '2025-01-01' AND '2025-01-30'
 ```
 
----
-
-### Configuration Update
-
-Since you said the table name is "google" (not "google_Final"), I'll also update the edge function to handle both:
-- Using `GOOGLE_ADS_BQ_TABLE_ID` if set to a full path like `project.dataset.google`
-- Or falling back to `BQ_PROJECT_ID.BQ_DATASET_ID.google`
-
----
-
-### Technical Note
-
-If the column names differ from what I've assumed (based on Meta/Snapchat patterns), the error message will tell us the exact column name that doesn't exist, and we can adjust. Common Windsor variations:
-- `date` instead of `timestamp`
-- `installs` instead of `conversions`
-- `cost` instead of `spend`
+But this requires confirmation of the actual column names in `google_Final`.
 
