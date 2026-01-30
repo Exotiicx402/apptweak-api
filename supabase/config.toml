@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.google-ads-history]
 verify_jwt = false
+
+[functions.tiktok-history]
+verify_jwt = false

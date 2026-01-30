@@ -14,6 +14,7 @@ interface ReportingData {
   snapchat: PlatformMetrics;
   unity: PlatformMetrics;
   googleAds: PlatformMetrics;
+  tiktok: PlatformMetrics;
   totals: {
     spend: number;
     installs: number;
@@ -35,6 +36,7 @@ export function useReportingData() {
     snapchat: { ...emptyMetrics },
     unity: { ...emptyMetrics },
     googleAds: { ...emptyMetrics },
+    tiktok: { ...emptyMetrics },
     totals: { spend: 0, installs: 0, cpi: 0 },
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -49,14 +51,16 @@ export function useReportingData() {
       snapchat: { ...emptyMetrics, isLoading: true },
       unity: { ...emptyMetrics, isLoading: true },
       googleAds: { ...emptyMetrics, isLoading: true },
+      tiktok: { ...emptyMetrics, isLoading: true },
     }));
 
     // Fetch all platforms in parallel
-    const [metaResult, snapchatResult, unityResult, googleAdsResult] = await Promise.allSettled([
+    const [metaResult, snapchatResult, unityResult, googleAdsResult, tiktokResult] = await Promise.allSettled([
       supabase.functions.invoke("meta-history", { body: { startDate, endDate } }),
       supabase.functions.invoke("snapchat-history", { body: { startDate, endDate } }),
       supabase.functions.invoke("unity-history", { body: { startDate, endDate } }),
       supabase.functions.invoke("google-ads-history", { body: { startDate, endDate } }),
+      supabase.functions.invoke("tiktok-history", { body: { startDate, endDate } }),
     ]);
 
     // Process results
@@ -89,9 +93,10 @@ export function useReportingData() {
     const snapchat = processResult(snapchatResult);
     const unity = processResult(unityResult);
     const googleAds = processResult(googleAdsResult);
+    const tiktok = processResult(tiktokResult);
 
     // Calculate totals (only from platforms without errors)
-    const platforms = [meta, snapchat, unity, googleAds];
+    const platforms = [meta, snapchat, unity, googleAds, tiktok];
     const validPlatforms = platforms.filter(p => !p.error);
     
     const totalSpend = validPlatforms.reduce((sum, p) => sum + p.spend, 0);
@@ -103,6 +108,7 @@ export function useReportingData() {
       snapchat,
       unity,
       googleAds,
+      tiktok,
       totals: {
         spend: totalSpend,
         installs: totalInstalls,
