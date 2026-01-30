@@ -4,12 +4,10 @@ import { cn } from "@/lib/utils";
 interface PercentChangeProps {
   current: number;
   previous: number;
-  /** For metrics where higher is worse (like CPI, Spend) */
-  invertColors?: boolean;
   className?: string;
 }
 
-export function PercentChange({ current, previous, invertColors = false, className }: PercentChangeProps) {
+export function PercentChange({ current, previous, className }: PercentChangeProps) {
   if (previous === 0) {
     return (
       <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", className)}>
@@ -22,17 +20,11 @@ export function PercentChange({ current, previous, invertColors = false, classNa
   const change = ((current - previous) / previous) * 100;
   const isPositive = change > 0;
   const isNegative = change < 0;
-  const isNeutral = change === 0;
 
-  // Determine if this change is "good" or "bad"
-  // For inverted metrics (CPI, Spend): increase = bad, decrease = good
-  // For normal metrics (Installs): increase = good, decrease = bad
-  const isGood = invertColors ? isNegative : isPositive;
-  const isBad = invertColors ? isPositive : isNegative;
-
-  const colorClass = isGood 
+  // Simple direction-based colors: up = green, down = red
+  const colorClass = isPositive 
     ? "text-green-600 dark:text-green-400" 
-    : isBad 
+    : isNegative 
     ? "text-red-600 dark:text-red-400" 
     : "text-muted-foreground";
 
