@@ -1,16 +1,52 @@
 
 
-## Daily Slack Performance Report
+## Implementation: Daily Slack Performance Report
 
-### Overview
+### Step 1: Add Secret
 
-Create a scheduled Slack notification that sends yesterday's performance metrics across all platforms every day at 9am EST. The message will include spend, installs, and CPI for each platform plus blended totals.
+Store the Slack webhook URL as `SLACK_WEBHOOK_URL` in the project secrets.
 
----
+### Step 2: Create Edge Function
 
-### What You'll Get
+**File**: `supabase/functions/slack-daily-report/index.ts`
 
-A daily Slack message formatted like this:
+The function will:
+- Calculate yesterday's date in EST timezone (America/New_York)
+- Fetch all 6 platform endpoints in parallel using the project's Supabase URL and anon key
+- Process results and calculate totals
+- Format a Slack Block Kit message with the performance table
+- POST to the webhook URL
+
+### Step 3: Register Function
+
+**File**: `supabase/config.toml`
+
+Add:
+```toml
+[functions.slack-daily-report]
+verify_jwt = false
+```
+
+### Step 4: Schedule with pg_cron
+
+Create a cron job that runs at 14:00 UTC (9am EST):
+```sql
+SELECT cron.schedule(
+  'daily-slack-report',
+  '0 14 * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://agususzieosizftucxxq.supabase.co/functions/v1/slack-daily-report',
+    headers := '{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}'::jsonb,
+    body := '{}'::jsonb
+  ) AS request_id;
+  $$
+);
+```
+
+### Expected Result
+
+Every day at 9am EST, you'll receive a Slack message like:
 
 ```
 📊 Daily Performance Report - Jan 29, 2026
@@ -26,113 +62,4 @@ Moloco           $2,800       720           $3.89
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TOTAL            $36,470      9,700         $3.76
 ```
-
----
-
-### Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `supabase/functions/slack-daily-report/index.ts` | Create | Edge function that fetches all platform data and posts to Slack |
-| `supabase/config.toml` | Modify | Register the new edge function |
-
----
-
-### Implementation Steps
-
-#### Step 1: Add Slack Webhook Secret
-
-You'll need to create a Slack Incoming Webhook:
-1. Go to your Slack workspace settings
-2. Create an app or use an existing one
-3. Enable "Incoming Webhooks"
-4. Create a webhook for the channel where you want reports
-
-Then add the webhook URL as a secret: `SLACK_WEBHOOK_URL`
-
-#### Step 2: Create the Edge Function
-
-The function will:
-1. Calculate yesterday's date (in EST timezone)
-2. Fetch all 6 platform `-history` endpoints in parallel (same as the reporting page does)
-3. Process the results and extract totals
-4. Format a nicely structured Slack message using Block Kit
-5. POST to the Slack webhook
-
-```text
-[Edge Function Flow]
-
-9am EST trigger
-      │
-      ▼
-┌─────────────────────┐
-│ Calculate yesterday │
-│ date (EST timezone) │
-└─────────────────────┘
-      │
-      ▼
-┌─────────────────────────────────────────────┐
-│     Parallel fetch all platform APIs        │
-│  meta │ snap │ unity │ google │ tiktok │ mol│
-└─────────────────────────────────────────────┘
-      │
-      ▼
-┌─────────────────────┐
-│ Format Slack blocks │
-│ with spend/installs │
-└─────────────────────┘
-      │
-      ▼
-┌─────────────────────┐
-│  POST to Slack      │
-│  webhook URL        │
-└─────────────────────┘
-```
-
-#### Step 3: Schedule with pg_cron
-
-Add a cron job to run at 9am EST daily:
-- EST is UTC-5 (or UTC-4 during daylight saving)
-- 9am EST = 14:00 UTC (standard) or 13:00 UTC (daylight)
-- We'll use `0 14 * * *` for 9am EST (adjustable for DST)
-
----
-
-### Technical Details
-
-**Slack Message Format:**
-Using Slack Block Kit for clean formatting with:
-- Header section with date
-- Table-like formatting using code blocks (monospace)
-- Platform-by-platform breakdown
-- Totals row at the bottom
-- Optional: Color-coded performance vs previous day
-
-**Error Handling:**
-- If a platform fails, show "Error" instead of numbers
-- Still send the report with available data
-- Log failures for debugging
-
-**Timezone Handling:**
-- Calculate "yesterday" in EST/EDT timezone to match business reporting
-- Use `America/New_York` for automatic DST handling
-
----
-
-### Secrets Required
-
-| Secret Name | Value | Status |
-|-------------|-------|--------|
-| `SLACK_WEBHOOK_URL` | Your Slack webhook URL | Needs to be added |
-
----
-
-### Effort Estimate
-
-This is a **straightforward implementation** because:
-- All the data-fetching logic already exists (the `-history` edge functions)
-- The cron infrastructure is already set up (pg_cron + net.http_post)
-- It's essentially a server-side version of what the Reporting page does
-
-**Time to implement: ~15-20 minutes**
 
