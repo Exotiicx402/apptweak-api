@@ -15,6 +15,7 @@ interface ReportingData {
   unity: PlatformMetrics;
   googleAds: PlatformMetrics;
   tiktok: PlatformMetrics;
+  moloco: PlatformMetrics;
   totals: {
     spend: number;
     installs: number;
@@ -37,6 +38,7 @@ export function useReportingData() {
     unity: { ...emptyMetrics },
     googleAds: { ...emptyMetrics },
     tiktok: { ...emptyMetrics },
+    moloco: { ...emptyMetrics },
     totals: { spend: 0, installs: 0, cpi: 0 },
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -52,15 +54,17 @@ export function useReportingData() {
       unity: { ...emptyMetrics, isLoading: true },
       googleAds: { ...emptyMetrics, isLoading: true },
       tiktok: { ...emptyMetrics, isLoading: true },
+      moloco: { ...emptyMetrics, isLoading: true },
     }));
 
     // Fetch all platforms in parallel
-    const [metaResult, snapchatResult, unityResult, googleAdsResult, tiktokResult] = await Promise.allSettled([
+    const [metaResult, snapchatResult, unityResult, googleAdsResult, tiktokResult, molocoResult] = await Promise.allSettled([
       supabase.functions.invoke("meta-history", { body: { startDate, endDate } }),
       supabase.functions.invoke("snapchat-history", { body: { startDate, endDate } }),
       supabase.functions.invoke("unity-history", { body: { startDate, endDate } }),
       supabase.functions.invoke("google-ads-history", { body: { startDate, endDate } }),
       supabase.functions.invoke("tiktok-history", { body: { startDate, endDate } }),
+      supabase.functions.invoke("moloco-history", { body: { startDate, endDate } }),
     ]);
 
     // Process results
@@ -94,9 +98,10 @@ export function useReportingData() {
     const unity = processResult(unityResult);
     const googleAds = processResult(googleAdsResult);
     const tiktok = processResult(tiktokResult);
+    const moloco = processResult(molocoResult);
 
     // Calculate totals (only from platforms without errors)
-    const platforms = [meta, snapchat, unity, googleAds, tiktok];
+    const platforms = [meta, snapchat, unity, googleAds, tiktok, moloco];
     const validPlatforms = platforms.filter(p => !p.error);
     
     const totalSpend = validPlatforms.reduce((sum, p) => sum + p.spend, 0);
@@ -109,6 +114,7 @@ export function useReportingData() {
       unity,
       googleAds,
       tiktok,
+      moloco,
       totals: {
         spend: totalSpend,
         installs: totalInstalls,
