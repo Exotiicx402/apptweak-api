@@ -1,5 +1,6 @@
-import { RefreshCw, AlertCircle, Database, BarChart3, Apple } from "lucide-react";
+import { RefreshCw, AlertCircle, Database, BarChart3, Apple, FileText } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
 import { RankingCard } from "./RankingCard";
 import { TopChartsTable } from "./TopChartsTable";
@@ -46,6 +47,13 @@ export const Dashboard = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              to="/reporting"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              Reporting
+            </Link>
             <button
               onClick={handleRefresh}
               disabled={isFetching}
