@@ -8,8 +8,9 @@ const corsHeaders = {
 const MOLOCO_AUTH_URL = 'https://api.moloco.cloud/cm/v1/auth/tokens';
 const MOLOCO_REPORTS_URL = 'https://api.moloco.cloud/cm/v1/reports';
 
+// Get today's date in EST timezone
 function getTodayDate(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
 function addDays(dateStr: string, days: number): string {

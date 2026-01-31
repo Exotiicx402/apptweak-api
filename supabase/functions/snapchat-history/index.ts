@@ -8,8 +8,9 @@ const corsHeaders = {
 type CachedOAuthToken = { token: string; expiresAtMs: number };
 let snapchatTokenCache: CachedOAuthToken | null = null;
 
+// Get today's date in EST timezone
 function getTodayDate(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
 function parseYmd(dateStr: string): { year: number; month: number; day: number } {

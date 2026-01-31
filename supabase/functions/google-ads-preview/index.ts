@@ -5,10 +5,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Get yesterday's date in EST timezone
 function getYesterdayDate(): string {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  return yesterday.toISOString().split("T")[0];
+  const now = new Date();
+  // Get current date in EST
+  const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  estNow.setDate(estNow.getDate() - 1);
+  return estNow.toISOString().split("T")[0];
 }
 
 async function getAccessToken(): Promise<string> {

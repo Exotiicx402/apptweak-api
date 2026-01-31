@@ -8,10 +8,12 @@ const corsHeaders = {
 type CachedOAuthToken = { token: string; expiresAtMs: number };
 let snapchatTokenCache: CachedOAuthToken | null = null;
 
+// Get yesterday's date in EST timezone
 function getYesterdayDate(): string {
-  const yesterday = new Date();
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  return yesterday.toISOString().split('T')[0];
+  const now = new Date();
+  const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  estNow.setDate(estNow.getDate() - 1);
+  return estNow.toISOString().split("T")[0];
 }
 
 function parseYmd(dateStr: string): { year: number; month: number; day: number } {
