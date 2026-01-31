@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "lucide-react";
-import { formatLocalDate, getLocalDaysAgo, getLocalToday } from "@/lib/dateUtils";
+import { getLocalDaysAgo, getLocalToday, getLocalYesterday } from "@/lib/dateUtils";
 
 interface DateRangePickerProps {
   startDate: string;
@@ -26,9 +26,37 @@ export function DateRangePicker({
     onEndDateChange(getLocalToday());
   };
 
+  const setToday = () => {
+    const today = getLocalToday();
+    onStartDateChange(today);
+    onEndDateChange(today);
+  };
+
+  const setYesterday = () => {
+    const yesterday = getLocalYesterday();
+    onStartDateChange(yesterday);
+    onEndDateChange(yesterday);
+  };
+
   return (
     <div className="flex flex-wrap items-end gap-4">
       <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={setToday}
+          className="text-xs"
+        >
+          Today
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={setYesterday}
+          className="text-xs"
+        >
+          Yesterday
+        </Button>
         <Button
           variant="outline"
           size="sm"
