@@ -1,77 +1,121 @@
 
 
-# Fix: Moloco Should Query API for Full Date Range
+# Moloco Data Caching to BigQuery
 
-## Problem
+## Overview
 
-The `moloco-history` function currently caps the API query at yesterday, even though we haven't verified this is actually an API limitation. The code assumes a delay exists and sets `todayDataUnavailable = true` whenever today is in the selected range.
+Store Moloco API data in BigQuery after fetching, then read from BigQuery for historical data (like Meta, Snapchat, and Unity). This eliminates redundant API calls and prevents rate limiting issues.
 
-**Current behavior (lines 241-253):**
-```typescript
-const effectiveEndDate = endDate >= today ? yesterday : endDate;
-const todayDataUnavailable = includestoday;
-const unavailableReason = includestoday ? "Moloco reports have a delay..." : "";
-```
+## Current State
 
-## Solution
+The `moloco-history` function currently:
+- Calls the Moloco API directly for every request
+- Makes 10-60+ API calls per request (auth, create report, poll status up to 30 times, download)
+- Has no caching layer - fetches the same data repeatedly
+- Uses up the 300 requests/5min quota quickly
 
-Apply the same fix as Google Ads and TikTok:
+## Solution: BigQuery Caching (Same Pattern as Unity/Meta/Snapchat)
 
-1. **Remove date capping** - Query Moloco API with the full `startDate` to `endDate` range
-2. **Remove `todayDataUnavailable` flag** - Let the API return whatever data it has
-3. If today's data isn't available, it simply won't appear in the results (graceful handling)
+### Architecture
 
----
-
-## File to Modify
-
-**`supabase/functions/moloco-history/index.ts`**
-
-### Before (lines 233-253):
-```typescript
-const today = getTodayDate();
-const yesterday = addDays(today, -1);
-const includestoday = endDate >= today;
-
-// Moloco reports are typically available with some delay
-// Cap end date at yesterday for the API query
-const effectiveEndDate = endDate >= today ? yesterday : endDate;
-// Adjust start date if it's in the future
-const effectiveStartDate = startDate > yesterday ? yesterday : startDate;
-// Only skip if the entire range would be invalid
-const shouldFetch = effectiveStartDate <= effectiveEndDate;
-
-console.log(`Moloco query: ${effectiveStartDate} to ${effectiveEndDate}, shouldFetch: ${shouldFetch}`);
-
-// Track if today is in range but we have no live API
-const todayDataUnavailable = includestoday;
-const unavailableReason = includestoday ? "Moloco reports have a delay; today's data will be available tomorrow" : "";
-```
-
-### After:
-```typescript
-// Query Moloco API with the full date range - let API return whatever data is available
-const effectiveStartDate = startDate;
-const effectiveEndDate = endDate;
-const shouldFetch = true;
-
-console.log(`Moloco query: ${effectiveStartDate} to ${effectiveEndDate}`);
-```
-
-### Also remove from response (around lines 299-300 and 332-333):
-```typescript
-todayDataUnavailable,
-unavailableReason,
+```text
+User Request (date range)
+       |
+       v
++------------------+
+| moloco-history   |
++------------------+
+       |
+       +-- Historical dates --> Query BigQuery (fast, no API calls)
+       |
+       +-- Today's date ------> Call Moloco API (live data)
+                                     |
+                                     v
+                               Store in BigQuery (for future queries)
 ```
 
 ---
 
-## Expected Result
+## Technical Details
 
-After this fix:
-- Moloco queries the API for the full date range including today
-- If today's data exists in Moloco, it will be returned
-- If today's data doesn't exist yet, the results simply won't include it (no error)
-- No more "Partial data" badge for Moloco
-- Consistent behavior with Google Ads and TikTok
+### 1. New Secret Required
+
+Need to add the Moloco BigQuery table reference:
+
+**Secret Name:** `MOLOCO_BQ_TABLE_ID`
+**Value:** `polymarket-data-house.polymarket_hours.moloco-lv`
+
+### 2. File: `supabase/functions/moloco-history/index.ts`
+
+**Changes:**
+
+**A. Add BigQuery helper functions** (same pattern as unity-history):
+- `getGoogleAccessToken()` - OAuth for BigQuery
+- `resolveBigQueryTarget()` - Parse MOLOCO_BQ_TABLE_ID
+- `queryBigQuery()` - Execute BigQuery queries
+- `mergeIntoBigQuery()` - Insert/update rows
+
+**B. Modify main logic:**
+
+Current flow:
+```text
+1. Call Moloco API for full date range
+2. Return results
+```
+
+New flow:
+```text
+1. Check if today is in date range
+2. Query BigQuery for historical data (start date to yesterday)
+3. If today is included:
+   a. Call Moloco API for today only
+   b. Merge today's data into BigQuery (cache it)
+4. Combine BigQuery + live data
+5. Return results
+```
+
+**C. Data schema for BigQuery:**
+- `date` (DATE) - Primary key
+- `campaign_id` (STRING) - Primary key
+- `campaign_name` (STRING)
+- `spend` (FLOAT64)
+- `installs` (INT64)
+- `impressions` (INT64)
+- `clicks` (INT64)
+- `fetched_at` (TIMESTAMP)
+
+**D. Previous period handling:**
+- Query BigQuery for previous period (no API call needed)
+- Only call API if previous period data is missing from BigQuery
+
+### 3. BigQuery Table Creation
+
+The table `polymarket-data-house.polymarket_hours.moloco-lv` needs to exist with the correct schema. You may need to create this table manually in BigQuery or verify it already exists.
+
+---
+
+## Key Benefits
+
+1. **Rate limit protection**: Only call API for missing/today's data
+2. **Faster responses**: BigQuery queries are instant vs. 30-60 second API polling
+3. **Cost reduction**: Fewer API calls = lower usage
+4. **Consistency**: Same architecture as Meta, Snapchat, Unity
+
+## Expected Behavior After Implementation
+
+| Scenario | API Calls | BigQuery Calls |
+|----------|-----------|----------------|
+| Query last 7 days (including today) | 1 (for today only) | 2 (historical + previous period) |
+| Query last 7 days (excluding today) | 0 | 2 (both periods from cache) |
+| First query (empty cache) | 2 (current + previous) | 0 (then stores results) |
+
+---
+
+## Files to Modify
+
+- `supabase/functions/moloco-history/index.ts` - Main implementation
+
+## New Secrets Needed
+
+- `MOLOCO_BQ_TABLE_ID` = `polymarket-data-house.polymarket_hours.moloco-lv`
 
