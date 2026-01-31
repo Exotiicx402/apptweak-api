@@ -119,3 +119,12 @@ The table `polymarket-data-house.polymarket_hours.moloco-lv` needs to exist with
 
 - `MOLOCO_BQ_TABLE_ID` = `polymarket-data-house.polymarket_hours.moloco-lv`
 
+---
+
+## Implementation Status: ✅ COMPLETED
+
+The implementation is complete. The `moloco-history` function now:
+1. Queries BigQuery for historical data (dates before today)
+2. Calls Moloco API only for today's data when needed
+3. Caches live API data back to BigQuery for future queries
+4. Previous period comparison also uses BigQuery (no extra API calls)
