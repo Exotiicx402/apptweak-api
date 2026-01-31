@@ -115,6 +115,12 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   return data.data || [];
 }
 
+function filterAppInstallCampaigns(campaigns: any[]): any[] {
+  return campaigns.filter(
+    (c) => c.campaign_name?.toUpperCase().includes("APP INSTALLS")
+  );
+}
+
 function formatTimestamp(dateStr: string): string {
   return `${dateStr} 00:00:00`;
 }
@@ -248,13 +254,15 @@ serve(async (req) => {
     console.log(`Starting Meta sync for date: ${targetDate}`);
 
     // Fetch Meta insights
-    const metaData = await fetchMetaInsights(targetDate);
+    const rawMetaData = await fetchMetaInsights(targetDate);
+    const metaData = filterAppInstallCampaigns(rawMetaData);
+    console.log(`Filtered to ${metaData.length} APP INSTALLS campaigns from ${rawMetaData.length} total`);
 
     if (metaData.length === 0) {
-      console.log("No data returned from Meta API");
+      console.log("No APP INSTALLS campaigns for this date");
       await logSync(targetDate, "success", 0, Date.now() - startTime);
       return new Response(
-        JSON.stringify({ success: true, message: "No data for this date", rowsAffected: 0 }),
+        JSON.stringify({ success: true, message: "No APP INSTALLS campaigns for this date", rowsAffected: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
