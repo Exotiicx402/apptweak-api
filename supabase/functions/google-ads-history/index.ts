@@ -5,8 +5,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Get today's date in EST timezone
 function getTodayDate(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
 function addDays(dateStr: string, days: number): string {
