@@ -1,99 +1,78 @@
 
-
-# Filter Meta Campaigns to Only Include "APP INSTALLS"
+# Add "Today" and "Yesterday" Buttons to Date Range Picker
 
 ## Overview
 
-Add a campaign name filter across all Meta edge functions to only include campaigns that contain "APP INSTALLS" in their name. This ensures only app install campaigns appear in:
-- The reporting page totals
-- The Meta historical dashboard
-- BigQuery data storage
-- Preview data
+Add two new quick-select buttons ("Today" and "Yesterday") to the date range picker at the top of the reporting page. These buttons will set both the start and end dates to the same single day, allowing users to quickly view metrics for just today or yesterday.
 
 ---
 
-## Implementation Strategy
+## Implementation
 
-The filter will be applied at two key points in each function:
+### File to Modify
 
-1. **After fetching from Meta API** - Filter the array of campaigns returned by the Graph API
-2. **In BigQuery queries** - Add a WHERE clause to exclude non-matching campaigns
+**`src/components/dashboard/DateRangePicker.tsx`**
 
-### Campaign Filter Logic
+### Changes
+
+1. Import `getLocalYesterday` from dateUtils (already available in the file)
+2. Add two new handler functions for single-day selection:
+   - `setToday()` - sets both start and end to today's date
+   - `setYesterday()` - sets both start and end to yesterday's date
+3. Add two new buttons at the beginning of the preset button row
+
+### Updated Button Row
+
+The buttons will appear in this order:
+- **Today** (new)
+- **Yesterday** (new)  
+- Last 7 days
+- Last 14 days
+- Last 30 days
+- Last 90 days
+
+### Code Changes
 
 ```typescript
-function filterAppInstallCampaigns(campaigns: any[]): any[] {
-  return campaigns.filter(
-    (c) => c.campaign_name?.toUpperCase().includes("APP INSTALLS")
-  );
-}
+// Add import for getLocalYesterday
+import { getLocalDaysAgo, getLocalToday, getLocalYesterday } from "@/lib/dateUtils";
+
+// Add single-day handlers
+const setToday = () => {
+  const today = getLocalToday();
+  onStartDateChange(today);
+  onEndDateChange(today);
+};
+
+const setYesterday = () => {
+  const yesterday = getLocalYesterday();
+  onStartDateChange(yesterday);
+  onEndDateChange(yesterday);
+};
+
+// New buttons in the flex gap-2 div
+<Button variant="outline" size="sm" onClick={setToday} className="text-xs">
+  Today
+</Button>
+<Button variant="outline" size="sm" onClick={setYesterday} className="text-xs">
+  Yesterday
+</Button>
 ```
 
 ---
 
-## Files to Modify
+## Visual Result
 
-### 1. `supabase/functions/meta-history/index.ts`
+The date picker row will now show:
 
-**Changes:**
-- Add `filterAppInstallCampaigns` helper function
-- Apply filter to `fetchMetaInsights` results in both the live API fetch for today and the fallback fetch for missing dates
-- Add `AND UPPER(campaign_name) LIKE '%APP INSTALLS%'` to all BigQuery queries (daily, campaign, totals, previousTotals)
-
-**BigQuery Query Update Example:**
-```sql
-WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
-  AND UPPER(campaign_name) LIKE '%APP INSTALLS%'
+```
+[Today] [Yesterday] [Last 7 days] [Last 14 days] [Last 30 days] [Last 90 days]    Start Date [____]  End Date [____]  [Apply]
 ```
 
-### 2. `supabase/functions/meta-preview/index.ts`
-
-**Changes:**
-- Add `filterAppInstallCampaigns` helper function  
-- Filter the results from `fetchMetaInsights` before returning
-
-### 3. `supabase/functions/meta-to-bigquery/index.ts`
-
-**Changes:**
-- Add `filterAppInstallCampaigns` helper function
-- Filter the Meta API response before transforming and inserting into BigQuery
-- This prevents non-app-install campaigns from ever being stored
-
 ---
 
-## Technical Details
+## Notes
 
-### Filter Application Points
-
-```text
-meta-to-bigquery (scheduled sync):
-  Meta API → Filter → Transform → BigQuery
-
-meta-history (dashboard queries):
-  BigQuery (with WHERE filter) → Merge with...
-  Live API for today → Filter → Return combined data
-
-meta-preview (data preview):
-  Meta API → Filter → Return
-```
-
-### Case-Insensitive Matching
-
-The filter uses `toUpperCase()` in JavaScript and `UPPER()` in SQL to ensure case-insensitive matching, so campaigns named "App Installs", "APP INSTALLS", or "app installs" all match.
-
----
-
-## Expected Results
-
-| Before | After |
-|--------|-------|
-| All campaigns shown (e.g., Traffic, Awareness, App Installs) | Only "APP INSTALLS" campaigns shown |
-| Reporting totals include all spend | Reporting totals reflect only app install spend |
-| BigQuery stores all campaigns | BigQuery only stores app install campaigns (future syncs) |
-
----
-
-## Note on Historical Data
-
-Existing BigQuery data will still contain non-app-install campaigns until those rows are replaced by new syncs. The BigQuery WHERE clause ensures they won't appear in queries regardless.
-
+- Uses existing `getLocalYesterday` helper from `dateUtils.ts` for consistent timezone handling
+- Maintains the same button styling (`variant="outline"`, `size="sm"`, `text-xs`) as other presets
+- Single-day selections set both start and end date to the same value, which the backend edge functions already handle correctly
