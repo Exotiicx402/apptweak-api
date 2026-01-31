@@ -1,129 +1,99 @@
 
 
-# Fix Moloco BigQuery Table and Add Auto-Backfill
+# Filter Meta Campaigns to Only Include "APP INSTALLS"
 
-## Problem
+## Overview
 
-The BigQuery table `polymarket-data-house.polymarket_hours.moloco-lv` exists but has **no schema** (no columns). This causes the `moloco-history` edge function to fail with:
-
-```
-Table polymarket-data-house.polymarket_hours.moloco-lv does not have a schema.
-```
-
-## Solution Overview
-
-1. **Fix BigQuery table** by running SQL to add the required schema
-2. **Update `moloco-history`** to add auto-backfill logic that:
-   - Detects when BigQuery returns empty results for dates within the last 14 days
-   - Fetches missing data from the live Moloco API
-   - Caches the data back to BigQuery (write-back pattern)
+Add a campaign name filter across all Meta edge functions to only include campaigns that contain "APP INSTALLS" in their name. This ensures only app install campaigns appear in:
+- The reporting page totals
+- The Meta historical dashboard
+- BigQuery data storage
+- Preview data
 
 ---
 
-## Step 1: Fix BigQuery Table Schema
+## Implementation Strategy
 
-Run this SQL in BigQuery Console to drop and recreate the table with proper columns:
+The filter will be applied at two key points in each function:
 
-```sql
--- Drop the schema-less table
-DROP TABLE IF EXISTS `polymarket-data-house.polymarket_hours.moloco-lv`;
+1. **After fetching from Meta API** - Filter the array of campaigns returned by the Graph API
+2. **In BigQuery queries** - Add a WHERE clause to exclude non-matching campaigns
 
--- Create with proper schema
-CREATE TABLE `polymarket-data-house.polymarket_hours.moloco-lv` (
-  date DATE NOT NULL,
-  campaign_id STRING NOT NULL,
-  campaign_name STRING,
-  spend FLOAT64,
-  installs INT64,
-  impressions INT64,
-  clicks INT64,
-  fetched_at TIMESTAMP
-);
-```
+### Campaign Filter Logic
 
-After running this, the table will be ready for the edge function to query and write data.
-
----
-
-## Step 2: Update `moloco-history` Edge Function
-
-Add auto-backfill logic similar to what we implemented for Meta. The function will:
-
-1. Query BigQuery for historical data
-2. Identify which dates within the last 14 days are missing from BigQuery
-3. Fetch those missing dates from the live Moloco API
-4. Merge the live data into BigQuery for future queries
-5. Return combined results
-
-### Key Changes
-
-**File: `supabase/functions/moloco-history/index.ts`**
-
-Add helper functions:
 ```typescript
-function isWithinLastNDays(dateStr: string, n: number): boolean {
-  const date = new Date(dateStr);
-  const today = new Date();
-  const diffMs = today.getTime() - date.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  return diffDays <= n && diffDays >= 0;
-}
-
-function getDatesBetween(startDate: string, endDate: string): string[] {
-  const dates: string[] = [];
-  const current = new Date(startDate);
-  const end = new Date(endDate);
-  
-  while (current <= end) {
-    dates.push(current.toISOString().split("T")[0]);
-    current.setDate(current.getDate() + 1);
-  }
-  
-  return dates;
+function filterAppInstallCampaigns(campaigns: any[]): any[] {
+  return campaigns.filter(
+    (c) => c.campaign_name?.toUpperCase().includes("APP INSTALLS")
+  );
 }
 ```
-
-Update main handler logic to:
-1. After BigQuery query, identify which dates are missing
-2. For missing dates within last 14 days, call `fetchMolocoLiveData`
-3. Merge results and cache to BigQuery
-
-```text
-Current Flow:
-  Query BQ for historical → Fetch live for today → Return
-
-New Flow:
-  Query BQ for historical
-  ↓
-  Check for missing dates within 14-day window
-  ↓
-  If missing dates exist → Fetch from Moloco API
-  ↓
-  Merge all data together
-  ↓
-  Cache new data to BigQuery
-  ↓
-  Return combined results
-```
-
----
-
-## Expected Behavior After Fix
-
-| Scenario | Result |
-|----------|--------|
-| BigQuery has all data | Returns BigQuery data (fast) |
-| BigQuery missing recent dates (≤14 days) | Fetches from Moloco API, caches, returns data |
-| BigQuery missing old dates (>14 days) | Returns available data only |
-| Today's data | Always fetched live from Moloco API |
 
 ---
 
 ## Files to Modify
 
-- `supabase/functions/moloco-history/index.ts` - Add backfill logic
+### 1. `supabase/functions/meta-history/index.ts`
 
-## Rate Limit Consideration
+**Changes:**
+- Add `filterAppInstallCampaigns` helper function
+- Apply filter to `fetchMetaInsights` results in both the live API fetch for today and the fallback fetch for missing dates
+- Add `AND UPPER(campaign_name) LIKE '%APP INSTALLS%'` to all BigQuery queries (daily, campaign, totals, previousTotals)
 
-The Moloco API has a 300 requests/5 minutes limit. The backfill logic fetches date ranges in a single API call rather than per-day calls, minimizing API usage while still ensuring data completeness.
+**BigQuery Query Update Example:**
+```sql
+WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+  AND UPPER(campaign_name) LIKE '%APP INSTALLS%'
+```
+
+### 2. `supabase/functions/meta-preview/index.ts`
+
+**Changes:**
+- Add `filterAppInstallCampaigns` helper function  
+- Filter the results from `fetchMetaInsights` before returning
+
+### 3. `supabase/functions/meta-to-bigquery/index.ts`
+
+**Changes:**
+- Add `filterAppInstallCampaigns` helper function
+- Filter the Meta API response before transforming and inserting into BigQuery
+- This prevents non-app-install campaigns from ever being stored
+
+---
+
+## Technical Details
+
+### Filter Application Points
+
+```text
+meta-to-bigquery (scheduled sync):
+  Meta API → Filter → Transform → BigQuery
+
+meta-history (dashboard queries):
+  BigQuery (with WHERE filter) → Merge with...
+  Live API for today → Filter → Return combined data
+
+meta-preview (data preview):
+  Meta API → Filter → Return
+```
+
+### Case-Insensitive Matching
+
+The filter uses `toUpperCase()` in JavaScript and `UPPER()` in SQL to ensure case-insensitive matching, so campaigns named "App Installs", "APP INSTALLS", or "app installs" all match.
+
+---
+
+## Expected Results
+
+| Before | After |
+|--------|-------|
+| All campaigns shown (e.g., Traffic, Awareness, App Installs) | Only "APP INSTALLS" campaigns shown |
+| Reporting totals include all spend | Reporting totals reflect only app install spend |
+| BigQuery stores all campaigns | BigQuery only stores app install campaigns (future syncs) |
+
+---
+
+## Note on Historical Data
+
+Existing BigQuery data will still contain non-app-install campaigns until those rows are replaced by new syncs. The BigQuery WHERE clause ensures they won't appear in queries regardless.
 
