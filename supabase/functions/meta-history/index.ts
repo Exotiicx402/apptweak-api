@@ -393,6 +393,14 @@ serve(async (req) => {
       ${campaignFilter}
     `;
 
+    // Query to check which dates have data in BigQuery for previous period
+    const prevDatesQuery = `
+      SELECT DISTINCT DATE(timestamp) as date
+      FROM ${fullTable}
+      WHERE DATE(timestamp) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
+      ${appInstallsFilter}
+    `;
+
     // Execute queries in parallel
     const promises: Promise<any>[] = [];
     
@@ -411,6 +419,7 @@ serve(async (req) => {
     }
     
     promises.push(queryBigQuery(prevTotalsQuery, googleAccessToken));
+    promises.push(queryBigQuery(prevDatesQuery, googleAccessToken));
     
     // Fetch live data for today if needed
     if (includestoday) {
@@ -419,7 +428,60 @@ serve(async (req) => {
       promises.push(Promise.resolve([]));
     }
 
-    let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, liveData] = await Promise.all(promises);
+    let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, prevDatesData, liveData] = await Promise.all(promises);
+
+    // Check if BigQuery is missing previous period data - fall back to live API
+    const prevRequestedDates = getDatesBetween(prevStartStr, prevEndStr);
+    const prevBqDatesFound = new Set((prevDatesData || []).map((row: any) => row.date?.split("T")[0] || row.date));
+    const prevMissingDates = prevRequestedDates.filter(d => !prevBqDatesFound.has(d));
+
+    if (prevMissingDates.length > 0) {
+      console.log(`BigQuery missing previous period data for ${prevMissingDates.length} dates: ${prevMissingDates.join(", ")}. Fetching from live API...`);
+      
+      // Fetch missing previous dates from live Meta API
+      const prevMissingDataPromises = prevMissingDates.map(async (date) => {
+        try {
+          const rawLiveData = await fetchMetaInsights(date);
+          const liveDayData = filterAppInstallCampaigns(rawLiveData);
+          console.log(`Previous period live fallback for ${date}: filtered to ${liveDayData.length} APP INSTALLS from ${rawLiveData.length} total`);
+          return { date, data: liveDayData };
+        } catch (err) {
+          console.error(`Failed to fetch live data for previous period ${date}:`, err);
+          return { date, data: [] };
+        }
+      });
+      
+      const prevMissingResults = await Promise.all(prevMissingDataPromises);
+      
+      // Aggregate the previous period live data into totals
+      for (const { date, data } of prevMissingResults) {
+        if (data.length > 0) {
+          const transformed = transformLiveData(data, date);
+          
+          // Initialize prevTotalsData if empty
+          if (!prevTotalsData[0]) {
+            prevTotalsData[0] = {
+              total_spend: 0,
+              total_impressions: 0,
+              total_clicks: 0,
+              total_reach: 0,
+              total_installs: 0,
+              avg_cpm: 0,
+              avg_cpc: 0,
+              avg_ctr: 0,
+            };
+          }
+          
+          prevTotalsData[0].total_spend = (parseFloat(prevTotalsData[0].total_spend) || 0) + transformed.daily.spend;
+          prevTotalsData[0].total_impressions = (parseInt(prevTotalsData[0].total_impressions) || 0) + transformed.daily.impressions;
+          prevTotalsData[0].total_clicks = (parseInt(prevTotalsData[0].total_clicks) || 0) + transformed.daily.clicks;
+          prevTotalsData[0].total_reach = (parseInt(prevTotalsData[0].total_reach) || 0) + transformed.daily.reach;
+          prevTotalsData[0].total_installs = (parseInt(prevTotalsData[0].total_installs) || 0) + transformed.daily.installs;
+          
+          console.log(`Added previous period live data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
+        }
+      }
+    }
 
     // Check if BigQuery returned no data for recent dates - fall back to live API
     const requestedDates = getDatesBetween(startDate, bqEndDate);
