@@ -43,7 +43,168 @@ interface ProcessedRow {
   clicks: number;
 }
 
-async function getAccessToken(apiKey: string): Promise<string> {
+// ============ BigQuery Helper Functions ============
+
+async function getGoogleAccessToken(): Promise<string> {
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error("Missing Google OAuth credentials");
+  }
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to get Google access token: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  return data.access_token;
+}
+
+function resolveMolocoBigQueryTarget(): { projectId: string; datasetId: string; tableId: string } {
+  const tableId = Deno.env.get("MOLOCO_BQ_TABLE_ID");
+  if (!tableId) {
+    throw new Error("Missing MOLOCO_BQ_TABLE_ID environment variable");
+  }
+
+  const parts = tableId.split(".");
+  if (parts.length !== 3) {
+    throw new Error(`Invalid MOLOCO_BQ_TABLE_ID format: ${tableId}. Expected: project.dataset.table`);
+  }
+
+  return {
+    projectId: parts[0],
+    datasetId: parts[1],
+    tableId: parts[2],
+  };
+}
+
+async function queryBigQuery(query: string, accessToken: string): Promise<any[]> {
+  const { projectId } = resolveMolocoBigQueryTarget();
+  
+  const response = await fetch(
+    `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+        timeoutMs: 30000,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`BigQuery query error: ${errorText}`);
+  }
+
+  const result = await response.json();
+  
+  if (!result.rows) {
+    return [];
+  }
+
+  const fields = result.schema.fields.map((f: any) => f.name);
+  return result.rows.map((row: any) => {
+    const obj: any = {};
+    row.f.forEach((cell: any, index: number) => {
+      obj[fields[index]] = cell.v;
+    });
+    return obj;
+  });
+}
+
+async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Promise<number> {
+  if (rows.length === 0) return 0;
+
+  const { projectId, datasetId, tableId } = resolveMolocoBigQueryTarget();
+  const fullTableId = `${projectId}.${datasetId}.${tableId}`;
+
+  const valuesClause = rows
+    .map((row) => {
+      const escapedName = row.campaign_name.replace(/'/g, "\\'");
+      return `(
+        DATE('${row.date}'),
+        '${row.campaign_id}',
+        '${escapedName}',
+        ${row.spend},
+        ${row.installs},
+        ${row.impressions},
+        ${row.clicks},
+        CURRENT_TIMESTAMP()
+      )`;
+    })
+    .join(",\n");
+
+  const mergeQuery = `
+    MERGE \`${fullTableId}\` AS target
+    USING (
+      SELECT * FROM UNNEST([
+        STRUCT<date DATE, campaign_id STRING, campaign_name STRING, spend FLOAT64, installs INT64, impressions INT64, clicks INT64, fetched_at TIMESTAMP>
+        ${valuesClause}
+      ])
+    ) AS source
+    ON target.date = source.date AND target.campaign_id = source.campaign_id
+    WHEN MATCHED THEN
+      UPDATE SET
+        campaign_name = source.campaign_name,
+        spend = source.spend,
+        installs = source.installs,
+        impressions = source.impressions,
+        clicks = source.clicks,
+        fetched_at = source.fetched_at
+    WHEN NOT MATCHED THEN
+      INSERT (date, campaign_id, campaign_name, spend, installs, impressions, clicks, fetched_at)
+      VALUES (source.date, source.campaign_id, source.campaign_name, source.spend, source.installs, source.impressions, source.clicks, source.fetched_at)
+  `;
+
+  console.log(`Merging ${rows.length} rows into BigQuery...`);
+
+  const response = await fetch(
+    `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: mergeQuery,
+        useLegacySql: false,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`BigQuery merge error: ${errorText}`);
+  }
+
+  const result = await response.json();
+  console.log(`Merged ${rows.length} rows into BigQuery`);
+  return result.numDmlAffectedRows ? Number(result.numDmlAffectedRows) : rows.length;
+}
+
+// ============ Moloco API Functions ============
+
+async function getMolocoAccessToken(apiKey: string): Promise<string> {
   console.log('Fetching Moloco access token...');
   
   const response = await fetch(MOLOCO_AUTH_URL, {
@@ -58,7 +219,7 @@ async function getAccessToken(apiKey: string): Promise<string> {
   if (!response.ok) {
     const errorText = await response.text();
     console.error('Auth error:', response.status, errorText);
-    throw new Error(`Failed to get access token: ${response.status}`);
+    throw new Error(`Failed to get Moloco access token: ${response.status}`);
   }
 
   const data = await response.json();
@@ -71,7 +232,7 @@ async function createReport(
   startDate: string,
   endDate: string
 ): Promise<string> {
-  console.log(`Creating report for ${startDate} to ${endDate}...`);
+  console.log(`Creating Moloco report for ${startDate} to ${endDate}...`);
   
   const response = await fetch(MOLOCO_REPORTS_URL, {
     method: 'POST',
@@ -92,7 +253,7 @@ async function createReport(
   if (!response.ok) {
     const errorText = await response.text();
     console.error('Create report error:', response.status, errorText);
-    throw new Error(`Failed to create report: ${response.status}`);
+    throw new Error(`Failed to create Moloco report: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
@@ -164,7 +325,24 @@ function processRows(rows: MolocoRow[]): ProcessedRow[] {
   }));
 }
 
-// Aggregate rows by date
+// Fetch live Moloco data from API
+async function fetchMolocoLiveData(startDate: string, endDate: string): Promise<ProcessedRow[]> {
+  const apiKey = Deno.env.get('MOLOCO_API_KEY');
+  const adAccountId = Deno.env.get('MOLOCO_AD_ACCOUNT_ID');
+
+  if (!apiKey || !adAccountId) {
+    throw new Error('Moloco credentials not configured');
+  }
+
+  const token = await getMolocoAccessToken(apiKey);
+  const reportId = await createReport(token, adAccountId, startDate, endDate);
+  const jsonUrl = await waitForReport(token, reportId);
+  const rawRows = await downloadReport(jsonUrl);
+  return processRows(rawRows);
+}
+
+// ============ Aggregation Functions ============
+
 function aggregateByDate(rows: ProcessedRow[]): any[] {
   const dateMap = new Map<string, any>();
   
@@ -186,7 +364,6 @@ function aggregateByDate(rows: ProcessedRow[]): any[] {
   return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-// Aggregate rows by campaign
 function aggregateByCampaign(rows: ProcessedRow[]): any[] {
   const campaignMap = new Map<string, any>();
   
@@ -215,31 +392,43 @@ function aggregateByCampaign(rows: ProcessedRow[]): any[] {
     .sort((a, b) => b.spend - a.spend);
 }
 
+function calculateTotals(rows: ProcessedRow[]): any {
+  const totals = rows.reduce(
+    (acc, row) => ({
+      spend: acc.spend + row.spend,
+      installs: acc.installs + row.installs,
+      impressions: acc.impressions + row.impressions,
+      clicks: acc.clicks + row.clicks,
+    }),
+    { spend: 0, installs: 0, impressions: 0, clicks: 0 }
+  );
+
+  return {
+    ...totals,
+    cpi: totals.installs > 0 ? totals.spend / totals.installs : 0,
+  };
+}
+
+// ============ Main Handler ============
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const apiKey = Deno.env.get('MOLOCO_API_KEY');
-    const adAccountId = Deno.env.get('MOLOCO_AD_ACCOUNT_ID');
-
-    if (!apiKey || !adAccountId) {
-      throw new Error('Moloco credentials not configured');
-    }
-
     const { startDate, endDate } = await req.json();
 
     if (!startDate || !endDate) {
       throw new Error('startDate and endDate are required');
     }
 
-    // Query Moloco API with the full date range - let API return whatever data is available
-    const effectiveStartDate = startDate;
-    const effectiveEndDate = endDate;
-    const shouldFetch = true;
+    console.log(`Moloco query: ${startDate} to ${endDate}`);
 
-    console.log(`Moloco query: ${effectiveStartDate} to ${effectiveEndDate}`);
+    const today = getTodayDate();
+    const includesToday = endDate >= today;
+    const bqEndDate = includesToday ? addDays(today, -1) : endDate;
+    const shouldQueryBigQuery = startDate <= bqEndDate;
 
     // Calculate previous period for comparison
     const start = new Date(startDate);
@@ -253,75 +442,107 @@ serve(async (req) => {
     const prevStartStr = prevStart.toISOString().split("T")[0];
     const prevEndStr = prevEnd.toISOString().split("T")[0];
 
-    // If no valid date range, return empty with flag
-    if (!shouldFetch) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          data: {
-            daily: [],
-            campaigns: [],
-            totals: { spend: 0, installs: 0, impressions: 0, clicks: 0, cpi: 0 },
-            previousTotals: { spend: 0, installs: 0, impressions: 0, clicks: 0, cpi: 0 },
-            dateRange: { startDate, endDate: effectiveEndDate },
-            previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
-          },
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    console.log(`Query range: ${startDate} to ${endDate}, today: ${today}, includesToday: ${includesToday}`);
+    console.log(`BQ range: ${startDate} to ${bqEndDate}, prev period: ${prevStartStr} to ${prevEndStr}`);
+
+    // Get Google access token for BigQuery
+    const googleAccessToken = await getGoogleAccessToken();
+    const { projectId, datasetId, tableId } = resolveMolocoBigQueryTarget();
+    const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
+
+    // Build BigQuery queries
+    const currentPeriodQuery = shouldQueryBigQuery ? `
+      SELECT 
+        date,
+        campaign_id,
+        campaign_name,
+        spend,
+        installs,
+        impressions,
+        clicks
+      FROM ${fullTable}
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
+      ORDER BY date, campaign_id
+    ` : null;
+
+    const prevPeriodQuery = `
+      SELECT 
+        date,
+        campaign_id,
+        campaign_name,
+        spend,
+        installs,
+        impressions,
+        clicks
+      FROM ${fullTable}
+      WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
+      ORDER BY date, campaign_id
+    `;
+
+    // Execute queries in parallel
+    const promises: Promise<any>[] = [];
+    
+    if (shouldQueryBigQuery) {
+      promises.push(queryBigQuery(currentPeriodQuery!, googleAccessToken));
+    } else {
+      promises.push(Promise.resolve([]));
+    }
+    
+    promises.push(queryBigQuery(prevPeriodQuery, googleAccessToken));
+    
+    // Fetch live data for today if needed
+    if (includesToday) {
+      promises.push(fetchMolocoLiveData(today, today).catch(err => {
+        console.error('Error fetching live Moloco data:', err.message);
+        return [];
+      }));
+    } else {
+      promises.push(Promise.resolve([]));
     }
 
-    // Get access token
-    const token = await getAccessToken(apiKey);
+    const [bqCurrentRows, bqPrevRows, liveRows] = await Promise.all(promises);
 
-    // Fetch current period and previous period SEQUENTIALLY to avoid rate limiting
-    let currentRows: ProcessedRow[] = [];
-    let prevRows: ProcessedRow[] = [];
-    
-    try {
-      const reportId = await createReport(token, adAccountId, effectiveStartDate, effectiveEndDate);
-      const jsonUrl = await waitForReport(token, reportId);
-      const rawRows = await downloadReport(jsonUrl);
-      currentRows = processRows(rawRows);
-    } catch (error) {
-      console.error('Error fetching current period:', error);
+    // Parse BigQuery rows
+    let currentRows: ProcessedRow[] = bqCurrentRows.map((row: any) => ({
+      date: row.date,
+      campaign_id: row.campaign_id || '',
+      campaign_name: row.campaign_name || 'Unknown',
+      spend: parseFloat(row.spend) || 0,
+      installs: parseInt(row.installs) || 0,
+      impressions: parseInt(row.impressions) || 0,
+      clicks: parseInt(row.clicks) || 0,
+    }));
+
+    const prevRows: ProcessedRow[] = bqPrevRows.map((row: any) => ({
+      date: row.date,
+      campaign_id: row.campaign_id || '',
+      campaign_name: row.campaign_name || 'Unknown',
+      spend: parseFloat(row.spend) || 0,
+      installs: parseInt(row.installs) || 0,
+      impressions: parseInt(row.impressions) || 0,
+      clicks: parseInt(row.clicks) || 0,
+    }));
+
+    // Merge live data for today
+    if (liveRows && liveRows.length > 0) {
+      console.log(`Adding ${liveRows.length} live rows for today`);
+      currentRows = [...currentRows, ...liveRows];
+      
+      // Store live data in BigQuery for future queries
+      try {
+        await mergeIntoBigQuery(liveRows, googleAccessToken);
+      } catch (err) {
+        console.error('Error caching live data to BigQuery:', err);
+        // Don't fail the request, just log the error
+      }
     }
-    
-    // Small delay between requests to avoid rate limiting
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    try {
-      const reportId = await createReport(token, adAccountId, prevStartStr, prevEndStr);
-      const jsonUrl = await waitForReport(token, reportId);
-      const rawRows = await downloadReport(jsonUrl);
-      prevRows = processRows(rawRows);
-    } catch (error) {
-      console.error('Error fetching previous period:', error);
-    }
 
-    // Calculate totals for current period
-    const totals = currentRows.reduce(
-      (acc, row) => ({
-        spend: acc.spend + row.spend,
-        installs: acc.installs + row.installs,
-        impressions: acc.impressions + row.impressions,
-        clicks: acc.clicks + row.clicks,
-      }),
-      { spend: 0, installs: 0, impressions: 0, clicks: 0 }
-    );
+    // Calculate results
+    const totals = calculateTotals(currentRows);
+    const previousTotals = calculateTotals(prevRows);
 
-    // Calculate totals for previous period
-    const previousTotals = prevRows.reduce(
-      (acc, row) => ({
-        spend: acc.spend + row.spend,
-        installs: acc.installs + row.installs,
-        impressions: acc.impressions + row.impressions,
-        clicks: acc.clicks + row.clicks,
-      }),
-      { spend: 0, installs: 0, impressions: 0, clicks: 0 }
-    );
-
-    console.log(`Processed ${currentRows.length} rows, total spend: ${totals.spend}`);
+    console.log(`Processed ${currentRows.length} current rows, ${prevRows.length} previous rows`);
+    console.log(`Totals: spend=${totals.spend}, installs=${totals.installs}`);
 
     return new Response(
       JSON.stringify({ 
@@ -329,15 +550,9 @@ serve(async (req) => {
         data: { 
           daily: aggregateByDate(currentRows),
           campaigns: aggregateByCampaign(currentRows),
-          totals: {
-            ...totals,
-            cpi: totals.installs > 0 ? totals.spend / totals.installs : 0,
-          },
-          previousTotals: {
-            ...previousTotals,
-            cpi: previousTotals.installs > 0 ? previousTotals.spend / previousTotals.installs : 0,
-          },
-          dateRange: { startDate, endDate: effectiveEndDate },
+          totals,
+          previousTotals,
+          dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
         },
       }),
