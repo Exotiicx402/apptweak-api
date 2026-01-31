@@ -18,6 +18,39 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().split("T")[0];
 }
 
+const BACKFILL_WINDOW_DAYS = 14;
+
+function isWithinLastNDays(dateStr: string, n: number): boolean {
+  const date = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  const diffMs = today.getTime() - date.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays <= n && diffDays >= 0;
+}
+
+function getDatesBetween(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+  
+  while (current <= end) {
+    dates.push(current.toISOString().split("T")[0]);
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return dates;
+}
+
+function getMissingDates(requestedDates: string[], existingDates: Set<string>): string[] {
+  return requestedDates.filter(d => !existingDates.has(d));
+}
+
+function getBackfillableDates(missingDates: string[]): string[] {
+  return missingDates.filter(d => isWithinLastNDays(d, BACKFILL_WINDOW_DAYS));
+}
+
 interface MolocoRow {
   date: string;
   campaign?: {
@@ -426,10 +459,8 @@ serve(async (req) => {
     console.log(`Moloco query: ${startDate} to ${endDate}`);
 
     const today = getTodayDate();
-    const includesToday = endDate >= today;
-    const bqEndDate = includesToday ? addDays(today, -1) : endDate;
-    const shouldQueryBigQuery = startDate <= bqEndDate;
-
+    const requestedDates = getDatesBetween(startDate, endDate);
+    
     // Calculate previous period for comparison
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -442,69 +473,79 @@ serve(async (req) => {
     const prevStartStr = prevStart.toISOString().split("T")[0];
     const prevEndStr = prevEnd.toISOString().split("T")[0];
 
-    console.log(`Query range: ${startDate} to ${endDate}, today: ${today}, includesToday: ${includesToday}`);
-    console.log(`BQ range: ${startDate} to ${bqEndDate}, prev period: ${prevStartStr} to ${prevEndStr}`);
+    console.log(`Query range: ${startDate} to ${endDate}, today: ${today}`);
+    console.log(`Previous period: ${prevStartStr} to ${prevEndStr}`);
 
     // Get Google access token for BigQuery
-    const googleAccessToken = await getGoogleAccessToken();
+    let googleAccessToken: string;
+    try {
+      googleAccessToken = await getGoogleAccessToken();
+    } catch (err) {
+      console.error('Failed to get Google access token:', err);
+      throw new Error('BigQuery authentication failed');
+    }
+
     const { projectId, datasetId, tableId } = resolveMolocoBigQueryTarget();
     const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
 
-    // Build BigQuery queries
-    const currentPeriodQuery = shouldQueryBigQuery ? `
-      SELECT 
-        date,
-        campaign_id,
-        campaign_name,
-        spend,
-        installs,
-        impressions,
-        clicks
-      FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
-      ORDER BY date, campaign_id
-    ` : null;
+    // Try to query BigQuery for current and previous period
+    let bqCurrentRows: any[] = [];
+    let bqPrevRows: any[] = [];
+    let bqQueryFailed = false;
 
-    const prevPeriodQuery = `
-      SELECT 
-        date,
-        campaign_id,
-        campaign_name,
-        spend,
-        installs,
-        impressions,
-        clicks
-      FROM ${fullTable}
-      WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
-      ORDER BY date, campaign_id
-    `;
+    try {
+      const currentPeriodQuery = `
+        SELECT 
+          date,
+          campaign_id,
+          campaign_name,
+          spend,
+          installs,
+          impressions,
+          clicks
+        FROM ${fullTable}
+        WHERE date BETWEEN '${startDate}' AND '${endDate}'
+        ORDER BY date, campaign_id
+      `;
 
-    // Execute queries in parallel
-    const promises: Promise<any>[] = [];
-    
-    if (shouldQueryBigQuery) {
-      promises.push(queryBigQuery(currentPeriodQuery!, googleAccessToken));
-    } else {
-      promises.push(Promise.resolve([]));
+      const prevPeriodQuery = `
+        SELECT 
+          date,
+          campaign_id,
+          campaign_name,
+          spend,
+          installs,
+          impressions,
+          clicks
+        FROM ${fullTable}
+        WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
+        ORDER BY date, campaign_id
+      `;
+
+      [bqCurrentRows, bqPrevRows] = await Promise.all([
+        queryBigQuery(currentPeriodQuery, googleAccessToken),
+        queryBigQuery(prevPeriodQuery, googleAccessToken),
+      ]);
+
+      console.log(`BigQuery returned ${bqCurrentRows.length} current rows, ${bqPrevRows.length} previous rows`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('BigQuery query failed:', errorMessage);
+      
+      // Check if it's a schema error - if so, we can try live API fallback
+      if (errorMessage.includes('schema') || errorMessage.includes('does not exist')) {
+        console.log('BigQuery table may not have schema - will attempt live API fallback');
+        bqQueryFailed = true;
+      } else {
+        throw err;
+      }
     }
-    
-    promises.push(queryBigQuery(prevPeriodQuery, googleAccessToken));
-    
-    // Fetch live data for today if needed
-    if (includesToday) {
-      promises.push(fetchMolocoLiveData(today, today).catch(err => {
-        console.error('Error fetching live Moloco data:', err.message);
-        return [];
-      }));
-    } else {
-      promises.push(Promise.resolve([]));
-    }
-
-    const [bqCurrentRows, bqPrevRows, liveRows] = await Promise.all(promises);
 
     // Parse BigQuery rows
     let currentRows: ProcessedRow[] = bqCurrentRows.map((row: any) => ({
-      date: row.date,
+      date: typeof row.date === 'string' && row.date.includes('T') 
+        ? row.date.split('T')[0] 
+        : String(row.date),
       campaign_id: row.campaign_id || '',
       campaign_name: row.campaign_name || 'Unknown',
       spend: parseFloat(row.spend) || 0,
@@ -514,7 +555,9 @@ serve(async (req) => {
     }));
 
     const prevRows: ProcessedRow[] = bqPrevRows.map((row: any) => ({
-      date: row.date,
+      date: typeof row.date === 'string' && row.date.includes('T') 
+        ? row.date.split('T')[0] 
+        : String(row.date),
       campaign_id: row.campaign_id || '',
       campaign_name: row.campaign_name || 'Unknown',
       spend: parseFloat(row.spend) || 0,
@@ -523,33 +566,66 @@ serve(async (req) => {
       clicks: parseInt(row.clicks) || 0,
     }));
 
-    // Merge live data for today
-    if (liveRows && liveRows.length > 0) {
-      console.log(`Adding ${liveRows.length} live rows for today`);
-      currentRows = [...currentRows, ...liveRows];
+    // Identify which dates we have from BigQuery
+    const existingDates = new Set(currentRows.map(r => r.date));
+    
+    // Determine which dates are missing and backfillable (within 14 days)
+    const missingDates = getMissingDates(requestedDates, existingDates);
+    const backfillableDates = getBackfillableDates(missingDates);
+
+    console.log(`Missing dates: ${missingDates.length}, Backfillable (within ${BACKFILL_WINDOW_DAYS} days): ${backfillableDates.length}`);
+
+    // Fetch live data for backfillable dates (or if BQ query failed entirely)
+    let liveRows: ProcessedRow[] = [];
+    
+    if (backfillableDates.length > 0 || bqQueryFailed) {
+      const fetchStart = bqQueryFailed 
+        ? (isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS))
+        : backfillableDates.sort()[0];
+      const fetchEnd = bqQueryFailed
+        ? (endDate > today ? today : endDate)
+        : backfillableDates.sort().slice(-1)[0];
+
+      console.log(`Fetching live Moloco data from ${fetchStart} to ${fetchEnd}...`);
       
-      // Store live data in BigQuery for future queries
       try {
-        await mergeIntoBigQuery(liveRows, googleAccessToken);
-      } catch (err) {
-        console.error('Error caching live data to BigQuery:', err);
-        // Don't fail the request, just log the error
+        liveRows = await fetchMolocoLiveData(fetchStart, fetchEnd);
+        console.log(`Fetched ${liveRows.length} live rows from Moloco API`);
+
+        // Cache live data to BigQuery (if we have valid schema)
+        if (liveRows.length > 0 && !bqQueryFailed) {
+          try {
+            await mergeIntoBigQuery(liveRows, googleAccessToken);
+            console.log(`Cached ${liveRows.length} rows to BigQuery`);
+          } catch (cacheErr) {
+            console.error('Failed to cache to BigQuery (non-blocking):', cacheErr);
+          }
+        }
+      } catch (liveErr) {
+        console.error('Failed to fetch live Moloco data:', liveErr);
+        // Don't throw - return whatever we have from BigQuery
       }
     }
 
+    // Merge BigQuery data with live data (live data takes precedence for overlapping dates)
+    const liveDataDates = new Set(liveRows.map(r => r.date));
+    const filteredBqRows = currentRows.filter(r => !liveDataDates.has(r.date));
+    const mergedRows = [...filteredBqRows, ...liveRows];
+
+    console.log(`Final merged rows: ${mergedRows.length} (${filteredBqRows.length} from BQ + ${liveRows.length} from live)`);
+
     // Calculate results
-    const totals = calculateTotals(currentRows);
+    const totals = calculateTotals(mergedRows);
     const previousTotals = calculateTotals(prevRows);
 
-    console.log(`Processed ${currentRows.length} current rows, ${prevRows.length} previous rows`);
-    console.log(`Totals: spend=${totals.spend}, installs=${totals.installs}`);
+    console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}`);
 
     return new Response(
       JSON.stringify({ 
         success: true,
         data: { 
-          daily: aggregateByDate(currentRows),
-          campaigns: aggregateByCampaign(currentRows),
+          daily: aggregateByDate(mergedRows),
+          campaigns: aggregateByCampaign(mergedRows),
           totals,
           previousTotals,
           dateRange: { startDate, endDate },
