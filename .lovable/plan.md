@@ -1,83 +1,55 @@
 
 
-# Fix: Meta Ads Showing 0 for Yesterday Due to Missing BigQuery Data
+# Create Moloco BigQuery Table Schema
 
-## Problem
+## Overview
 
-When querying for January 30th (yesterday in your local timezone), Meta is returning 0 because:
+The `moloco-history` edge function expects a BigQuery table at `polymarket-data-house.polymarket_hours.moloco-lv` but the table doesn't exist yet. You need to create this table in BigQuery with the correct schema.
 
-1. The `meta-history` function only calls the live Meta API when `endDate >= today` (in UTC)
-2. For historical dates (like yesterday), it queries BigQuery exclusively
-3. BigQuery doesn't have January 30th data yet - the sync may be lagging due to timezone differences
+## BigQuery Table Schema
 
-The root cause is a **timezone mismatch** between:
-- Your local timezone (used by the frontend)
-- UTC (used by the server for determining "today" and "yesterday")
+Run this SQL in BigQuery Console to create the table:
 
-## Solution: Query Live API for Missing Recent Data
-
-Update `meta-history` to detect when BigQuery returns empty for recent dates and fall back to the live Meta API. This ensures you always get data for dates the live API can provide, even if BigQuery sync is delayed.
-
----
-
-## Technical Details
-
-### File: `supabase/functions/meta-history/index.ts`
-
-**Current logic:**
-```text
-if endDate includes today → call live API for today
-else → query BigQuery only
+```sql
+CREATE TABLE `polymarket-data-house.polymarket_hours.moloco-lv` (
+  date DATE NOT NULL,
+  campaign_id STRING NOT NULL,
+  campaign_name STRING,
+  spend FLOAT64,
+  installs INT64,
+  impressions INT64,
+  clicks INT64,
+  fetched_at TIMESTAMP
+);
 ```
 
-**New logic:**
-```text
-1. Query BigQuery for the date range
-2. If BigQuery returns empty AND the date range is within last 7 days:
-   a. Call live Meta API directly for those dates
-   b. Cache the results back to BigQuery
-3. Always call live API for today's data
-```
+## Column Definitions
 
-**Key changes:**
+| Column | Type | Description |
+|--------|------|-------------|
+| date | DATE | Campaign data date (part of composite primary key) |
+| campaign_id | STRING | Moloco campaign identifier (part of composite primary key) |
+| campaign_name | STRING | Human-readable campaign name |
+| spend | FLOAT64 | Total spend in dollars |
+| installs | INT64 | Number of app installs |
+| impressions | INT64 | Number of ad impressions |
+| clicks | INT64 | Number of ad clicks |
+| fetched_at | TIMESTAMP | When this row was last synced |
 
-1. **Add missing data detection**: After querying BigQuery, check if any requested dates returned empty
-2. **Fallback to live API**: For recent empty dates (within Meta's 7-day attribution window), fetch from live API
-3. **Optional caching**: Merge fetched live data into BigQuery for future requests
+## Steps to Create
 
-**Example implementation:**
-```typescript
-// After BigQuery query
-if (bqDailyData.length === 0 && isWithinLastNDays(startDate, 7)) {
-  console.log('BigQuery returned no data for recent range, falling back to live API');
-  const liveData = await fetchMetaInsightsRange(startDate, endDate);
-  // Process and use liveData instead
-}
-```
+1. Go to BigQuery Console: https://console.cloud.google.com/bigquery
+2. Select project `polymarket-data-house`
+3. Navigate to dataset `polymarket_hours`
+4. Click "Create Table" or run the SQL above in the query editor
+5. Verify the table exists
 
----
+## After Creation
 
-## Alternative Quick Fix
+Once the table exists, the `moloco-history` function will:
+- Query this table for historical data (dates before today)
+- Call the live Moloco API only for today's data
+- Automatically merge new data back into this table (write-back caching)
 
-If you want a simpler fix: manually trigger a sync for yesterday's data:
-
-1. Call `meta-to-bigquery` with `{ "date": "2026-01-30" }` to sync yesterday's data
-2. Then query the reporting page again
-
-However, this doesn't solve the underlying issue - the recommended fix above prevents this from happening again.
-
----
-
-## Files to Modify
-
-- `supabase/functions/meta-history/index.ts`
-
-## Expected Result After Fix
-
-| Query Date | BigQuery Has Data | Result |
-|------------|-------------------|--------|
-| Yesterday | Yes | Returns BigQuery data |
-| Yesterday | No | Falls back to live API, returns data |
-| Today | N/A | Always calls live API |
-| 2+ weeks ago | No | Returns empty (beyond live API window) |
+The composite key is `(date, campaign_id)` - the MERGE statement in the code uses these to update existing rows or insert new ones.
 
