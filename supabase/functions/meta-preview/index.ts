@@ -63,6 +63,12 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   return data.data || [];
 }
 
+function filterAppInstallCampaigns(campaigns: any[]): any[] {
+  return campaigns.filter(
+    (c) => c.campaign_name?.toUpperCase().includes("APP INSTALLS")
+  );
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -82,7 +88,9 @@ serve(async (req) => {
 
     console.log(`Fetching Meta preview for date: ${targetDate}`);
 
-    const data = await fetchMetaInsights(targetDate);
+    const rawData = await fetchMetaInsights(targetDate);
+    const data = filterAppInstallCampaigns(rawData);
+    console.log(`Filtered to ${data.length} APP INSTALLS campaigns from ${rawData.length} total`);
     const durationMs = Date.now() - startTime;
 
     return new Response(

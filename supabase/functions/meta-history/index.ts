@@ -167,6 +167,12 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   return data.data || [];
 }
 
+function filterAppInstallCampaigns(campaigns: any[]): any[] {
+  return campaigns.filter(
+    (c) => c.campaign_name?.toUpperCase().includes("APP INSTALLS")
+  );
+}
+
 // Transform live Meta data to match BigQuery format
 function transformLiveData(liveData: any[], date: string): {
   daily: any;
@@ -277,7 +283,9 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign_id = '${campaignId}'` : "";
 
-    // Build queries
+    // Build queries - only include APP INSTALLS campaigns
+    const appInstallsFilter = "AND UPPER(campaign_name) LIKE '%APP INSTALLS%'";
+    
     const dailyQuery = shouldQueryBigQuery ? `
       SELECT 
         DATE(timestamp) as date,
@@ -300,6 +308,7 @@ serve(async (req) => {
         ) as installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+      ${appInstallsFilter}
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
@@ -328,6 +337,7 @@ serve(async (req) => {
         ) as installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+      ${appInstallsFilter}
       GROUP BY campaign_id, campaign_name
       ORDER BY spend DESC
     ` : null;
@@ -354,6 +364,7 @@ serve(async (req) => {
         ) as total_installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+      ${appInstallsFilter}
       ${campaignFilter}
     ` : null;
 
@@ -378,6 +389,7 @@ serve(async (req) => {
         ) as total_installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
+      ${appInstallsFilter}
       ${campaignFilter}
     `;
 
@@ -420,7 +432,9 @@ serve(async (req) => {
       // Fetch missing dates from live Meta API
       const missingDataPromises = missingDates.map(async (date) => {
         try {
-          const liveDayData = await fetchMetaInsights(date);
+          const rawLiveData = await fetchMetaInsights(date);
+          const liveDayData = filterAppInstallCampaigns(rawLiveData);
+          console.log(`Live fallback for ${date}: filtered to ${liveDayData.length} APP INSTALLS from ${rawLiveData.length} total`);
           return { date, data: liveDayData };
         } catch (err) {
           console.error(`Failed to fetch live data for ${date}:`, err);
@@ -544,9 +558,11 @@ serve(async (req) => {
     };
     totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
 
-    // Merge live data for today
-    if (includestoday && liveData.length > 0) {
-      const liveTransformed = transformLiveData(liveData, today);
+    // Merge live data for today (filter to APP INSTALLS campaigns)
+    const filteredLiveData = filterAppInstallCampaigns(liveData);
+    if (includestoday && filteredLiveData.length > 0) {
+      console.log(`Live today: filtered to ${filteredLiveData.length} APP INSTALLS from ${liveData.length} total`);
+      const liveTransformed = transformLiveData(filteredLiveData, today);
       
       // Add today's daily data
       dailyData.push(liveTransformed.daily);
