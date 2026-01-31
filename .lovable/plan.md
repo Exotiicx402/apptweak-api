@@ -1,16 +1,34 @@
 
 
-# Create Moloco BigQuery Table Schema
+# Fix Moloco BigQuery Table and Add Auto-Backfill
 
-## Overview
+## Problem
 
-The `moloco-history` edge function expects a BigQuery table at `polymarket-data-house.polymarket_hours.moloco-lv` but the table doesn't exist yet. You need to create this table in BigQuery with the correct schema.
+The BigQuery table `polymarket-data-house.polymarket_hours.moloco-lv` exists but has **no schema** (no columns). This causes the `moloco-history` edge function to fail with:
 
-## BigQuery Table Schema
+```
+Table polymarket-data-house.polymarket_hours.moloco-lv does not have a schema.
+```
 
-Run this SQL in BigQuery Console to create the table:
+## Solution Overview
+
+1. **Fix BigQuery table** by running SQL to add the required schema
+2. **Update `moloco-history`** to add auto-backfill logic that:
+   - Detects when BigQuery returns empty results for dates within the last 14 days
+   - Fetches missing data from the live Moloco API
+   - Caches the data back to BigQuery (write-back pattern)
+
+---
+
+## Step 1: Fix BigQuery Table Schema
+
+Run this SQL in BigQuery Console to drop and recreate the table with proper columns:
 
 ```sql
+-- Drop the schema-less table
+DROP TABLE IF EXISTS `polymarket-data-house.polymarket_hours.moloco-lv`;
+
+-- Create with proper schema
 CREATE TABLE `polymarket-data-house.polymarket_hours.moloco-lv` (
   date DATE NOT NULL,
   campaign_id STRING NOT NULL,
@@ -23,33 +41,89 @@ CREATE TABLE `polymarket-data-house.polymarket_hours.moloco-lv` (
 );
 ```
 
-## Column Definitions
+After running this, the table will be ready for the edge function to query and write data.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| date | DATE | Campaign data date (part of composite primary key) |
-| campaign_id | STRING | Moloco campaign identifier (part of composite primary key) |
-| campaign_name | STRING | Human-readable campaign name |
-| spend | FLOAT64 | Total spend in dollars |
-| installs | INT64 | Number of app installs |
-| impressions | INT64 | Number of ad impressions |
-| clicks | INT64 | Number of ad clicks |
-| fetched_at | TIMESTAMP | When this row was last synced |
+---
 
-## Steps to Create
+## Step 2: Update `moloco-history` Edge Function
 
-1. Go to BigQuery Console: https://console.cloud.google.com/bigquery
-2. Select project `polymarket-data-house`
-3. Navigate to dataset `polymarket_hours`
-4. Click "Create Table" or run the SQL above in the query editor
-5. Verify the table exists
+Add auto-backfill logic similar to what we implemented for Meta. The function will:
 
-## After Creation
+1. Query BigQuery for historical data
+2. Identify which dates within the last 14 days are missing from BigQuery
+3. Fetch those missing dates from the live Moloco API
+4. Merge the live data into BigQuery for future queries
+5. Return combined results
 
-Once the table exists, the `moloco-history` function will:
-- Query this table for historical data (dates before today)
-- Call the live Moloco API only for today's data
-- Automatically merge new data back into this table (write-back caching)
+### Key Changes
 
-The composite key is `(date, campaign_id)` - the MERGE statement in the code uses these to update existing rows or insert new ones.
+**File: `supabase/functions/moloco-history/index.ts`**
+
+Add helper functions:
+```typescript
+function isWithinLastNDays(dateStr: string, n: number): boolean {
+  const date = new Date(dateStr);
+  const today = new Date();
+  const diffMs = today.getTime() - date.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays <= n && diffDays >= 0;
+}
+
+function getDatesBetween(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+  
+  while (current <= end) {
+    dates.push(current.toISOString().split("T")[0]);
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return dates;
+}
+```
+
+Update main handler logic to:
+1. After BigQuery query, identify which dates are missing
+2. For missing dates within last 14 days, call `fetchMolocoLiveData`
+3. Merge results and cache to BigQuery
+
+```text
+Current Flow:
+  Query BQ for historical → Fetch live for today → Return
+
+New Flow:
+  Query BQ for historical
+  ↓
+  Check for missing dates within 14-day window
+  ↓
+  If missing dates exist → Fetch from Moloco API
+  ↓
+  Merge all data together
+  ↓
+  Cache new data to BigQuery
+  ↓
+  Return combined results
+```
+
+---
+
+## Expected Behavior After Fix
+
+| Scenario | Result |
+|----------|--------|
+| BigQuery has all data | Returns BigQuery data (fast) |
+| BigQuery missing recent dates (≤14 days) | Fetches from Moloco API, caches, returns data |
+| BigQuery missing old dates (>14 days) | Returns available data only |
+| Today's data | Always fetched live from Moloco API |
+
+---
+
+## Files to Modify
+
+- `supabase/functions/moloco-history/index.ts` - Add backfill logic
+
+## Rate Limit Consideration
+
+The Moloco API has a 300 requests/5 minutes limit. The backfill logic fetches date ranges in a single API call rather than per-day calls, minimizing API usage while still ensuring data completeness.
 
