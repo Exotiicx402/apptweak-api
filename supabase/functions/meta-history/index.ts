@@ -9,6 +9,27 @@ function getTodayDate(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+function isWithinLastNDays(dateStr: string, n: number): boolean {
+  const date = new Date(dateStr);
+  const today = new Date();
+  const diffMs = today.getTime() - date.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays <= n && diffDays >= 0;
+}
+
+function getDatesBetween(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+  
+  while (current <= end) {
+    dates.push(current.toISOString().split("T")[0]);
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return dates;
+}
+
 async function getGoogleAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
@@ -386,14 +407,99 @@ serve(async (req) => {
       promises.push(Promise.resolve([]));
     }
 
-    const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, liveData] = await Promise.all(promises);
+    let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, liveData] = await Promise.all(promises);
+
+    // Check if BigQuery returned no data for recent dates - fall back to live API
+    const requestedDates = getDatesBetween(startDate, bqEndDate);
+    const bqDatesFound = new Set(bqDailyData.map((row: any) => row.date?.split("T")[0] || row.date));
+    const missingDates = requestedDates.filter(d => !bqDatesFound.has(d) && isWithinLastNDays(d, 7));
+
+    if (missingDates.length > 0 && shouldQueryBigQuery) {
+      console.log(`BigQuery missing data for ${missingDates.length} recent dates: ${missingDates.join(", ")}. Fetching from live API...`);
+      
+      // Fetch missing dates from live Meta API
+      const missingDataPromises = missingDates.map(async (date) => {
+        try {
+          const liveDayData = await fetchMetaInsights(date);
+          return { date, data: liveDayData };
+        } catch (err) {
+          console.error(`Failed to fetch live data for ${date}:`, err);
+          return { date, data: [] };
+        }
+      });
+      
+      const missingResults = await Promise.all(missingDataPromises);
+      
+      // Transform and merge missing data
+      for (const { date, data } of missingResults) {
+        if (data.length > 0) {
+          const transformed = transformLiveData(data, date);
+          
+          // Add to daily data
+          bqDailyData.push({
+            date,
+            spend: transformed.daily.spend,
+            impressions: transformed.daily.impressions,
+            clicks: transformed.daily.clicks,
+            reach: transformed.daily.reach,
+            cpm: transformed.daily.cpm,
+            cpc: transformed.daily.cpc,
+            ctr: transformed.daily.ctr,
+            installs: transformed.daily.installs,
+          });
+          
+          // Add to campaign data
+          for (const camp of transformed.campaigns) {
+            const existing = bqCampaignData.find((c: any) => c.campaign_id === camp.campaign_id);
+            if (existing) {
+              existing.spend = (parseFloat(existing.spend) || 0) + camp.spend;
+              existing.impressions = (parseInt(existing.impressions) || 0) + camp.impressions;
+              existing.clicks = (parseInt(existing.clicks) || 0) + camp.clicks;
+              existing.reach = (parseInt(existing.reach) || 0) + camp.reach;
+              existing.installs = (parseInt(existing.installs) || 0) + camp.installs;
+            } else {
+              bqCampaignData.push({
+                campaign_id: camp.campaign_id,
+                campaign_name: camp.campaign_name,
+                spend: camp.spend,
+                impressions: camp.impressions,
+                clicks: camp.clicks,
+                reach: camp.reach,
+                cpm: camp.cpm,
+                cpc: camp.cpc,
+                ctr: camp.ctr,
+                installs: camp.installs,
+              });
+            }
+          }
+          
+          // Update totals
+          if (!bqTotalsData[0]) {
+            bqTotalsData[0] = {
+              total_spend: 0,
+              total_impressions: 0,
+              total_clicks: 0,
+              total_reach: 0,
+              total_installs: 0,
+            };
+          }
+          bqTotalsData[0].total_spend = (parseFloat(bqTotalsData[0].total_spend) || 0) + transformed.daily.spend;
+          bqTotalsData[0].total_impressions = (parseInt(bqTotalsData[0].total_impressions) || 0) + transformed.daily.impressions;
+          bqTotalsData[0].total_clicks = (parseInt(bqTotalsData[0].total_clicks) || 0) + transformed.daily.clicks;
+          bqTotalsData[0].total_reach = (parseInt(bqTotalsData[0].total_reach) || 0) + transformed.daily.reach;
+          bqTotalsData[0].total_installs = (parseInt(bqTotalsData[0].total_installs) || 0) + transformed.daily.installs;
+          
+          console.log(`Added live fallback data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
+        }
+      }
+    }
 
     // Process BigQuery data
     let dailyData = bqDailyData.map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
       const installs = parseInt(row.installs) || 0;
       return {
-        date: row.date,
+        date: row.date?.split("T")[0] || row.date,
         spend,
         impressions: parseInt(row.impressions) || 0,
         clicks: parseInt(row.clicks) || 0,
@@ -473,6 +579,9 @@ serve(async (req) => {
       
       console.log(`Added live data for today: spend=${liveTransformed.daily.spend}, installs=${liveTransformed.daily.installs}`);
     }
+
+    // Sort daily data by date
+    dailyData.sort((a: { date: string }, b: { date: string }) => a.date.localeCompare(b.date));
 
     // Sort campaign data by spend desc
     campaignData.sort((a: any, b: any) => b.spend - a.spend);
