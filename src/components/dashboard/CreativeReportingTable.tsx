@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { Image as ImageIcon } from "lucide-react";
+import { useCreativeAssets } from "@/hooks/useCreativeAssets";
 
 interface CreativeReportingTableProps {
   title: string;
@@ -20,6 +22,7 @@ interface CreativeReportingTableProps {
     impressions: number;
     ctr?: number;
     cvr?: number;
+    thumbnailUrl?: string;
   }>;
   loading?: boolean;
 }
@@ -29,6 +32,9 @@ export function CreativeReportingTable({
   data,
   loading = false,
 }: CreativeReportingTableProps) {
+  // Get creative names for asset lookup
+  const creativeNames = data.map(d => d.name);
+  const { data: assetMap, isLoading: assetsLoading } = useCreativeAssets(creativeNames);
   const formatCurrency = (val: number): string => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -110,6 +116,7 @@ export function CreativeReportingTable({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12"></TableHead>
                 <TableHead className="w-[200px]">Campaign</TableHead>
                 <TableHead className="text-right">Spend</TableHead>
                 <TableHead className="text-right">Installs</TableHead>
@@ -121,44 +128,61 @@ export function CreativeReportingTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedData.map((row, index) => (
-                <TableRow key={index}>
-                  <TableCell className="font-medium max-w-[200px] truncate" title={row.name}>
-                    {row.name}
-                  </TableCell>
-                  <TableCell
-                    className={cn(
-                      "text-right font-mono",
-                      getHeatmapColor(row.spend, maxSpend, "spend")
-                    )}
-                  >
-                    {formatCurrency(row.spend)}
-                  </TableCell>
-                  <TableCell
-                    className={cn(
-                      "text-right font-mono",
-                      getHeatmapColor(row.installs, maxInstalls, "installs")
-                    )}
-                  >
-                    {formatNumber(row.installs)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatCurrency(row.cpi)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatNumber(row.clicks)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatNumber(row.impressions)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {row.ctr !== undefined ? formatPercent(row.ctr) : "-"}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {row.cvr !== undefined ? formatPercent(row.cvr) : "-"}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {sortedData.map((row, index) => {
+                const thumbnailUrl = row.thumbnailUrl || assetMap?.get(row.name);
+                return (
+                  <TableRow key={index}>
+                    <TableCell className="w-12 p-2">
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt=""
+                          className="w-10 h-10 rounded object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded bg-muted flex items-center justify-center">
+                          <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium max-w-[200px] truncate" title={row.name}>
+                      {row.name}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "text-right font-mono",
+                        getHeatmapColor(row.spend, maxSpend, "spend")
+                      )}
+                    >
+                      {formatCurrency(row.spend)}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "text-right font-mono",
+                        getHeatmapColor(row.installs, maxInstalls, "installs")
+                      )}
+                    >
+                      {formatNumber(row.installs)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(row.cpi)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatNumber(row.clicks)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatNumber(row.impressions)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {row.ctr !== undefined ? formatPercent(row.ctr) : "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {row.cvr !== undefined ? formatPercent(row.cvr) : "-"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
