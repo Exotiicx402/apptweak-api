@@ -6,6 +6,7 @@ import { MetricKpiCard } from "./MetricKpiCard";
 import { TimeSeriesChart } from "./TimeSeriesChart";
 import { CampaignBreakdownChart } from "./CampaignBreakdownChart";
 import { CreativeReportingTable } from "./CreativeReportingTable";
+import { CreativeCardGrid } from "./CreativeCardGrid";
 import { DateRangePicker } from "./DateRangePicker";
 import { getLocalDaysAgo, getLocalToday } from "@/lib/dateUtils";
 
@@ -256,6 +257,22 @@ export function MetaHistoryDashboard() {
           loading={isLoading}
         />
       </div>
+
+      {/* Top Creatives - Card Grid */}
+      <CreativeCardGrid
+        title="Top Creatives"
+        data={(data?.ads || []).map((ad) => ({
+          adId: ad.ad_id,
+          adName: ad.ad_name,
+          spend: ad.spend,
+          installs: ad.installs,
+          impressions: ad.impressions,
+          clicks: ad.clicks,
+          ctr: ad.ctr,
+          cpi: ad.cpi,
+        }))}
+        loading={isLoading}
+      />
 
       {/* Campaign Table */}
       <CreativeReportingTable

@@ -369,6 +369,34 @@ serve(async (req) => {
       ${campaignFilter}
     ` : null;
 
+    // Query for ad-level data (top 50 by spend)
+    const adsQuery = shouldQueryBigQuery ? `
+      SELECT 
+        ad_id,
+        ad_name,
+        SUM(spend) as spend,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SAFE_DIVIDE(SUM(clicks), SUM(impressions)) as ctr,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'mobile_app_install'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as installs
+      FROM ${fullTable}
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+      ${appInstallsFilter}
+      AND ad_id IS NOT NULL AND ad_id != ''
+      GROUP BY ad_id, ad_name
+      ORDER BY spend DESC
+      LIMIT 50
+    ` : null;
+
     const prevTotalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
@@ -409,10 +437,12 @@ serve(async (req) => {
       promises.push(
         queryBigQuery(dailyQuery!, googleAccessToken),
         queryBigQuery(campaignQuery!, googleAccessToken),
-        queryBigQuery(totalsQuery!, googleAccessToken)
+        queryBigQuery(totalsQuery!, googleAccessToken),
+        queryBigQuery(adsQuery!, googleAccessToken)
       );
     } else {
       promises.push(
+        Promise.resolve([]),
         Promise.resolve([]),
         Promise.resolve([]),
         Promise.resolve([])
@@ -429,7 +459,7 @@ serve(async (req) => {
       promises.push(Promise.resolve([]));
     }
 
-    let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, prevDatesData, liveData] = await Promise.all(promises);
+    let [bqDailyData, bqCampaignData, bqTotalsData, bqAdsData, prevTotalsData, prevDatesData, liveData] = await Promise.all(promises);
 
     // Check if BigQuery is missing previous period data - fall back to live API
     const prevRequestedDates = getDatesBetween(prevStartStr, prevEndStr);
@@ -665,6 +695,22 @@ serve(async (req) => {
     // Sort campaign data by spend desc
     campaignData.sort((a: any, b: any) => b.spend - a.spend);
 
+    // Process ads data
+    const adsData = (bqAdsData || []).map((row: any) => {
+      const spend = parseFloat(row.spend) || 0;
+      const installs = parseInt(row.installs) || 0;
+      return {
+        ad_id: row.ad_id,
+        ad_name: row.ad_name,
+        spend,
+        impressions: parseInt(row.impressions) || 0,
+        clicks: parseInt(row.clicks) || 0,
+        ctr: parseFloat(row.ctr) || 0,
+        installs,
+        cpi: installs > 0 ? spend / installs : 0,
+      };
+    });
+
     const prevTotals = prevTotalsData[0] || {};
 
     return new Response(
@@ -673,6 +719,7 @@ serve(async (req) => {
         data: {
           daily: dailyData,
           campaigns: campaignData,
+          ads: adsData,
           totals,
           previousTotals: {
             spend: parseFloat(prevTotals.total_spend) || 0,
