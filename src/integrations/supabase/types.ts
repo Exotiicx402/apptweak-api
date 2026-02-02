@@ -104,6 +104,54 @@ export type Database = {
         }
         Relationships: []
       }
+      creative_assets: {
+        Row: {
+          asset_type: string | null
+          concept_id: string | null
+          created_at: string | null
+          creative_name: string
+          height: number | null
+          id: string
+          original_url: string | null
+          platform: string
+          platform_creative_id: string | null
+          thumbnail_url: string | null
+          unique_identifier: string | null
+          updated_at: string | null
+          width: number | null
+        }
+        Insert: {
+          asset_type?: string | null
+          concept_id?: string | null
+          created_at?: string | null
+          creative_name: string
+          height?: number | null
+          id?: string
+          original_url?: string | null
+          platform: string
+          platform_creative_id?: string | null
+          thumbnail_url?: string | null
+          unique_identifier?: string | null
+          updated_at?: string | null
+          width?: number | null
+        }
+        Update: {
+          asset_type?: string | null
+          concept_id?: string | null
+          created_at?: string | null
+          creative_name?: string
+          height?: number | null
+          id?: string
+          original_url?: string | null
+          platform?: string
+          platform_creative_id?: string | null
+          thumbnail_url?: string | null
+          unique_identifier?: string | null
+          updated_at?: string | null
+          width?: number | null
+        }
+        Relationships: []
+      }
       sync_logs: {
         Row: {
           created_at: string
