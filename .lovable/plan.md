@@ -1,191 +1,166 @@
 
 
-# Creative Asset Preview System
+# Creative Performance Card Grid for Meta
 
 ## Overview
 
-Build a system to download, store, and display creative assets (images/videos) alongside performance data. Since all assets follow the same naming convention across platforms, we can use the creative name as the lookup key to match assets to their previews.
+Create a new card-based grid component that displays individual creative performance with large thumbnails, matching the reference design. This will replace/complement the existing table view on the Meta sync page.
 
 ---
 
-## Architecture
+## What We Need to Build
 
-The system will:
-1. Fetch creative thumbnail/preview URLs from each platform's API
-2. Download and store assets in a Lovable Cloud storage bucket
-3. Store asset metadata in a database table mapping creative names to storage URLs
-4. Display thumbnails in the CreativeReportingTable component
+### 1. Backend Changes
+
+**Modify `meta-history` edge function** to return ad-level data:
+
+Currently the function fetches data at `level: "campaign"`. We need to add a separate query for `level: "ad"` to get individual creative performance.
+
+The Meta API and BigQuery sync already have ad-level data - we just need to query it differently.
 
 ```text
-Platform APIs                     Storage                      Frontend
-    |                                |                             |
-    v                                v                             v
-+------------+     +---------------+     +------------------+
-| Meta API   | --> | Edge Function | --> | Storage Bucket   |
-| (creatives)|     | fetch-assets  |     | (creative-assets)|
-+------------+     +---------------+     +------------------+
-| Snapchat   |            |                      |
-| Unity      |            v                      v
-| etc.       |     +--------------+     +------------------+
-+------------+     | creative_    | --> | CreativeTable    |
-                   | assets table |     | with thumbnails  |
-                   +--------------+     +------------------+
+Current flow:
+  meta-history → campaign_id/campaign_name aggregation
+
+New flow:
+  meta-history → add "ads" array with ad_name, spend, installs, impressions, clicks, ctr
+```
+
+**Update BigQuery sync** to capture ad-level data:
+- Modify `meta-to-bigquery` to fetch at ad level instead of campaign level
+- Add `ad_id` and `ad_name` columns to the sync
+
+---
+
+### 2. New Frontend Component: `CreativeCardGrid`
+
+Create `src/components/dashboard/CreativeCardGrid.tsx`:
+
+```text
++-------------------------------------------+
+| Top Creatives                             |
++-------------------------------------------+
+|  +--------+  +--------+  +--------+  +---+|
+|  |        |  |        |  |        |  |   ||
+|  | [IMG]  |  | [VID]  |  | [IMG]  |  |   ||
+|  |        |  |        |  |        |  |   ||
+|  +--------+  +--------+  +--------+  +---+|
+|  Name...     Name...     Name...          |
+|  Spend $X    Spend $X    Spend $X         |
+|  Installs N  Installs N  Installs N       |
+|  CTR X.X%    CTR X.X%    CTR X.X%         |
+|  CPI $X.XX   CPI $X.XX   CPI $X.XX        |
++-------------------------------------------+
+```
+
+**Card features:**
+- Large thumbnail (aspect ratio maintained)
+- Asset type badge overlay (Image/Video)
+- Truncated creative name with tooltip
+- Key metrics: Spend, App installs, CTR (link click), CPI
+
+---
+
+### 3. Data Flow
+
+```text
+1. meta-history returns:
+   {
+     daily: [...],
+     campaigns: [...],
+     ads: [                         // NEW
+       {
+         ad_id: string,
+         ad_name: string,           // Matches creative_name in creative_assets
+         spend: number,
+         installs: number,
+         impressions: number,
+         clicks: number,
+         ctr: number,
+         cpi: number,
+       }
+     ],
+     totals: {...},
+   }
+
+2. Frontend calls useCreativeAssets(adNames) to get thumbnail URLs
+
+3. CreativeCardGrid renders cards with matched thumbnails
 ```
 
 ---
 
 ## Implementation Steps
 
-### Phase 1: Database and Storage Setup
+### Step 1: Update meta-to-bigquery sync
 
-**1. Create storage bucket for creative assets**
+Add ad-level fields to BigQuery sync:
+- Change `level` from "campaign" to "ad"
+- Add `ad_id`, `ad_name` columns
+- Keep `campaign_id`, `campaign_name` for filtering
 
+### Step 2: Update meta-history edge function
+
+Add new query for ad-level data:
 ```sql
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('creative-assets', 'creative-assets', true);
-
--- RLS policy for public read access
-CREATE POLICY "Public read access"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'creative-assets');
-
--- Service role can insert/update
-CREATE POLICY "Service role can upload"
-ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'creative-assets');
+SELECT 
+  ad_id,
+  ad_name,
+  SUM(spend) as spend,
+  SUM(impressions) as impressions,
+  SUM(clicks) as clicks,
+  SUM(installs) as installs
+FROM meta_ads_table
+WHERE DATE(timestamp) BETWEEN start AND end
+  AND UPPER(campaign_name) LIKE '%APP INSTALLS%'
+GROUP BY ad_id, ad_name
+ORDER BY spend DESC
+LIMIT 50
 ```
 
-**2. Create creative_assets metadata table**
+### Step 3: Create CreativeCardGrid component
 
-```sql
-CREATE TABLE public.creative_assets (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  creative_name TEXT NOT NULL,              -- The full naming convention string
-  concept_id TEXT,                          -- Extracted from name (for faster lookups)
-  unique_identifier TEXT,                   -- Extracted from name
-  platform TEXT NOT NULL,                   -- 'meta', 'snapchat', 'unity', 'tiktok', etc.
-  platform_creative_id TEXT,                -- Original ID from platform
-  asset_type TEXT,                          -- 'image', 'video', 'playable'
-  thumbnail_url TEXT,                       -- URL in our storage bucket
-  original_url TEXT,                        -- Original URL from platform (for refresh)
-  width INTEGER,
-  height INTEGER,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(platform, platform_creative_id)
-);
+New file: `src/components/dashboard/CreativeCardGrid.tsx`
 
--- Index for fast lookups by creative name
-CREATE INDEX idx_creative_assets_name ON creative_assets(creative_name);
-CREATE INDEX idx_creative_assets_concept ON creative_assets(concept_id);
-```
-
----
-
-### Phase 2: Edge Function to Fetch and Store Assets
-
-**3. Create `fetch-creative-assets` edge function**
-
-This function will:
-- Call each platform's API to get creative details with thumbnail URLs
-- Download the assets
-- Upload to the storage bucket
-- Store metadata in the creative_assets table
-
-**Platform-specific API calls:**
-
-| Platform | API Endpoint | Fields for Thumbnails |
-|----------|--------------|----------------------|
-| Meta | `/{ad-id}/adcreatives?fields=name,thumbnail_url,image_url,video_id` | `thumbnail_url`, `image_url` |
-| Snapchat | `/v1/adaccounts/{id}/creatives` then `/v1/media/{media_id}` | `download_link` from media |
-| Unity | Creative Packs API | Creative pack metadata |
-| TikTok | `/ad/get/?fields=video_id,image_ids` | Video/image preview URLs |
-
-**Function flow:**
-```text
-1. Get list of all ads/creatives from platform API
-2. For each creative:
-   a. Extract the creative name (your naming convention)
-   b. Parse out ConceptID and UniqueIdentifier for indexing
-   c. Check if already exists in creative_assets table
-   d. If not exists or needs refresh:
-      - Download thumbnail/preview from platform
-      - Upload to storage bucket as: creative-assets/{platform}/{concept_id}/{filename}
-      - Insert/update creative_assets record
-3. Return count of assets processed
-```
-
----
-
-### Phase 3: Frontend Integration
-
-**4. Update CreativeReportingTable to show thumbnails**
-
-Add a thumbnail column that looks up images by creative name:
-
+Props:
 ```typescript
-interface CreativeReportingTableProps {
+interface CreativeCardGridProps {
   title: string;
   data: Array<{
-    name: string;
-    thumbnailUrl?: string;  // NEW: URL from creative_assets table
+    adName: string;
     spend: number;
     installs: number;
-    // ... rest of fields
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    cpi: number;
   }>;
+  loading?: boolean;
 }
 ```
 
-The table cell would render:
+Card layout based on reference image:
+- 4 columns on large screens, 2 on medium, 1 on mobile
+- 16:9 or square aspect ratio for thumbnail
+- Badge overlay for Image/Video
+- Metrics displayed below thumbnail
+
+### Step 4: Update useMetaHistory hook
+
+Add `ads` array to the data interface and fetch logic.
+
+### Step 5: Update MetaHistoryDashboard
+
+Add the new `CreativeCardGrid` component below the existing charts:
+
 ```tsx
-<TableCell className="w-12">
-  {row.thumbnailUrl ? (
-    <img 
-      src={row.thumbnailUrl} 
-      alt={row.name}
-      className="w-10 h-10 rounded object-cover"
-    />
-  ) : (
-    <div className="w-10 h-10 rounded bg-muted flex items-center justify-center">
-      <ImageIcon className="w-4 h-4 text-muted-foreground" />
-    </div>
-  )}
-</TableCell>
+{/* Top Creatives - Card Grid */}
+<CreativeCardGrid
+  title="Top Creatives"
+  data={adsData}
+  loading={isLoading}
+/>
 ```
-
-**5. Create hook to fetch creative assets**
-
-```typescript
-// useCreativeAssets.ts
-export function useCreativeAssets(creativeNames: string[]) {
-  return useQuery({
-    queryKey: ['creative-assets', creativeNames],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('creative_assets')
-        .select('creative_name, thumbnail_url')
-        .in('creative_name', creativeNames);
-      return new Map(data?.map(a => [a.creative_name, a.thumbnail_url]) ?? []);
-    },
-    enabled: creativeNames.length > 0,
-  });
-}
-```
-
----
-
-### Phase 4: Sync Integration
-
-**6. Add asset sync to existing BigQuery sync functions**
-
-Option A: **Separate scheduled job** (recommended)
-- Create a daily scheduled job that runs `fetch-creative-assets` for each platform
-- Runs independently of metrics sync
-- Less impact on existing sync reliability
-
-Option B: **Inline with metrics sync**
-- Add creative fetching to each `-to-bigquery` function
-- Risk: increases complexity and failure points
 
 ---
 
@@ -193,73 +168,34 @@ Option B: **Inline with metrics sync**
 
 | File | Action |
 |------|--------|
-| `supabase/migrations/...` | New migration for bucket + table |
-| `supabase/functions/fetch-creative-assets/index.ts` | New edge function |
-| `src/hooks/useCreativeAssets.ts` | New hook |
-| `src/components/dashboard/CreativeReportingTable.tsx` | Add thumbnail column |
-| `src/components/dashboard/MetaHistoryDashboard.tsx` | Pass thumbnails to table |
-| `src/components/dashboard/SnapchatHistoryDashboard.tsx` | Pass thumbnails to table |
-| `src/components/dashboard/UnityHistoryDashboard.tsx` | Pass thumbnails to table |
+| `supabase/functions/meta-to-bigquery/index.ts` | Modify to sync at ad level |
+| `supabase/functions/meta-history/index.ts` | Add ads query and response |
+| `src/hooks/useMetaHistory.ts` | Add ads interface |
+| `src/components/dashboard/CreativeCardGrid.tsx` | **New component** |
+| `src/components/dashboard/MetaHistoryDashboard.tsx` | Add CreativeCardGrid |
 
 ---
 
-## Technical Considerations
+## Technical Notes
 
-### Naming Convention Parsing
+### Matching Creatives to Assets
 
-Your naming convention:
-`Page | ContentType | AssetType | ConceptID | Category | Angle | UNIQUEIDENTIFIER | Tactic | CreativeOwner | Objective | INPUT-LP-HERE | LaunchDate`
+The ad name in Meta follows your naming convention:
+`Page | ContentType | AssetType | ConceptID | Category | Angle | UNIQUEIDENTIFIER | ...`
 
-We can parse this to extract key lookup fields:
-```typescript
-function parseCreativeName(name: string) {
-  const parts = name.split('|').map(p => p.trim());
-  return {
-    page: parts[0],
-    contentType: parts[1],
-    assetType: parts[2],
-    conceptId: parts[3],        // Key for grouping
-    category: parts[4],
-    angle: parts[5],
-    uniqueId: parts[6],         // Key for exact match
-    tactic: parts[7],
-    creativeOwner: parts[8],
-    objective: parts[9],
-    landingPage: parts[10],
-    launchDate: parts[11],
-  };
-}
-```
+The `creative_assets` table already has `creative_name` that matches this exactly. The existing `useCreativeAssets` hook will work for lookups.
 
-### Asset Storage Structure
+### Performance Considerations
 
-```text
-creative-assets/
-  meta/
-    {concept_id}/
-      {unique_id}.jpg
-      {unique_id}_thumb.jpg
-  snapchat/
-    {concept_id}/
-      {unique_id}.jpg
-  unity/
-    ...
-```
+- Limit to top 50 creatives by spend to avoid overwhelming the UI
+- Use lazy loading for images
+- Cache creative asset lookups (already implemented with 5-min stale time)
 
-### Platform API Considerations
+### Asset Type Detection
 
-- **Meta**: Requires fetching ad creatives separately from insights (additional API call per ad)
-- **Snapchat**: Media must be fetched via separate Media API after getting creative
-- **Unity**: Creative packs API provides limited asset info
-- **TikTok**: Video ads require separate video info API call
+Parse from naming convention (position 3 = AssetType):
+- `IMG` → Image badge
+- `VID`, `VID-MV`, `VID-LV` → Video badge
 
----
-
-## Next Steps After Approval
-
-1. Create database migration for storage bucket and creative_assets table
-2. Implement fetch-creative-assets edge function (start with Meta)
-3. Add frontend hook and update CreativeReportingTable
-4. Extend to other platforms one by one
-5. Add scheduled sync job
+Or use `asset_type` from `creative_assets` table.
 
