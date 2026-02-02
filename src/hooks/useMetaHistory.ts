@@ -28,6 +28,17 @@ interface CampaignMetric {
   cpi: number;
 }
 
+interface AdMetric {
+  ad_id: string;
+  ad_name: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  installs: number;
+  cpi: number;
+}
+
 interface Totals {
   spend: number;
   impressions: number;
@@ -43,6 +54,7 @@ interface Totals {
 interface MetaHistoryData {
   daily: DailyMetric[];
   campaigns: CampaignMetric[];
+  ads: AdMetric[];
   totals: Totals;
   previousTotals: Totals;
   dateRange: { startDate: string; endDate: string };

@@ -77,6 +77,8 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   const fields = [
     "campaign_id",
     "campaign_name",
+    "ad_id",
+    "ad_name",
     "impressions",
     "clicks",
     "spend",
@@ -95,11 +97,11 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   const url = new URL(`https://graph.facebook.com/v19.0/${adAccountId}/insights`);
   url.searchParams.set("fields", fields);
   url.searchParams.set("time_range", timeRange);
-  url.searchParams.set("level", "campaign");
+  url.searchParams.set("level", "ad");
   url.searchParams.set("action_attribution_windows", '["7d_click","1d_view"]');
   url.searchParams.set("access_token", accessToken);
 
-  console.log(`Fetching Meta insights for date: ${date}`);
+  console.log(`Fetching Meta insights at ad level for date: ${date}`);
 
   const response = await fetch(url.toString());
 
@@ -110,7 +112,7 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   }
 
   const data = await response.json();
-  console.log(`Fetched ${data.data?.length ?? 0} campaigns from Meta`);
+  console.log(`Fetched ${data.data?.length ?? 0} ads from Meta`);
 
   return data.data || [];
 }
@@ -132,6 +134,8 @@ function transformData(metaData: any[], targetDate: string): any[] {
     timestamp: formatTimestamp(targetDate),
     campaign_id: row.campaign_id || "",
     campaign_name: row.campaign_name || "",
+    ad_id: row.ad_id || "",
+    ad_name: row.ad_name || "",
     impressions: parseInt(row.impressions || "0", 10),
     clicks: parseInt(row.clicks || "0", 10),
     spend: parseFloat(row.spend || "0"),
@@ -179,7 +183,7 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<numb
   const valueRows = rows
     .map(
       (r) =>
-        `(TIMESTAMP '${r.timestamp}', '${r.campaign_id}', '${r.campaign_name.replace(/'/g, "\\'")}', ${r.impressions}, ${r.clicks}, ${r.spend}, ${r.reach}, ${r.cpm}, ${r.cpc}, ${r.ctr}, ${r.actions ? `'${r.actions.replace(/'/g, "\\'")}'` : "NULL"}, TIMESTAMP '${r.fetched_at}')`
+        `(TIMESTAMP '${r.timestamp}', '${r.campaign_id}', '${r.campaign_name.replace(/'/g, "\\'")}', '${r.ad_id}', '${r.ad_name.replace(/'/g, "\\'")}', ${r.impressions}, ${r.clicks}, ${r.spend}, ${r.reach}, ${r.cpm}, ${r.cpc}, ${r.ctr}, ${r.actions ? `'${r.actions.replace(/'/g, "\\'")}'` : "NULL"}, TIMESTAMP '${r.fetched_at}')`
     )
     .join(",\n");
 
@@ -187,13 +191,15 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<numb
     MERGE ${fullTableRef} AS target
     USING (
       SELECT * FROM UNNEST([
-        STRUCT<timestamp TIMESTAMP, campaign_id STRING, campaign_name STRING, impressions INT64, clicks INT64, spend FLOAT64, reach INT64, cpm FLOAT64, cpc FLOAT64, ctr FLOAT64, actions STRING, fetched_at TIMESTAMP>
+        STRUCT<timestamp TIMESTAMP, campaign_id STRING, campaign_name STRING, ad_id STRING, ad_name STRING, impressions INT64, clicks INT64, spend FLOAT64, reach INT64, cpm FLOAT64, cpc FLOAT64, ctr FLOAT64, actions STRING, fetched_at TIMESTAMP>
         ${valueRows}
       ])
     ) AS source
-    ON target.timestamp = source.timestamp AND target.campaign_id = source.campaign_id
+    ON target.timestamp = source.timestamp AND target.ad_id = source.ad_id
     WHEN MATCHED THEN UPDATE SET
+      campaign_id = source.campaign_id,
       campaign_name = source.campaign_name,
+      ad_name = source.ad_name,
       impressions = source.impressions,
       clicks = source.clicks,
       spend = source.spend,
@@ -203,8 +209,8 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<numb
       ctr = source.ctr,
       actions = source.actions,
       fetched_at = source.fetched_at
-    WHEN NOT MATCHED THEN INSERT (timestamp, campaign_id, campaign_name, impressions, clicks, spend, reach, cpm, cpc, ctr, actions, fetched_at)
-    VALUES (source.timestamp, source.campaign_id, source.campaign_name, source.impressions, source.clicks, source.spend, source.reach, source.cpm, source.cpc, source.ctr, source.actions, source.fetched_at)
+    WHEN NOT MATCHED THEN INSERT (timestamp, campaign_id, campaign_name, ad_id, ad_name, impressions, clicks, spend, reach, cpm, cpc, ctr, actions, fetched_at)
+    VALUES (source.timestamp, source.campaign_id, source.campaign_name, source.ad_id, source.ad_name, source.impressions, source.clicks, source.spend, source.reach, source.cpm, source.cpc, source.ctr, source.actions, source.fetched_at)
   `;
 
   const response = await fetch(
