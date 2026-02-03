@@ -491,6 +491,12 @@ serve(async (req) => {
           },
           dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
+          attributionSettings: {
+            swipe_up_attribution_window: '28_DAY',
+            view_attribution_window: '1_DAY',
+            action_report_time: 'conversion',
+            note: 'Installs are credited to the day of conversion. Snapchat platform may use impression time, causing discrepancies.',
+          },
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
