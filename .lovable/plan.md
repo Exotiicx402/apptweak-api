@@ -1,95 +1,151 @@
 
 
-# Fix: Meta History Edge Function Error on Reporting Page
+# Fix Snapchat Analytics Discrepancy
 
-## Problem
+## Problem Summary
 
-The `/reporting` page shows **"Failed to load: Edge Function returned a non-2xx status code"** for Meta Ads because the `meta-history` edge function is failing with:
+There are two types of discrepancies in Snapchat analytics:
 
-```
-BigQuery error: "Unrecognized name: ad_id at [22:11]"
-```
+1. **Spend Discrepancy**: For 1/31/2026, the Snapchat platform shows $4,664 but we have $4,068 (~$596 missing)
+2. **Install Discrepancy**: Install counts don't match between our system and the platform
 
-## Root Cause
+## Root Cause Analysis
 
-The recent update to add ad-level creative data to `meta-history` introduced a query for `ad_id` and `ad_name` columns. However:
+### Spend Discrepancy
 
-1. These columns don't exist in your BigQuery table yet (the sync hasn't run with the new schema)
-2. The ads query is executed in parallel with other queries
-3. When the BigQuery query fails, the entire function throws an error
+After investigation, the Snapchat API only returns **one campaign** for 1/31. The missing $596 is likely from:
+- A second ad account not being synced
+- A SKAN-enabled campaign in a different structure
+- Archived campaigns that no longer appear in API breakdown responses
 
-## Solution
+### Install Discrepancy  
 
-Make the ads query **fault-tolerant** by wrapping it in a try-catch. If the query fails (e.g., columns don't exist), the function should:
-- Log a warning
-- Return an empty `ads` array
-- Continue returning all other data successfully
-
-This allows the reporting page to work immediately while you run the updated sync to populate ad-level data.
+This is caused by **attribution timing settings**:
+- Our sync uses `action_report_time: 'conversion'` (installs credited to conversion day)
+- Platform UI may use `impression` time (installs credited to impression day)
 
 ---
 
-## Implementation
+## Proposed Solution
 
-### File to Modify
-`supabase/functions/meta-history/index.ts`
+### Step 1: Add Account-Level Stats Query
 
-### Changes
+Add a new query to fetch **account-level totals** (not broken down by campaign) to verify we're capturing all spend. This serves as a cross-check.
 
-1. **Wrap the ads query in try-catch** to handle schema mismatches gracefully
+```text
+File: supabase/functions/snapchat-to-bigquery/index.ts
 
-2. **Execute ads query separately** from critical queries so its failure doesn't block the main response
-
----
-
-## Code Changes
-
-**Current problematic code (line ~462):**
-```typescript
-let [bqDailyData, bqCampaignData, bqTotalsData, bqAdsData, prevTotalsData, prevDatesData, liveData] = await Promise.all(promises);
+Add function:
+- fetchAccountLevelStats(accessToken, date)
+  - Queries stats at account level without campaign breakdown
+  - Returns total spend, impressions, installs
+  - Logs comparison with campaign-level totals
 ```
 
-**Updated approach:**
-```typescript
-// Execute critical queries in parallel
-let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, prevDatesData, liveData] = await Promise.all(criticalPromises);
+### Step 2: Add Reconciliation Logging
 
-// Try ads query separately - non-blocking if schema doesn't support it yet
-let bqAdsData = [];
-if (adsQuery) {
-  try {
-    bqAdsData = await queryBigQuery(adsQuery, googleAccessToken);
-  } catch (adsError) {
-    console.warn("Ads query failed (columns may not exist yet):", adsError.message);
-    // Continue without ads data - the creative grid will just be empty
+Modify the sync to log when account-level totals don't match campaign-level totals:
+
+```text
+if (accountTotalSpend !== sumOfCampaignSpend) {
+  console.warn(`SPEND MISMATCH: Account total $${accountTotalSpend} vs Campaign sum $${sumOfCampaignSpend}`);
+  // This indicates missing campaigns in the breakdown
+}
+```
+
+### Step 3: Support Multiple Ad Accounts (if needed)
+
+If confirmed there are multiple ad accounts:
+
+```text
+File: supabase/functions/snapchat-to-bigquery/index.ts
+
+Change:
+- SNAPCHAT_AD_ACCOUNT_ID (single value)
+To:
+- SNAPCHAT_AD_ACCOUNT_IDS (comma-separated list)
+- Loop through each account and aggregate data
+```
+
+### Step 4: Add Attribution Window Configuration
+
+Make attribution settings visible and configurable for debugging:
+
+```text
+File: supabase/functions/snapchat-history/index.ts
+
+Add to response:
+{
+  attributionSettings: {
+    swipe_up_attribution_window: '28_DAY',
+    view_attribution_window: '1_DAY', 
+    action_report_time: 'conversion'
   }
 }
 ```
 
 ---
 
-## Summary of Changes
+## Implementation Steps
 
-| File | Change |
-|------|--------|
-| `supabase/functions/meta-history/index.ts` | Make ads query fault-tolerant with try-catch |
+### Phase 1: Diagnostic Enhancement
+
+1. **Add account-level stats query** to compare against campaign breakdown
+2. **Log discrepancies** between account totals and campaign sums
+3. **Display attribution settings** in the UI for transparency
+
+### Phase 2: Multi-Account Support (if needed)
+
+4. **Update environment variable** to support multiple ad account IDs
+5. **Loop through accounts** during sync
+6. **Aggregate data** from all accounts
+
+### Phase 3: Attribution Alignment (optional)
+
+7. **Add option to switch** between conversion and impression time
+8. **Document the differences** so users understand why numbers may vary
 
 ---
 
-## What Happens After This Fix
+## Files to Modify
 
-1. **Immediate**: The reporting page will load Meta data without errors
-2. **Empty ads grid**: The "Top Creatives" grid on `/meta-sync` will be empty until you run the updated BigQuery sync
-3. **After sync**: Once you run `meta-to-bigquery` with the new schema (which adds `ad_id` and `ad_name` columns), the creative grid will populate
+| File | Changes |
+|------|---------|
+| `supabase/functions/snapchat-to-bigquery/index.ts` | Add account-level verification, multi-account support |
+| `supabase/functions/snapchat-history/index.ts` | Add attribution settings to response, add account-level cross-check |
+| `supabase/functions/snapchat-preview/index.ts` | Add account-level totals display |
 
 ---
 
-## Alternative Option
+## Expected Outcome
 
-If you prefer to add the columns to BigQuery first instead:
-1. Run the `meta-to-bigquery` sync for recent dates
-2. This will automatically add `ad_id` and `ad_name` columns to the table
-3. The function will then work without any code changes
+After implementation:
+1. We'll know if there's a mismatch between account-level spend and campaign-level spend
+2. If there are multiple ad accounts, we'll sync all of them
+3. Attribution settings will be transparent in the UI
+4. Any remaining discrepancies will be clearly identified and logged
 
-However, the fault-tolerant approach is recommended as it makes the system more resilient to schema changes.
+---
+
+## Technical Notes
+
+### Account-Level Stats Query
+
+The Snapchat API supports querying at account level without breakdown:
+```
+GET /v1/adaccounts/{ad_account_id}/stats
+?granularity=DAY
+&start_time=...
+&end_time=...
+(without breakdown parameter)
+```
+
+This returns totals for the entire account, which should equal the sum of all campaigns.
+
+### Multi-Account Considerations
+
+If syncing multiple accounts:
+- Each account may have different timezone settings
+- Need to track which account each row came from
+- BigQuery table may need an `ad_account_id` column
 
