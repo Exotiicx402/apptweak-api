@@ -276,8 +276,71 @@ async function fetchCampaignNames(accessToken: string): Promise<Map<string, stri
   return campaignMap;
 }
 
+// Fetch account-level stats (no breakdown) for verification
+// Note: Snapchat API only supports 'spend' field at account level without breakdown
+async function fetchAccountLevelStats(accessToken: string, date: string): Promise<{
+  spend: number;
+  note: string;
+}> {
+  const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
+  if (!adAccountId) {
+    throw new Error('Missing SNAPCHAT_AD_ACCOUNT_ID');
+  }
+
+  const accountTimeZone = Deno.env.get('SNAPCHAT_ACCOUNT_TIMEZONE') || 'America/Toronto';
+  const { startTime, endTime } = resolveAccountDayRangeUtc(date, accountTimeZone);
+
+  const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${adAccountId}/stats`);
+  url.searchParams.set('granularity', 'DAY');
+  // No breakdown - get account totals
+  url.searchParams.set('start_time', startTime);
+  url.searchParams.set('end_time', endTime);
+  url.searchParams.set('omit_empty', 'false');
+  // Only 'spend' is supported at account level without breakdown
+  url.searchParams.set('fields', 'spend');
+
+  console.log(`Fetching account-level stats for ${date} (no breakdown, spend only)`);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.warn(`Account-level stats API error: ${response.status} ${errorText}`);
+    // Return zeros if account-level query fails - don't block the sync
+    return { spend: 0, note: `API error: ${response.status}` };
+  }
+
+  const data = await response.json();
+  
+  let totalSpend = 0;
+
+  // Account-level response structure (no breakdown)
+  if (Array.isArray(data.timeseries_stats)) {
+    for (const wrapper of data.timeseries_stats) {
+      const timeseriesStat = wrapper?.timeseries_stat;
+      if (!timeseriesStat) continue;
+
+      const timeseries = timeseriesStat.timeseries;
+      if (Array.isArray(timeseries)) {
+        for (const dayData of timeseries) {
+          totalSpend += (dayData.stats?.spend || 0) / 1000000;
+        }
+      }
+    }
+  }
+
+  console.log(`Account-level total spend: $${totalSpend.toFixed(2)}`);
+  return { spend: totalSpend, note: 'Only spend is available at account level (API limitation)' };
+}
+
 // Fetch Snapchat campaign stats for a given date (DAY granularity, campaign breakdown)
-async function fetchSnapchatStats(accessToken: string, date: string, campaignNames: Map<string, string>): Promise<any[]> {
+async function fetchSnapchatStats(accessToken: string, date: string, campaignNames: Map<string, string>): Promise<{ stats: any[]; campaignTotals: { spend: number; impressions: number; installs: number } }> {
   const adAccountId = Deno.env.get('SNAPCHAT_AD_ACCOUNT_ID');
 
   if (!adAccountId) {
@@ -323,6 +386,9 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
   console.log(`Snapchat API response received`);
 
   const stats: any[] = [];
+  let campaignTotalSpend = 0;
+  let campaignTotalImpressions = 0;
+  let campaignTotalInstalls = 0;
 
   console.log(`Response keys: ${Object.keys(data).join(', ')}`);
   console.log(`timeseries_stats count: ${Array.isArray(data.timeseries_stats) ? data.timeseries_stats.length : 0}`);
@@ -355,21 +421,29 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
         if (Array.isArray(timeseries) && timeseries.length > 0) {
           const dayData = timeseries[0];
           const s = dayData.stats || {};
+          
+          const rowSpend = (s.spend || 0) / 1000000;
+          const rowImpressions = s.impressions || 0;
+          const rowInstalls = s.total_installs || 0;
+
+          campaignTotalSpend += rowSpend;
+          campaignTotalImpressions += rowImpressions;
+          campaignTotalInstalls += rowInstalls;
 
           stats.push({
             timestamp: dayData.start_time,
             campaign_id: campaignId,
             campaign_name: campaignName,
-            impressions: s.impressions || 0,
+            impressions: rowImpressions,
             swipes: s.swipes || 0,
-            spend: (s.spend || 0) / 1000000,
+            spend: rowSpend,
             video_views: s.video_views || 0,
             screen_time_millis: s.screen_time_millis || 0,
             quartile_1: s.quartile_1 || 0,
             quartile_2: s.quartile_2 || 0,
             quartile_3: s.quartile_3 || 0,
             view_completion: s.view_completion || 0,
-            total_installs: s.total_installs || 0,
+            total_installs: rowInstalls,
             conversion_purchases: s.conversion_purchases || 0,
             conversion_purchases_value: (s.conversion_purchases_value || 0) / 1000000,
           });
@@ -381,7 +455,16 @@ async function fetchSnapchatStats(accessToken: string, date: string, campaignNam
   }
 
   console.log(`Extracted ${stats.length} daily campaign stat records`);
-  return stats;
+  console.log(`Campaign breakdown totals: spend=$${campaignTotalSpend.toFixed(2)}, impressions=${campaignTotalImpressions}, installs=${campaignTotalInstalls}`);
+  
+  return { 
+    stats, 
+    campaignTotals: { 
+      spend: campaignTotalSpend, 
+      impressions: campaignTotalImpressions, 
+      installs: campaignTotalInstalls 
+    } 
+  };
 }
 
 // Format timestamp for BigQuery - correctly handles timezone offsets
@@ -624,8 +707,28 @@ serve(async (req) => {
     // Fetch campaign names
     const campaignNames = await fetchCampaignNames(snapchatToken);
 
-    // Fetch stats
-    const stats = await fetchSnapchatStats(snapchatToken, targetDate, campaignNames);
+    // Fetch both account-level and campaign-level stats in parallel
+    const [accountStats, campaignResult] = await Promise.all([
+      fetchAccountLevelStats(snapchatToken, targetDate),
+      fetchSnapchatStats(snapchatToken, targetDate, campaignNames),
+    ]);
+
+    const { stats, campaignTotals } = campaignResult;
+
+    // Check for spend discrepancy between account-level and campaign-level totals
+    // Note: Snapchat API only supports 'spend' at account level, installs comparison not possible
+    const spendDiff = Math.abs(accountStats.spend - campaignTotals.spend);
+    
+    if (accountStats.spend > 0 && spendDiff > 0.01) {
+      console.warn(`⚠️ SPEND DISCREPANCY DETECTED:`);
+      console.warn(`   Account-level total: $${accountStats.spend.toFixed(2)}`);
+      console.warn(`   Campaign breakdown sum: $${campaignTotals.spend.toFixed(2)}`);
+      console.warn(`   Difference: $${spendDiff.toFixed(2)} (${((spendDiff / accountStats.spend) * 100).toFixed(1)}% missing)`);
+      console.warn(`   This may indicate campaigns not appearing in the breakdown.`);
+    } else if (accountStats.spend === 0 && campaignTotals.spend > 0) {
+      console.warn(`⚠️ Account-level query returned $0 but campaign breakdown shows $${campaignTotals.spend.toFixed(2)}`);
+      console.warn(`   This might indicate an API issue with account-level queries.`);
+    }
 
     if (stats.length === 0) {
       const duration = Date.now() - startTime;
@@ -637,6 +740,9 @@ serve(async (req) => {
           message: 'No data found for the specified date',
           date: targetDate,
           rowsProcessed: 0,
+          accountTotals: accountStats,
+          campaignTotals,
+          discrepancy: { spend: spendDiff },
           durationMs: duration,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -659,6 +765,9 @@ serve(async (req) => {
         message: `Successfully synced Snapchat data to BigQuery`,
         date: targetDate,
         rowsProcessed: transformedData.length,
+        accountTotals: accountStats,
+        campaignTotals,
+        discrepancy: { spend: spendDiff },
         durationMs: duration,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
