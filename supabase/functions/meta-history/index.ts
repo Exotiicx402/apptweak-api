@@ -430,19 +430,17 @@ serve(async (req) => {
       ${appInstallsFilter}
     `;
 
-    // Execute queries in parallel
+    // Execute critical queries in parallel (excluding ads query which may fail if schema is outdated)
     const promises: Promise<any>[] = [];
     
     if (shouldQueryBigQuery) {
       promises.push(
         queryBigQuery(dailyQuery!, googleAccessToken),
         queryBigQuery(campaignQuery!, googleAccessToken),
-        queryBigQuery(totalsQuery!, googleAccessToken),
-        queryBigQuery(adsQuery!, googleAccessToken)
+        queryBigQuery(totalsQuery!, googleAccessToken)
       );
     } else {
       promises.push(
-        Promise.resolve([]),
         Promise.resolve([]),
         Promise.resolve([]),
         Promise.resolve([])
@@ -459,7 +457,19 @@ serve(async (req) => {
       promises.push(Promise.resolve([]));
     }
 
-    let [bqDailyData, bqCampaignData, bqTotalsData, bqAdsData, prevTotalsData, prevDatesData, liveData] = await Promise.all(promises);
+    let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, prevDatesData, liveData] = await Promise.all(promises);
+
+    // Try ads query separately - non-blocking if schema doesn't support ad_id/ad_name yet
+    let bqAdsData: any[] = [];
+    if (shouldQueryBigQuery && adsQuery) {
+      try {
+        bqAdsData = await queryBigQuery(adsQuery, googleAccessToken);
+        console.log(`Ads query returned ${bqAdsData.length} results`);
+      } catch (adsError: any) {
+        console.warn("Ads query failed (columns may not exist yet):", adsError.message);
+        // Continue without ads data - the creative grid will just be empty
+      }
+    }
 
     // Check if BigQuery is missing previous period data - fall back to live API
     const prevRequestedDates = getDatesBetween(prevStartStr, prevEndStr);
