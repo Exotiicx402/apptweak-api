@@ -34,8 +34,15 @@ export const RankingSection = ({ startDate, endDate, dataFetched }: RankingSecti
   }
 
   // Single day - show card instead of chart
+  // Parse YYYY-MM-DD string to local date to avoid timezone shift
+  const parseLocalDate = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
   if (isSingleDay) {
     const rankData = chartData[0];
+    const localDate = parseLocalDate(rankData.date);
     return (
       <div className="mt-8">
         <h2 className="text-lg font-semibold mb-4 text-foreground">App Store Ranking</h2>
@@ -48,7 +55,7 @@ export const RankingSection = ({ startDate, endDate, dataFetched }: RankingSecti
               <p className="text-sm text-muted-foreground">Sports Category (Free)</p>
               <p className="text-3xl font-bold text-foreground">#{rankData.rank}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {new Date(rankData.date).toLocaleDateString('en-US', { 
+                {localDate.toLocaleDateString('en-US', { 
                   month: 'long', 
                   day: 'numeric', 
                   year: 'numeric' 
@@ -61,11 +68,14 @@ export const RankingSection = ({ startDate, endDate, dataFetched }: RankingSecti
     );
   }
 
-  // Multiple days - show chart
-  const formattedData = chartData.map(point => ({
-    ...point,
-    displayDate: new Date(point.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-  }));
+  // Multiple days - show chart with local date parsing
+  const formattedData = chartData.map(point => {
+    const localDate = parseLocalDate(point.date);
+    return {
+      ...point,
+      displayDate: localDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    };
+  });
 
   return (
     <div className="mt-8">
