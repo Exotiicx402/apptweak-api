@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { DateRangePicker } from "@/components/dashboard/DateRangePicker";
 import { TotalMetricsSection } from "@/components/reporting/TotalMetricsSection";
 import { PlatformMetricsRow } from "@/components/reporting/PlatformMetricsRow";
+import { RankingSection } from "@/components/reporting/RankingSection";
 import { useReportingData } from "@/hooks/useReportingData";
 import { getLocalDaysAgo, getLocalYesterday } from "@/lib/dateUtils";
 
@@ -15,10 +16,14 @@ import tiktokLogo from "@/assets/logos/tiktok.png";
 export default function Reporting() {
   const [startDate, setStartDate] = useState(getLocalDaysAgo(8));
   const [endDate, setEndDate] = useState(getLocalYesterday());
+  const [appliedStartDate, setAppliedStartDate] = useState("");
+  const [appliedEndDate, setAppliedEndDate] = useState("");
   const { data, isLoading, fetchAllPlatforms } = useReportingData();
 
   const handleApply = () => {
     fetchAllPlatforms(startDate, endDate);
+    setAppliedStartDate(startDate);
+    setAppliedEndDate(endDate);
   };
 
   const anyPlatformLoading = 
@@ -129,6 +134,13 @@ export default function Reporting() {
                 unavailableReason={data.tiktok.unavailableReason}
               />
             </div>
+
+            {/* Ranking Section */}
+            <RankingSection 
+              startDate={appliedStartDate} 
+              endDate={appliedEndDate} 
+              dataFetched={data.totals.spend > 0 || anyPlatformLoading}
+            />
           </>
         )}
 
