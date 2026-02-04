@@ -232,7 +232,7 @@ async function fetchSnapchatLiveStats(accessToken: string, date: string): Promis
   url.searchParams.set('omit_empty', 'false');
   url.searchParams.set('swipe_up_attribution_window', '28_DAY');
   url.searchParams.set('view_attribution_window', '1_DAY');
-  url.searchParams.set('action_report_time', 'conversion');
+  url.searchParams.set('action_report_time', 'impression');
   url.searchParams.set('fields', 'impressions,swipes,spend,video_views,total_installs');
 
   console.log(`Fetching live Snapchat data for ${date}`);
@@ -494,8 +494,8 @@ serve(async (req) => {
           attributionSettings: {
             swipe_up_attribution_window: '28_DAY',
             view_attribution_window: '1_DAY',
-            action_report_time: 'conversion',
-            note: 'Installs are credited to the day of conversion. Snapchat platform may use impression time, causing discrepancies.',
+            action_report_time: 'impression',
+            note: 'Installs are credited to the day the ad was shown, matching Snapchat platform reporting.',
           },
         },
       }),
