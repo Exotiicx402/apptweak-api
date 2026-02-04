@@ -5,6 +5,7 @@ import { DateRangePicker } from "@/components/dashboard/DateRangePicker";
 import { TotalMetricsSection } from "@/components/reporting/TotalMetricsSection";
 import { PlatformMetricsRow } from "@/components/reporting/PlatformMetricsRow";
 import { RankingSection } from "@/components/reporting/RankingSection";
+import { CreativePerformanceGrid } from "@/components/reporting/CreativePerformanceGrid";
 import { useReportingData } from "@/hooks/useReportingData";
 import { getLocalDaysAgo, getLocalYesterday } from "@/lib/dateUtils";
 
@@ -139,6 +140,13 @@ export default function Reporting() {
             <RankingSection 
               startDate={appliedStartDate} 
               endDate={appliedEndDate} 
+              dataFetched={data.totals.spend > 0 || anyPlatformLoading}
+            />
+
+            {/* Creative Performance Section */}
+            <CreativePerformanceGrid
+              startDate={appliedStartDate}
+              endDate={appliedEndDate}
               dataFetched={data.totals.spend > 0 || anyPlatformLoading}
             />
           </>
