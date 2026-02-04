@@ -116,7 +116,7 @@ async function queryBigQuery(query: string, accessToken: string): Promise<any[]>
   });
 }
 
-// Fetch live data from Meta API for a specific date (same logic as meta-preview)
+// Fetch live data from Meta API for a specific date at campaign level
 async function fetchMetaInsights(date: string): Promise<any[]> {
   const accessToken = Deno.env.get("META_ACCESS_TOKEN");
   let adAccountId = Deno.env.get("META_AD_ACCOUNT_ID");
@@ -154,7 +154,60 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   url.searchParams.set("action_attribution_windows", '["7d_click","1d_view"]');
   url.searchParams.set("access_token", accessToken);
 
-  console.log(`Fetching live Meta data for date: ${date}`);
+  console.log(`Fetching live Meta campaign data for date: ${date}`);
+
+  const response = await fetch(url.toString());
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Meta API error:", errorText);
+    throw new Error(`Meta API error: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.data || [];
+}
+
+// Fetch live ad-level data from Meta API for a specific date
+async function fetchMetaAdInsights(date: string): Promise<any[]> {
+  const accessToken = Deno.env.get("META_ACCESS_TOKEN");
+  let adAccountId = Deno.env.get("META_AD_ACCOUNT_ID");
+
+  if (!accessToken || !adAccountId) {
+    throw new Error("Missing META_ACCESS_TOKEN or META_AD_ACCOUNT_ID");
+  }
+
+  if (!adAccountId.startsWith("act_")) {
+    adAccountId = `act_${adAccountId}`;
+  }
+
+  const fields = [
+    "campaign_id",
+    "campaign_name",
+    "ad_id",
+    "ad_name",
+    "impressions",
+    "clicks",
+    "spend",
+    "cpm",
+    "cpc",
+    "ctr",
+    "actions",
+  ].join(",");
+
+  const timeRange = JSON.stringify({
+    since: date,
+    until: date,
+  });
+
+  const url = new URL(`https://graph.facebook.com/v19.0/${adAccountId}/insights`);
+  url.searchParams.set("fields", fields);
+  url.searchParams.set("time_range", timeRange);
+  url.searchParams.set("level", "ad");
+  url.searchParams.set("action_attribution_windows", '["7d_click","1d_view"]');
+  url.searchParams.set("access_token", accessToken);
+
+  console.log(`Fetching live Meta ad-level data for date: ${date}`);
 
   const response = await fetch(url.toString());
 
@@ -532,7 +585,7 @@ serve(async (req) => {
     if (missingDates.length > 0 && shouldQueryBigQuery) {
       console.log(`BigQuery missing data for ${missingDates.length} recent dates: ${missingDates.join(", ")}. Fetching from live API...`);
       
-      // Fetch missing dates from live Meta API
+      // Fetch missing dates from live Meta API (campaign-level for totals)
       const missingDataPromises = missingDates.map(async (date) => {
         try {
           const rawLiveData = await fetchMetaInsights(date);
@@ -545,9 +598,25 @@ serve(async (req) => {
         }
       });
       
-      const missingResults = await Promise.all(missingDataPromises);
+      // Also fetch ad-level data for creatives
+      const missingAdDataPromises = missingDates.map(async (date) => {
+        try {
+          const rawAdData = await fetchMetaAdInsights(date);
+          const filteredAdData = filterAppInstallCampaigns(rawAdData);
+          console.log(`Live ad fallback for ${date}: filtered to ${filteredAdData.length} ads from ${rawAdData.length} total`);
+          return { date, data: filteredAdData };
+        } catch (err) {
+          console.error(`Failed to fetch live ad data for ${date}:`, err);
+          return { date, data: [] };
+        }
+      });
       
-      // Transform and merge missing data
+      const [missingResults, missingAdResults] = await Promise.all([
+        Promise.all(missingDataPromises),
+        Promise.all(missingAdDataPromises),
+      ]);
+      
+      // Transform and merge missing campaign data
       for (const { date, data } of missingResults) {
         if (data.length > 0) {
           const transformed = transformLiveData(data, date);
@@ -609,6 +678,52 @@ serve(async (req) => {
           console.log(`Added live fallback data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
         }
       }
+      
+      // Aggregate ad-level data from live API
+      for (const { date, data } of missingAdResults) {
+        for (const ad of data) {
+          const spend = parseFloat(ad.spend) || 0;
+          const impressions = parseInt(ad.impressions) || 0;
+          const clicks = parseInt(ad.clicks) || 0;
+          
+          // Extract installs from actions array
+          let installs = 0;
+          if (ad.actions && Array.isArray(ad.actions)) {
+            const installAction = ad.actions.find((a: any) => a.action_type === "mobile_app_install");
+            if (installAction) {
+              installs = parseInt(installAction.value) || 0;
+            }
+          }
+          
+          const ctr = impressions > 0 ? clicks / impressions : 0;
+          const cpi = installs > 0 ? spend / installs : 0;
+          
+          // Aggregate by ad_id across dates
+          const existing = bqAdsData.find((a: any) => a.ad_id === ad.ad_id);
+          if (existing) {
+            existing.spend = (parseFloat(existing.spend) || 0) + spend;
+            existing.impressions = (parseInt(existing.impressions) || 0) + impressions;
+            existing.clicks = (parseInt(existing.clicks) || 0) + clicks;
+            existing.installs = (parseInt(existing.installs) || 0) + installs;
+            // Recalculate CTR and CPI after aggregation
+            existing.ctr = existing.impressions > 0 ? existing.clicks / existing.impressions : 0;
+            existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
+          } else {
+            bqAdsData.push({
+              ad_id: ad.ad_id,
+              ad_name: ad.ad_name,
+              spend,
+              impressions,
+              clicks,
+              ctr,
+              installs,
+              cpi,
+            });
+          }
+        }
+      }
+      
+      console.log(`Live ad fallback aggregated ${bqAdsData.length} unique ads`);
     }
 
     // Process BigQuery data
