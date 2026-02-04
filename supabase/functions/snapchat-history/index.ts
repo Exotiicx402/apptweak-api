@@ -334,45 +334,101 @@ serve(async (req) => {
     const campaignFilter = campaignId ? `AND campaign_id = '${campaignId}'` : "";
 
     // Build queries
-    // For current period: prefer ad-level rows when they exist to avoid double-counting
-    // For historical periods: fall back to campaign-level if no ad-level data exists
-    const adLevelFilter = `AND ad_id IS NOT NULL AND ad_id != ''`;
-
+    // Smart fallback: prefer ad-level data when it exists, otherwise use campaign-level
+    // This handles both new ad-level data and historical campaign-level data without double-counting
+    
+    // Daily query with fallback
     const dailyQuery = shouldQueryBigQuery ? `
+      WITH ad_level AS (
+        SELECT 
+          DATE(timestamp) as date,
+          SUM(spend) as spend,
+          SUM(impressions) as impressions,
+          SUM(swipes) as swipes,
+          SUM(video_views) as video_views,
+          SUM(total_installs) as installs,
+          SUM(view_completion) as view_completion
+        FROM ${fullTable}
+        WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+        AND ad_id IS NOT NULL AND ad_id != ''
+        ${campaignFilter}
+        GROUP BY date
+      ),
+      campaign_level AS (
+        SELECT 
+          DATE(timestamp) as date,
+          SUM(spend) as spend,
+          SUM(impressions) as impressions,
+          SUM(swipes) as swipes,
+          SUM(video_views) as video_views,
+          SUM(total_installs) as installs,
+          SUM(view_completion) as view_completion
+        FROM ${fullTable}
+        WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+        AND (ad_id IS NULL OR ad_id = '')
+        ${campaignFilter}
+        GROUP BY date
+      )
       SELECT 
-        DATE(timestamp) as date,
-        SUM(spend) as spend,
-        SUM(impressions) as impressions,
-        SUM(swipes) as swipes,
-        SUM(video_views) as video_views,
-        SUM(total_installs) as installs,
-        SUM(view_completion) as view_completion
-      FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
-      ${adLevelFilter}
-      ${campaignFilter}
-      GROUP BY date
+        COALESCE(a.date, c.date) as date,
+        COALESCE(a.spend, c.spend, 0) as spend,
+        COALESCE(a.impressions, c.impressions, 0) as impressions,
+        COALESCE(a.swipes, c.swipes, 0) as swipes,
+        COALESCE(a.video_views, c.video_views, 0) as video_views,
+        COALESCE(a.installs, c.installs, 0) as installs,
+        COALESCE(a.view_completion, c.view_completion, 0) as view_completion
+      FROM ad_level a
+      FULL OUTER JOIN campaign_level c ON a.date = c.date
       ORDER BY date
     ` : null;
 
+    // Campaign query with fallback
     const campaignQuery = shouldQueryBigQuery ? `
+      WITH ad_level AS (
+        SELECT 
+          campaign_id,
+          campaign_name,
+          SUM(spend) as spend,
+          SUM(impressions) as impressions,
+          SUM(swipes) as swipes,
+          SUM(video_views) as video_views,
+          SUM(total_installs) as installs,
+          SUM(view_completion) as view_completion
+        FROM ${fullTable}
+        WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+        AND ad_id IS NOT NULL AND ad_id != ''
+        GROUP BY campaign_id, campaign_name
+      ),
+      campaign_level AS (
+        SELECT 
+          campaign_id,
+          campaign_name,
+          SUM(spend) as spend,
+          SUM(impressions) as impressions,
+          SUM(swipes) as swipes,
+          SUM(video_views) as video_views,
+          SUM(total_installs) as installs,
+          SUM(view_completion) as view_completion
+        FROM ${fullTable}
+        WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+        AND (ad_id IS NULL OR ad_id = '')
+        GROUP BY campaign_id, campaign_name
+      )
       SELECT 
-        campaign_id,
-        campaign_name,
-        SUM(spend) as spend,
-        SUM(impressions) as impressions,
-        SUM(swipes) as swipes,
-        SUM(video_views) as video_views,
-        SUM(total_installs) as installs,
-        SUM(view_completion) as view_completion
-      FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
-      ${adLevelFilter}
-      GROUP BY campaign_id, campaign_name
+        COALESCE(a.campaign_id, c.campaign_id) as campaign_id,
+        COALESCE(a.campaign_name, c.campaign_name) as campaign_name,
+        COALESCE(a.spend, c.spend, 0) as spend,
+        COALESCE(a.impressions, c.impressions, 0) as impressions,
+        COALESCE(a.swipes, c.swipes, 0) as swipes,
+        COALESCE(a.video_views, c.video_views, 0) as video_views,
+        COALESCE(a.installs, c.installs, 0) as installs,
+        COALESCE(a.view_completion, c.view_completion, 0) as view_completion
+      FROM ad_level a
+      FULL OUTER JOIN campaign_level c ON a.campaign_id = c.campaign_id
       ORDER BY spend DESC
     ` : null;
 
-    // Ad-level query (fault-tolerant - may not have ad_id/ad_name columns)
+    // Ad-level query (only returns data when ad_id exists - no fallback needed)
     const adsQuery = shouldQueryBigQuery ? `
       SELECT 
         ad_id,
@@ -391,24 +447,51 @@ serve(async (req) => {
       LIMIT 50
     ` : null;
 
+    // Totals query with fallback
     const totalsQuery = shouldQueryBigQuery ? `
+      WITH ad_level AS (
+        SELECT 
+          SUM(spend) as total_spend,
+          SUM(impressions) as total_impressions,
+          SUM(swipes) as total_swipes,
+          SUM(video_views) as total_video_views,
+          SUM(total_installs) as total_installs,
+          SUM(view_completion) as total_view_completion,
+          SAFE_DIVIDE(SUM(swipes), SUM(impressions)) as swipe_rate,
+          SAFE_DIVIDE(SUM(spend), NULLIF(SUM(total_installs), 0)) as cpi
+        FROM ${fullTable}
+        WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+        AND ad_id IS NOT NULL AND ad_id != ''
+        ${campaignFilter}
+      ),
+      campaign_level AS (
+        SELECT 
+          SUM(spend) as total_spend,
+          SUM(impressions) as total_impressions,
+          SUM(swipes) as total_swipes,
+          SUM(video_views) as total_video_views,
+          SUM(total_installs) as total_installs,
+          SUM(view_completion) as total_view_completion,
+          SAFE_DIVIDE(SUM(swipes), SUM(impressions)) as swipe_rate,
+          SAFE_DIVIDE(SUM(spend), NULLIF(SUM(total_installs), 0)) as cpi
+        FROM ${fullTable}
+        WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+        AND (ad_id IS NULL OR ad_id = '')
+        ${campaignFilter}
+      )
       SELECT 
-        SUM(spend) as total_spend,
-        SUM(impressions) as total_impressions,
-        SUM(swipes) as total_swipes,
-        SUM(video_views) as total_video_views,
-        SUM(total_installs) as total_installs,
-        SUM(view_completion) as total_view_completion,
-        SAFE_DIVIDE(SUM(swipes), SUM(impressions)) as swipe_rate,
-        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(total_installs), 0)) as cpi
-      FROM ${fullTable}
-      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
-      ${adLevelFilter}
-      ${campaignFilter}
+        COALESCE(ad_level.total_spend, campaign_level.total_spend, 0) as total_spend,
+        COALESCE(ad_level.total_impressions, campaign_level.total_impressions, 0) as total_impressions,
+        COALESCE(ad_level.total_swipes, campaign_level.total_swipes, 0) as total_swipes,
+        COALESCE(ad_level.total_video_views, campaign_level.total_video_views, 0) as total_video_views,
+        COALESCE(ad_level.total_installs, campaign_level.total_installs, 0) as total_installs,
+        COALESCE(ad_level.total_view_completion, campaign_level.total_view_completion, 0) as total_view_completion,
+        COALESCE(ad_level.swipe_rate, campaign_level.swipe_rate, 0) as swipe_rate,
+        COALESCE(ad_level.cpi, campaign_level.cpi, 0) as cpi
+      FROM ad_level, campaign_level
     ` : null;
 
-    // For previous period: try ad-level first, then fall back to campaign-level if empty
-    // Using COALESCE with a subquery to check if ad-level data exists
+    // Previous period query with fallback
     const prevTotalsQuery = `
       WITH ad_level AS (
         SELECT 
