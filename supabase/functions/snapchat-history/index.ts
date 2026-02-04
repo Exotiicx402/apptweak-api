@@ -230,7 +230,7 @@ async function fetchSnapchatLiveStats(accessToken: string, date: string): Promis
   url.searchParams.set('start_time', startTime);
   url.searchParams.set('end_time', endTime);
   url.searchParams.set('omit_empty', 'false');
-  url.searchParams.set('swipe_up_attribution_window', '28_DAY');
+  url.searchParams.set('swipe_up_attribution_window', '7_DAY');
   url.searchParams.set('view_attribution_window', '1_DAY');
   url.searchParams.set('action_report_time', 'impression');
   url.searchParams.set('fields', 'impressions,swipes,spend,video_views,total_installs');
@@ -492,7 +492,7 @@ serve(async (req) => {
           dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
           attributionSettings: {
-            swipe_up_attribution_window: '28_DAY',
+            swipe_up_attribution_window: '7_DAY',
             view_attribution_window: '1_DAY',
             action_report_time: 'impression',
             note: 'Installs are credited to the day the ad was shown, matching Snapchat platform reporting.',
