@@ -1,190 +1,87 @@
 
-# Creative Performance Tracking - Meta Ads
 
-## Overview
-Add creative-level performance tracking to the Reporting page, displaying cards for each ad with metadata automatically parsed from the naming convention. This phase focuses on Meta only and excludes actual asset thumbnails.
+# Snapchat Ad-Level Data Verification
+
+## Current Status: ✅ Working
+
+Based on my investigation, the Snapchat ad-level data sync and retrieval is now functioning correctly.
+
+### What's Already Implemented
+
+1. **Sync Function (`snapchat-to-bigquery`)** - Updated to:
+   - Use `breakdown=ad` instead of `breakdown=campaign`
+   - Fetch ad names and ad squad mappings
+   - Store `ad_id` and `ad_name` in BigQuery
+
+2. **History Function (`snapchat-history`)** - Updated with:
+   - Ad-level query that returns creative performance data
+   - Smart fallback logic: prefers ad-level data, falls back to campaign-level for historical dates
+   - Prevents double-counting by using COALESCE with FULL OUTER JOIN
+
+3. **Live API Response for Feb 3rd** shows:
+   - **22 ads** with full metrics (spend, installs, CTR, CPI)
+   - Correct totals: **$5,000 spend, 219 installs**
+   - Previous period (Feb 2nd): **$4,999.72 spend, 435 installs** (campaign-level fallback)
+
+### Data Verification
+
+| Date | Spend | Installs | Ad-Level Records |
+|------|-------|----------|------------------|
+| Feb 3 | $5,000 | 219 | 22 ads ✅ |
+| Feb 2 | $4,999.72 | 435 | 0 (campaign fallback) |
+
+### Why Feb 2nd Has No Ad-Level Data
+
+Feb 2nd data was synced *before* the ad-level granularity was added to the sync function. The system correctly falls back to campaign-level metrics for totals, but the Creative Performance Grid shows "Ad-level creative data is not yet available" for dates without ad granularity.
 
 ---
 
-## Naming Convention Reference
+## Optional: Backfill Historical Data
 
-The ad names follow a 12-part pipe-delimited convention:
+To populate ad-level data for historical dates, we can create a backfill function that re-syncs past dates with the new ad-level logic.
 
-| Position | Field | Example |
-|----------|-------|---------|
-| 1 | Page | Polymarket |
-| 2 | ContentType | Trend |
-| 3 | AssetType | IMG, VID, CAR |
-| 4 | ConceptID | 48 |
-| 5 | Category | Culture |
-| 6 | Angle | OddsBoosts |
-| 7 | UNIQUEIDENTIFIER | GrammysBestNewArtist |
-| 8 | Tactic | Comparison |
-| 9 | CreativeOwner | Matthis |
-| 10 | Objective | Traffic |
-| 11 | INPUT-LP-HERE | Market LP |
-| 12 | LaunchDate | 1/29 |
+### Technical Approach
 
----
+1. Create a `snapchat-backfill` edge function that:
+   - Accepts a date range (e.g., last 7 days)
+   - Iterates through each date
+   - Calls the Snapchat API with `breakdown=ad`
+   - Merges data into BigQuery
 
-## Implementation Plan
+2. Run the backfill once to populate historical ad-level data
 
-### Phase 1: Parsing Utility
-
-**File:** `src/lib/creativeNamingParser.ts` (new)
-
-Create a utility function to parse ad names:
+### Implementation Details
 
 ```text
-parseCreativeName(adName: string) => {
-  page: string;
-  contentType: string;
-  assetType: string;      // IMG, VID, CAR
-  conceptId: string;
-  category: string;
-  angle: string;
-  uniqueIdentifier: string;
-  tactic: string;
-  creativeOwner: string;
-  objective: string;
-  landingPage: string;
-  launchDate: string;
-}
+┌─────────────────────────────────────────────────────────┐
+│  snapchat-backfill edge function                        │
+├─────────────────────────────────────────────────────────┤
+│  Input: { startDate: "2026-01-28", endDate: "2026-02-02" }│
+│                                                          │
+│  For each date in range:                                │
+│    1. Fetch ad names from Snapchat API                  │
+│    2. Fetch ad-level stats with breakdown=ad            │
+│    3. Transform with ad_id, ad_name, campaign_name      │
+│    4. MERGE into BigQuery (upsert by timestamp + ad_id) │
+│                                                          │
+│  Output: { success: true, datesSynced: 6, rowsAffected: 132 }│
+└─────────────────────────────────────────────────────────┘
 ```
 
-The parser will:
-- Split on ` | ` (pipe with spaces)
-- Trim each part
-- Return empty strings for missing positions
-- Handle edge cases (malformed names, fewer than 12 parts)
-
----
-
-### Phase 2: Creative Performance Hook
-
-**File:** `src/hooks/useCreativePerformance.ts` (new)
-
-Create a hook that:
-1. Calls the existing `meta-history` edge function with the date range
-2. Extracts the `ads` array from the response
-3. Parses each ad name using the utility function
-4. Returns enriched creative data with parsed metadata
-
-**Data structure returned:**
-```text
-{
-  adId: string;
-  adName: string;
-  spend: number;
-  installs: number;
-  ctr: number;
-  cpi: number;
-  parsed: {
-    angle: string;
-    tactic: string;
-    assetType: string;
-    category: string;
-    conceptId: string;
-    creativeOwner: string;
-    launchDate: string;
-  };
-}
-```
-
----
-
-### Phase 3: Creative Performance Cards Component
-
-**File:** `src/components/reporting/CreativePerformanceGrid.tsx` (new)
-
-Design goals:
-- Card-based layout (similar to existing `CreativeCardGrid`)
-- No thumbnails (placeholder icon based on asset type)
-- Display parsed metadata prominently
-
-**Card layout:**
-```text
-+----------------------------------+
-|  [Icon: IMG/VID]   AssetType     |
-+----------------------------------+
-|  Creative Name (truncated)       |
-|                                  |
-|  Angle: OddsBoosts               |
-|  Tactic: Comparison              |
-|  Category: Culture               |
-|                                  |
-|  +-------+  +-------+            |
-|  | Spend |  |Installs|           |
-|  | $XXX  |  |  XXX   |           |
-|  +-------+  +-------+            |
-|  +-------+  +-------+            |
-|  |  CTR  |  |  CPI  |            |
-|  | X.XX% |  | $X.XX |            |
-|  +-------+  +-------+            |
-+----------------------------------+
-```
-
-Key features:
-- Badges for Angle, Tactic, Category
-- Asset type icon (Image vs Video vs Carousel)
-- Tooltip on creative name showing full name
-- Sorted by spend (descending)
-- Top 25 creatives displayed
-
----
-
-### Phase 4: Integration with Reporting Page
-
-**File:** `src/pages/Reporting.tsx`
-
-Add the creative performance grid below the ranking section:
-- Uses the same `appliedStartDate` and `appliedEndDate` as other sections
-- Only renders after data is fetched
-- Shows loading skeleton while fetching
-
----
-
-## Technical Details
-
-### Data Flow
-
-```text
-1. User selects date range → clicks Apply
-2. useCreativePerformance hook calls meta-history edge function
-3. Edge function returns ads[] from BigQuery (already implemented)
-4. Hook parses each ad_name using creativeNamingParser
-5. CreativePerformanceGrid displays enriched cards
-```
-
-### No Backend Changes Required
-
-The existing `meta-history` edge function already:
-- Fetches ad-level data from BigQuery
-- Returns `ad_id` and `ad_name` in the response
-- Supports date range filtering
-
-All parsing happens client-side.
-
----
-
-## Files to Create
+### Files to Create
 
 | File | Purpose |
 |------|---------|
-| `src/lib/creativeNamingParser.ts` | Utility to parse naming convention |
-| `src/hooks/useCreativePerformance.ts` | Hook to fetch and enrich creative data |
-| `src/components/reporting/CreativePerformanceGrid.tsx` | Card grid component |
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/pages/Reporting.tsx` | Import and render CreativePerformanceGrid |
+| `supabase/functions/snapchat-backfill/index.ts` | Backfill edge function for historical ad-level data |
 
 ---
 
-## Future Enhancements (Not In Scope)
-- Add thumbnail images from creative_assets table
-- Filter/group by Angle, Tactic, or Category
-- Expand to Snapchat, TikTok platforms
-- Export creative performance data
+## Summary
+
+The current implementation is complete and working for new data. Going forward:
+- **Daily syncs** will capture ad-level data automatically
+- **Historical dates** (before the upgrade) will show campaign totals but no creative cards
+- **Backfill** (optional) can populate historical creative data
+
+Would you like me to implement the backfill function to populate ad-level data for past dates?
+
