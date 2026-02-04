@@ -17,10 +17,8 @@ interface PlatformMetrics {
 interface ReportingData {
   meta: PlatformMetrics;
   snapchat: PlatformMetrics;
-  unity: PlatformMetrics;
   googleAds: PlatformMetrics;
   tiktok: PlatformMetrics;
-  moloco: PlatformMetrics;
   totals: {
     spend: number;
     installs: number;
@@ -46,10 +44,8 @@ export function useReportingData() {
   const [data, setData] = useState<ReportingData>({
     meta: { ...emptyMetrics },
     snapchat: { ...emptyMetrics },
-    unity: { ...emptyMetrics },
     googleAds: { ...emptyMetrics },
     tiktok: { ...emptyMetrics },
-    moloco: { ...emptyMetrics },
     totals: { spend: 0, installs: 0, cpi: 0, previousSpend: 0, previousInstalls: 0, previousCpi: 0 },
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -62,21 +58,17 @@ export function useReportingData() {
       ...prev,
       meta: { ...emptyMetrics, isLoading: true },
       snapchat: { ...emptyMetrics, isLoading: true },
-      unity: { ...emptyMetrics, isLoading: true },
       googleAds: { ...emptyMetrics, isLoading: true },
       tiktok: { ...emptyMetrics, isLoading: true },
-      moloco: { ...emptyMetrics, isLoading: true },
     }));
 
-    // Only 6 requests - each endpoint already returns both totals and previousTotals
-    const [metaResult, snapchatResult, unityResult, googleAdsResult, tiktokResult, molocoResult] = 
+    // Only 4 requests - each endpoint already returns both totals and previousTotals
+    const [metaResult, snapchatResult, googleAdsResult, tiktokResult] = 
       await Promise.allSettled([
         supabase.functions.invoke("meta-history", { body: { startDate, endDate } }),
         supabase.functions.invoke("snapchat-history", { body: { startDate, endDate } }),
-        supabase.functions.invoke("unity-history", { body: { startDate, endDate } }),
         supabase.functions.invoke("google-ads-history", { body: { startDate, endDate } }),
         supabase.functions.invoke("tiktok-history", { body: { startDate, endDate } }),
-        supabase.functions.invoke("moloco-history", { body: { startDate, endDate } }),
       ]);
 
     // Extract both current and previous totals from a single response
@@ -116,13 +108,11 @@ export function useReportingData() {
 
     const meta = extractMetrics(metaResult);
     const snapchat = extractMetrics(snapchatResult);
-    const unity = extractMetrics(unityResult);
     const googleAds = extractMetrics(googleAdsResult);
     const tiktok = extractMetrics(tiktokResult);
-    const moloco = extractMetrics(molocoResult);
 
     // Calculate totals (only from platforms without errors)
-    const platforms = [meta, snapchat, unity, googleAds, tiktok, moloco];
+    const platforms = [meta, snapchat, googleAds, tiktok];
     const validPlatforms = platforms.filter(p => !p.error);
     
     const totalSpend = validPlatforms.reduce((sum, p) => sum + p.spend, 0);
@@ -136,10 +126,8 @@ export function useReportingData() {
     setData({
       meta,
       snapchat,
-      unity,
       googleAds,
       tiktok,
-      moloco,
       totals: {
         spend: totalSpend,
         installs: totalInstalls,

@@ -9,10 +9,8 @@ import { getLocalDaysAgo, getLocalYesterday } from "@/lib/dateUtils";
 
 import metaLogo from "@/assets/logos/meta.png";
 import snapchatLogo from "@/assets/logos/snapchat.png";
-import unityLogo from "@/assets/logos/unity.png";
 import googleAdsLogo from "@/assets/logos/google-ads.png";
 import tiktokLogo from "@/assets/logos/tiktok.png";
-import molocoLogo from "@/assets/logos/moloco.webp";
 
 export default function Reporting() {
   const [startDate, setStartDate] = useState(getLocalDaysAgo(8));
@@ -26,10 +24,8 @@ export default function Reporting() {
   const anyPlatformLoading = 
     data.meta?.isLoading || 
     data.snapchat?.isLoading || 
-    data.unity?.isLoading || 
     data.googleAds?.isLoading ||
-    data.tiktok?.isLoading ||
-    data.moloco?.isLoading;
+    data.tiktok?.isLoading;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -104,19 +100,6 @@ export default function Reporting() {
               />
 
               <PlatformMetricsRow
-                platform="Unity"
-                logo={unityLogo}
-                spend={data.unity.spend}
-                installs={data.unity.installs}
-                cpi={data.unity.cpi}
-                previousSpend={data.unity.previousSpend}
-                previousInstalls={data.unity.previousInstalls}
-                previousCpi={data.unity.previousCpi}
-                loading={data.unity.isLoading}
-                error={data.unity.error}
-              />
-
-              <PlatformMetricsRow
                 platform="Google Ads"
                 logo={googleAdsLogo}
                 spend={data.googleAds.spend}
@@ -145,21 +128,6 @@ export default function Reporting() {
                 dataUnavailable={data.tiktok.dataUnavailable}
                 unavailableReason={data.tiktok.unavailableReason}
               />
-
-              <PlatformMetricsRow
-                platform="Moloco"
-                logo={molocoLogo}
-                spend={data.moloco?.spend || 0}
-                installs={data.moloco?.installs || 0}
-                cpi={data.moloco?.cpi || 0}
-                previousSpend={data.moloco?.previousSpend || 0}
-                previousInstalls={data.moloco?.previousInstalls || 0}
-                previousCpi={data.moloco?.previousCpi || 0}
-                loading={data.moloco?.isLoading}
-                error={data.moloco?.error}
-                dataUnavailable={data.moloco?.dataUnavailable}
-                unavailableReason={data.moloco?.unavailableReason}
-              />
             </div>
           </>
         )}
@@ -168,7 +136,7 @@ export default function Reporting() {
         {!anyPlatformLoading && data.totals.spend === 0 && (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-lg mb-2">Select a date range and click Apply to view metrics</p>
-            <p className="text-sm">Data will be fetched from Meta, Snapchat, Unity, Google Ads, TikTok, and Moloco</p>
+            <p className="text-sm">Data will be fetched from Meta, Snapchat, Google Ads, and TikTok</p>
           </div>
         )}
       </div>
