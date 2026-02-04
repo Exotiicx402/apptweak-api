@@ -311,8 +311,7 @@ serve(async (req) => {
     // Ad-level query (fault-tolerant - may not have ad_id/ad_name columns)
     const adsQuery = shouldQueryBigQuery ? `
       SELECT 
-        ad_id,
-        ad_name,
+        asset_name,
         SUM(spend) as spend,
         CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
         SUM(clicks) as clicks,
@@ -321,8 +320,8 @@ serve(async (req) => {
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
       FROM ${fullTable}
       WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
-      AND ad_id IS NOT NULL AND ad_id != ''
-      GROUP BY ad_id, ad_name
+      AND asset_name IS NOT NULL AND asset_name != ''
+      GROUP BY asset_name
       ORDER BY spend DESC
       LIMIT 50
     ` : null;
@@ -400,8 +399,7 @@ serve(async (req) => {
     }));
 
     const adsData = bqAdsData.map((row: any) => ({
-      ad_id: row.ad_id,
-      ad_name: row.ad_name,
+      ad_name: row.asset_name, // Map asset_name to ad_name for frontend consistency
       spend: parseFloat(row.spend) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
