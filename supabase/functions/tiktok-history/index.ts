@@ -184,6 +184,25 @@ serve(async (req) => {
       ORDER BY spend DESC
     `;
 
+    // Ad-level query (fault-tolerant - may not have ad_id/ad_name columns)
+    const adsQuery = `
+      SELECT 
+        ad_id,
+        ad_name,
+        SUM(spend) as spend,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SUM(conversions) as installs,
+        SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) as ctr,
+        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
+      FROM ${fullTable}
+      WHERE date BETWEEN '${bqStartDate}' AND '${bqEndDate}'
+      AND ad_id IS NOT NULL AND ad_id != ''
+      GROUP BY ad_id, ad_name
+      ORDER BY spend DESC
+      LIMIT 50
+    `;
+
     // Totals for current period
     const totalsQuery = `
       SELECT 
@@ -212,13 +231,22 @@ serve(async (req) => {
       ${campaignFilter}
     `;
 
-    // Execute all queries in parallel
+    // Execute main queries in parallel
     const [dailyData, campaignData, totalsData, prevTotalsData] = await Promise.all([
       queryBigQuery(dailyQuery, accessToken),
       queryBigQuery(campaignQuery, accessToken),
       queryBigQuery(totalsQuery, accessToken),
       queryBigQuery(prevTotalsQuery, accessToken),
     ]);
+
+    // Fetch ad-level data separately (fault-tolerant)
+    let adsData: any[] = [];
+    try {
+      adsData = await queryBigQuery(adsQuery, accessToken);
+    } catch (adsError) {
+      console.log("Ad-level query failed (columns may not exist):", adsError);
+      adsData = [];
+    }
 
     const totals = totalsData[0] || {};
     const prevTotals = prevTotalsData[0] || {};
@@ -241,6 +269,16 @@ serve(async (req) => {
             clicks: parseInt(row.clicks) || 0,
             installs: parseFloat(row.installs) || 0,
             cpi: row.installs > 0 ? parseFloat(row.spend) / parseFloat(row.installs) : 0,
+          })),
+          ads: adsData.map((row: any) => ({
+            ad_id: row.ad_id,
+            ad_name: row.ad_name,
+            spend: parseFloat(row.spend) || 0,
+            impressions: parseInt(row.impressions) || 0,
+            clicks: parseInt(row.clicks) || 0,
+            installs: parseFloat(row.installs) || 0,
+            ctr: parseFloat(row.ctr) || 0,
+            cpi: parseFloat(row.cpi) || 0,
           })),
           totals: {
             spend: parseFloat(totals.total_spend) || 0,
