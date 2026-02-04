@@ -1,87 +1,49 @@
 
 
-# Snapchat Ad-Level Data Verification
-
-## Current Status: ✅ Working
-
-Based on my investigation, the Snapchat ad-level data sync and retrieval is now functioning correctly.
-
-### What's Already Implemented
-
-1. **Sync Function (`snapchat-to-bigquery`)** - Updated to:
-   - Use `breakdown=ad` instead of `breakdown=campaign`
-   - Fetch ad names and ad squad mappings
-   - Store `ad_id` and `ad_name` in BigQuery
-
-2. **History Function (`snapchat-history`)** - Updated with:
-   - Ad-level query that returns creative performance data
-   - Smart fallback logic: prefers ad-level data, falls back to campaign-level for historical dates
-   - Prevents double-counting by using COALESCE with FULL OUTER JOIN
-
-3. **Live API Response for Feb 3rd** shows:
-   - **22 ads** with full metrics (spend, installs, CTR, CPI)
-   - Correct totals: **$5,000 spend, 219 installs**
-   - Previous period (Feb 2nd): **$4,999.72 spend, 435 installs** (campaign-level fallback)
-
-### Data Verification
-
-| Date | Spend | Installs | Ad-Level Records |
-|------|-------|----------|------------------|
-| Feb 3 | $5,000 | 219 | 22 ads ✅ |
-| Feb 2 | $4,999.72 | 435 | 0 (campaign fallback) |
-
-### Why Feb 2nd Has No Ad-Level Data
-
-Feb 2nd data was synced *before* the ad-level granularity was added to the sync function. The system correctly falls back to campaign-level metrics for totals, but the Creative Performance Grid shows "Ad-level creative data is not yet available" for dates without ad granularity.
-
----
-
-## Optional: Backfill Historical Data
-
-To populate ad-level data for historical dates, we can create a backfill function that re-syncs past dates with the new ad-level logic.
-
-### Technical Approach
-
-1. Create a `snapchat-backfill` edge function that:
-   - Accepts a date range (e.g., last 7 days)
-   - Iterates through each date
-   - Calls the Snapchat API with `breakdown=ad`
-   - Merges data into BigQuery
-
-2. Run the backfill once to populate historical ad-level data
-
-### Implementation Details
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│  snapchat-backfill edge function                        │
-├─────────────────────────────────────────────────────────┤
-│  Input: { startDate: "2026-01-28", endDate: "2026-02-02" }│
-│                                                          │
-│  For each date in range:                                │
-│    1. Fetch ad names from Snapchat API                  │
-│    2. Fetch ad-level stats with breakdown=ad            │
-│    3. Transform with ad_id, ad_name, campaign_name      │
-│    4. MERGE into BigQuery (upsert by timestamp + ad_id) │
-│                                                          │
-│  Output: { success: true, datesSynced: 6, rowsAffected: 132 }│
-└─────────────────────────────────────────────────────────┘
-```
-
-### Files to Create
-
-| File | Purpose |
-|------|---------|
-| `supabase/functions/snapchat-backfill/index.ts` | Backfill edge function for historical ad-level data |
-
----
+# Update TikTok History for Ad-Level Creative Data
 
 ## Summary
 
-The current implementation is complete and working for new data. Going forward:
-- **Daily syncs** will capture ad-level data automatically
-- **Historical dates** (before the upgrade) will show campaign totals but no creative cards
-- **Backfill** (optional) can populate historical creative data
+Update the `tiktok-history` edge function to fetch ad-level creative data using only `ad_name` (since it already exists in BigQuery). This is an **additional query** that won't affect the existing stats queries.
 
-Would you like me to implement the backfill function to populate ad-level data for past dates?
+## Current Problem
+
+The existing ad-level query (lines 188-204) filters on `ad_id IS NOT NULL` which fails because `ad_id` doesn't exist in the TikTok BigQuery table.
+
+## Change Required
+
+### File: `supabase/functions/tiktok-history/index.ts`
+
+**Update the adsQuery (lines 188-204):**
+
+```sql
+-- FROM (current - broken):
+SELECT ad_id, ad_name, SUM(spend) as spend, ...
+WHERE ad_id IS NOT NULL AND ad_id != ''
+GROUP BY ad_id, ad_name
+
+-- TO (fixed):
+SELECT ad_name, SUM(spend) as spend, ...
+WHERE ad_name IS NOT NULL AND ad_name != ''
+GROUP BY ad_name
+```
+
+**Update the response mapping (lines 273-281):**
+
+Remove `ad_id` from the response since we're not using it.
+
+## Technical Details
+
+| Section | Change |
+|---------|--------|
+| `adsQuery` | Remove `ad_id`, filter by `ad_name IS NOT NULL`, group by `ad_name` only |
+| Response `ads` array | Remove `ad_id` field, keep only `ad_name` with metrics |
+| Totals/Daily/Campaign queries | **No changes** - these remain untouched |
+
+## Expected Result
+
+After deployment:
+- TikTok creative cards will appear immediately on the Reporting page
+- Aggregate stats (spend, installs, CPI) remain unaffected
+- The `ads` array in the response will contain creatives grouped by `ad_name`
 
