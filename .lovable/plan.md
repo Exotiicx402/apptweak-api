@@ -1,70 +1,190 @@
 
-# Fix Snapchat Preview Attribution Settings
+# Creative Performance Tracking - Meta Ads
 
-## Problem Identified
-
-The `snapchat-preview` function is using the **old attribution settings**:
-- `swipe_up_attribution_window: '28_DAY'` (should be `7_DAY`)
-- `action_report_time: 'conversion'` (should be `impression`)
-
-This is why the Raw Data Preview shows 487 installs instead of 216.
+## Overview
+Add creative-level performance tracking to the Reporting page, displaying cards for each ad with metadata automatically parsed from the naming convention. This phase focuses on Meta only and excludes actual asset thumbnails.
 
 ---
 
-## Current vs Expected
+## Naming Convention Reference
 
-| Setting | Current (wrong) | Expected (matches platform) |
-|---------|-----------------|----------------------------|
-| Swipe Window | `28_DAY` | `7_DAY` |
-| View Window | `1_DAY` | `1_DAY` |
-| Report Time | `conversion` | `impression` |
-| Resulting Installs | 487 | 216 |
+The ad names follow a 12-part pipe-delimited convention:
+
+| Position | Field | Example |
+|----------|-------|---------|
+| 1 | Page | Polymarket |
+| 2 | ContentType | Trend |
+| 3 | AssetType | IMG, VID, CAR |
+| 4 | ConceptID | 48 |
+| 5 | Category | Culture |
+| 6 | Angle | OddsBoosts |
+| 7 | UNIQUEIDENTIFIER | GrammysBestNewArtist |
+| 8 | Tactic | Comparison |
+| 9 | CreativeOwner | Matthis |
+| 10 | Objective | Traffic |
+| 11 | INPUT-LP-HERE | Market LP |
+| 12 | LaunchDate | 1/29 |
 
 ---
 
-## File to Update
+## Implementation Plan
 
-**File:** `supabase/functions/snapchat-preview/index.ts`
+### Phase 1: Parsing Utility
 
-**Lines 412-415** - Change attribution settings in `fetchSnapchatStats`:
-```typescript
-// Before
-url.searchParams.set('swipe_up_attribution_window', '28_DAY');
-url.searchParams.set('view_attribution_window', '1_DAY');
-url.searchParams.set('action_report_time', 'conversion');
+**File:** `src/lib/creativeNamingParser.ts` (new)
 
-// After
-url.searchParams.set('swipe_up_attribution_window', '7_DAY');
-url.searchParams.set('view_attribution_window', '1_DAY');
-url.searchParams.set('action_report_time', 'impression');
+Create a utility function to parse ad names:
+
+```text
+parseCreativeName(adName: string) => {
+  page: string;
+  contentType: string;
+  assetType: string;      // IMG, VID, CAR
+  conceptId: string;
+  category: string;
+  angle: string;
+  uniqueIdentifier: string;
+  tactic: string;
+  creativeOwner: string;
+  objective: string;
+  landingPage: string;
+  launchDate: string;
+}
 ```
 
-Also update the comment on line 412:
-```typescript
-// Before
-// Attribution windows: 28-day swipe, 1-day view (matches Snapchat Ads Manager default)
+The parser will:
+- Split on ` | ` (pipe with spaces)
+- Trim each part
+- Return empty strings for missing positions
+- Handle edge cases (malformed names, fewer than 12 parts)
 
-// After
-// Attribution windows: 7-day swipe, 1-day view, impression time (matches Snapchat Ads Manager)
+---
+
+### Phase 2: Creative Performance Hook
+
+**File:** `src/hooks/useCreativePerformance.ts` (new)
+
+Create a hook that:
+1. Calls the existing `meta-history` edge function with the date range
+2. Extracts the `ads` array from the response
+3. Parses each ad name using the utility function
+4. Returns enriched creative data with parsed metadata
+
+**Data structure returned:**
+```text
+{
+  adId: string;
+  adName: string;
+  spend: number;
+  installs: number;
+  ctr: number;
+  cpi: number;
+  parsed: {
+    angle: string;
+    tactic: string;
+    assetType: string;
+    category: string;
+    conceptId: string;
+    creativeOwner: string;
+    launchDate: string;
+  };
+}
 ```
 
 ---
 
-## Summary of All Snapchat Functions
+### Phase 3: Creative Performance Cards Component
 
-After this fix, all three Snapchat functions will use consistent attribution:
+**File:** `src/components/reporting/CreativePerformanceGrid.tsx` (new)
 
-| Function | Swipe | View | Report Time | Status |
-|----------|-------|------|-------------|--------|
-| `snapchat-history` | 7_DAY | 1_DAY | impression | Already updated |
-| `snapchat-to-bigquery` | 7_DAY | 1_DAY | impression | Already updated |
-| `snapchat-preview` | 7_DAY | 1_DAY | impression | Needs update |
+Design goals:
+- Card-based layout (similar to existing `CreativeCardGrid`)
+- No thumbnails (placeholder icon based on asset type)
+- Display parsed metadata prominently
+
+**Card layout:**
+```text
++----------------------------------+
+|  [Icon: IMG/VID]   AssetType     |
++----------------------------------+
+|  Creative Name (truncated)       |
+|                                  |
+|  Angle: OddsBoosts               |
+|  Tactic: Comparison              |
+|  Category: Culture               |
+|                                  |
+|  +-------+  +-------+            |
+|  | Spend |  |Installs|           |
+|  | $XXX  |  |  XXX   |           |
+|  +-------+  +-------+            |
+|  +-------+  +-------+            |
+|  |  CTR  |  |  CPI  |            |
+|  | X.XX% |  | $X.XX |            |
+|  +-------+  +-------+            |
++----------------------------------+
+```
+
+Key features:
+- Badges for Angle, Tactic, Category
+- Asset type icon (Image vs Video vs Carousel)
+- Tooltip on creative name showing full name
+- Sorted by spend (descending)
+- Top 25 creatives displayed
 
 ---
 
-## Expected Outcome
+### Phase 4: Integration with Reporting Page
 
-After this update:
-- Raw Data Preview will show **216 installs** (matching the diagnostics)
-- All Snapchat data will use consistent **7_DAY/1_DAY/impression** attribution
-- Numbers will match the Snapchat platform exactly
+**File:** `src/pages/Reporting.tsx`
+
+Add the creative performance grid below the ranking section:
+- Uses the same `appliedStartDate` and `appliedEndDate` as other sections
+- Only renders after data is fetched
+- Shows loading skeleton while fetching
+
+---
+
+## Technical Details
+
+### Data Flow
+
+```text
+1. User selects date range → clicks Apply
+2. useCreativePerformance hook calls meta-history edge function
+3. Edge function returns ads[] from BigQuery (already implemented)
+4. Hook parses each ad_name using creativeNamingParser
+5. CreativePerformanceGrid displays enriched cards
+```
+
+### No Backend Changes Required
+
+The existing `meta-history` edge function already:
+- Fetches ad-level data from BigQuery
+- Returns `ad_id` and `ad_name` in the response
+- Supports date range filtering
+
+All parsing happens client-side.
+
+---
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/lib/creativeNamingParser.ts` | Utility to parse naming convention |
+| `src/hooks/useCreativePerformance.ts` | Hook to fetch and enrich creative data |
+| `src/components/reporting/CreativePerformanceGrid.tsx` | Card grid component |
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/pages/Reporting.tsx` | Import and render CreativePerformanceGrid |
+
+---
+
+## Future Enhancements (Not In Scope)
+- Add thumbnail images from creative_assets table
+- Filter/group by Angle, Tactic, or Category
+- Expand to Snapchat, TikTok platforms
+- Export creative performance data
