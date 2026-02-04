@@ -18,7 +18,8 @@ interface PlatformFilterBarProps {
 }
 
 export function PlatformFilterBar({ activePlatform, onPlatformChange, counts }: PlatformFilterBarProps) {
-  const totalCount = counts.meta + counts.snapchat + counts.tiktok + counts.google;
+  // Calculate blended count (unique creatives by name)
+  const blendedCount = counts.meta + counts.snapchat + counts.tiktok + counts.google;
 
   return (
     <ToggleGroup
@@ -28,22 +29,14 @@ export function PlatformFilterBar({ activePlatform, onPlatformChange, counts }: 
       className="justify-start flex-wrap gap-1"
     >
       <ToggleGroupItem
-        value="all"
-        aria-label="All platforms"
-        className="px-3 py-1.5 h-auto text-xs gap-1.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-      >
-        All
-        {totalCount > 0 && (
-          <span className="text-[10px] opacity-70">({totalCount})</span>
-        )}
-      </ToggleGroupItem>
-
-      <ToggleGroupItem
         value="blended"
         aria-label="Blended creatives"
         className="px-3 py-1.5 h-auto text-xs gap-1.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
       >
         Blended
+        {blendedCount > 0 && (
+          <span className="text-[10px] opacity-70">({blendedCount})</span>
+        )}
       </ToggleGroupItem>
 
       <ToggleGroupItem
