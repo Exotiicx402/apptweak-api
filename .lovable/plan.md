@@ -1,86 +1,70 @@
 
+# Fix Snapchat Preview Attribution Settings
 
-# Switch Snapchat to Impression Time Attribution
+## Problem Identified
 
-## Overview
+The `snapchat-preview` function is using the **old attribution settings**:
+- `swipe_up_attribution_window: '28_DAY'` (should be `7_DAY`)
+- `action_report_time: 'conversion'` (should be `impression`)
 
-Change Snapchat API calls from `action_report_time: 'conversion'` to `action_report_time: 'impression'` to match the Snapchat platform reporting exactly.
-
----
-
-## What This Changes
-
-| Metric | Current (conversion) | After (impression) |
-|--------|---------------------|-------------------|
-| Spend | $5,000 | $5,000 (no change) |
-| Installs | 487 | ~213 (matches platform) |
-| Attribution | Day user installed | Day ad was shown |
+This is why the Raw Data Preview shows 487 installs instead of 216.
 
 ---
 
-## Files to Update
+## Current vs Expected
 
-### 1. Live API for Today's Data
+| Setting | Current (wrong) | Expected (matches platform) |
+|---------|-----------------|----------------------------|
+| Swipe Window | `28_DAY` | `7_DAY` |
+| View Window | `1_DAY` | `1_DAY` |
+| Report Time | `conversion` | `impression` |
+| Resulting Installs | 487 | 216 |
 
-**File:** `supabase/functions/snapchat-history/index.ts`
+---
 
-**Line 235** - Change:
+## File to Update
+
+**File:** `supabase/functions/snapchat-preview/index.ts`
+
+**Lines 412-415** - Change attribution settings in `fetchSnapchatStats`:
 ```typescript
 // Before
+url.searchParams.set('swipe_up_attribution_window', '28_DAY');
+url.searchParams.set('view_attribution_window', '1_DAY');
 url.searchParams.set('action_report_time', 'conversion');
 
 // After
+url.searchParams.set('swipe_up_attribution_window', '7_DAY');
+url.searchParams.set('view_attribution_window', '1_DAY');
 url.searchParams.set('action_report_time', 'impression');
 ```
 
-**Lines 494-498** - Update attribution settings in response:
-```typescript
-attributionSettings: {
-  swipe_up_attribution_window: '28_DAY',
-  view_attribution_window: '1_DAY',
-  action_report_time: 'impression',
-  note: 'Installs are credited to the day the ad was shown, matching Snapchat platform reporting.',
-},
-```
-
-### 2. BigQuery Sync (Historical Data)
-
-**File:** `supabase/functions/snapchat-to-bigquery/index.ts`
-
-**Line 375** - Change:
+Also update the comment on line 412:
 ```typescript
 // Before
-url.searchParams.set('action_report_time', 'conversion');
+// Attribution windows: 28-day swipe, 1-day view (matches Snapchat Ads Manager default)
 
 // After
-url.searchParams.set('action_report_time', 'impression');
+// Attribution windows: 7-day swipe, 1-day view, impression time (matches Snapchat Ads Manager)
 ```
 
 ---
 
-## Post-Implementation Steps
+## Summary of All Snapchat Functions
 
-After deploying these changes:
+After this fix, all three Snapchat functions will use consistent attribution:
 
-1. **Re-sync historical data** - The existing BigQuery data was synced with `conversion` time. We need to backfill with `impression` time to get accurate historical installs.
-
-2. **Recommended backfill range**: Last 30 days minimum, since conversion-time installs may have been incorrectly attributed.
-
----
-
-## Summary
-
-| File | Change |
-|------|--------|
-| `supabase/functions/snapchat-history/index.ts` | Line 235: Change `conversion` to `impression` |
-| `supabase/functions/snapchat-to-bigquery/index.ts` | Line 375: Change `conversion` to `impression` |
+| Function | Swipe | View | Report Time | Status |
+|----------|-------|------|-------------|--------|
+| `snapchat-history` | 7_DAY | 1_DAY | impression | Already updated |
+| `snapchat-to-bigquery` | 7_DAY | 1_DAY | impression | Already updated |
+| `snapchat-preview` | 7_DAY | 1_DAY | impression | Needs update |
 
 ---
 
 ## Expected Outcome
 
-After implementation and data re-sync:
-- Install numbers will match Snapchat platform exactly
-- Spend remains accurate (unchanged by this setting)
-- CPI will be recalculated based on correct install counts
-
+After this update:
+- Raw Data Preview will show **216 installs** (matching the diagnostics)
+- All Snapchat data will use consistent **7_DAY/1_DAY/impression** attribution
+- Numbers will match the Snapchat platform exactly
