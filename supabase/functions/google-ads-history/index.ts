@@ -308,6 +308,25 @@ serve(async (req) => {
       ORDER BY spend DESC
     ` : null;
 
+    // Ad-level query (fault-tolerant - may not have ad_id/ad_name columns)
+    const adsQuery = shouldQueryBigQuery ? `
+      SELECT 
+        ad_id,
+        ad_name,
+        SUM(spend) as spend,
+        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
+        SUM(clicks) as clicks,
+        SUM(conversions) as installs,
+        SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr,
+        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
+      FROM ${fullTable}
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
+      AND ad_id IS NOT NULL AND ad_id != ''
+      GROUP BY ad_id, ad_name
+      ORDER BY spend DESC
+      LIMIT 50
+    ` : null;
+
     const totalsQuery = shouldQueryBigQuery ? `
       SELECT 
         SUM(spend) as total_spend,
@@ -351,6 +370,17 @@ serve(async (req) => {
 
     const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData] = await Promise.all(promises);
 
+    // Fetch ad-level data separately (fault-tolerant)
+    let bqAdsData: any[] = [];
+    if (shouldQueryBigQuery && adsQuery) {
+      try {
+        bqAdsData = await queryBigQuery(adsQuery, accessToken);
+      } catch (adsError) {
+        console.log("Ad-level query failed (columns may not exist):", adsError);
+        bqAdsData = [];
+      }
+    }
+
     // Process BigQuery data
     let dailyData = bqDailyData.map((row: any) => ({
       date: row.date,
@@ -367,6 +397,17 @@ serve(async (req) => {
       clicks: parseInt(row.clicks) || 0,
       installs: parseFloat(row.installs) || 0,
       cpi: row.installs > 0 ? parseFloat(row.spend) / parseFloat(row.installs) : 0,
+    }));
+
+    const adsData = bqAdsData.map((row: any) => ({
+      ad_id: row.ad_id,
+      ad_name: row.ad_name,
+      spend: parseFloat(row.spend) || 0,
+      impressions: parseInt(row.impressions) || 0,
+      clicks: parseInt(row.clicks) || 0,
+      installs: parseFloat(row.installs) || 0,
+      ctr: parseFloat(row.ctr) || 0,
+      cpi: parseFloat(row.cpi) || 0,
     }));
 
     const bqTotals = bqTotalsData[0] || {};
@@ -390,6 +431,7 @@ serve(async (req) => {
         data: {
           daily: dailyData,
           campaigns: campaignData,
+          ads: adsData,
           totals,
           previousTotals: {
             spend: parseFloat(prevTotals.total_spend) || 0,

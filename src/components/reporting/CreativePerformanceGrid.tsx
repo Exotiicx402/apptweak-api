@@ -5,8 +5,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ImageIcon, Film, LayoutGrid, DollarSign, Download, MousePointer, Target, Grid3X3, TableIcon } from "lucide-react";
-import { useCreativePerformance, EnrichedCreative } from "@/hooks/useCreativePerformance";
+import { useMultiPlatformCreatives, EnrichedCreative, Platform } from "@/hooks/useMultiPlatformCreatives";
 import { CreativePerformanceTable } from "./CreativePerformanceTable";
+import { PlatformFilterBar } from "./PlatformFilterBar";
 
 type ViewMode = "cards" | "table";
 
@@ -56,18 +57,47 @@ function truncateName(name: string, maxLength: number = 50): string {
   return name.substring(0, maxLength) + "...";
 }
 
-function CreativeCard({ creative }: { creative: EnrichedCreative }) {
+function getPlatformLabel(platform: string): string {
+  switch (platform) {
+    case "meta": return "Meta";
+    case "snapchat": return "Snapchat";
+    case "tiktok": return "TikTok";
+    case "google": return "Google";
+    case "blended": return "Blended";
+    default: return platform;
+  }
+}
+
+function getPlatformBadgeVariant(platform: string): "default" | "secondary" | "outline" | "destructive" {
+  switch (platform) {
+    case "meta": return "default";
+    case "snapchat": return "secondary";
+    case "tiktok": return "outline";
+    case "google": return "outline";
+    case "blended": return "secondary";
+    default: return "outline";
+  }
+}
+
+function CreativeCard({ creative, showPlatform }: { creative: EnrichedCreative; showPlatform: boolean }) {
   const { parsed } = creative;
   const assetType = parsed.assetType || "IMG";
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow">
       {/* Header with asset type */}
-      <div className="bg-muted px-4 py-2 flex items-center gap-2 border-b">
-        {getAssetTypeIcon(assetType)}
-        <span className="text-sm font-medium text-muted-foreground">
-          {getAssetTypeLabel(assetType)}
-        </span>
+      <div className="bg-muted px-4 py-2 flex items-center justify-between border-b">
+        <div className="flex items-center gap-2">
+          {getAssetTypeIcon(assetType)}
+          <span className="text-sm font-medium text-muted-foreground">
+            {getAssetTypeLabel(assetType)}
+          </span>
+        </div>
+        {showPlatform && (
+          <Badge variant={getPlatformBadgeVariant(creative.platform)} className="text-[10px]">
+            {getPlatformLabel(creative.platform)}
+          </Badge>
+        )}
       </div>
 
       <CardContent className="p-4">
@@ -164,35 +194,52 @@ function CreativeCardSkeleton() {
 }
 
 export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: CreativePerformanceGridProps) {
-  const { data, isLoading, error, fetchCreatives } = useCreativePerformance();
+  const { 
+    data, 
+    isLoading, 
+    errors, 
+    activePlatform, 
+    setActivePlatform, 
+    fetchAllPlatforms,
+    platformCounts 
+  } = useMultiPlatformCreatives();
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
 
   useEffect(() => {
     if (dataFetched && startDate && endDate) {
-      fetchCreatives(startDate, endDate);
+      fetchAllPlatforms(startDate, endDate);
     }
-  }, [startDate, endDate, dataFetched, fetchCreatives]);
+  }, [startDate, endDate, dataFetched, fetchAllPlatforms]);
 
   if (!dataFetched) {
     return null;
   }
 
+  const showPlatformBadge = activePlatform === "all" || activePlatform === "blended";
+
   const headerContent = (
-    <div className="flex items-center justify-between mb-4">
-      <h2 className="text-lg font-semibold text-foreground">Top Creatives (Meta)</h2>
-      <ToggleGroup 
-        type="single" 
-        value={viewMode} 
-        onValueChange={(value) => value && setViewMode(value as ViewMode)}
-        className="border rounded-md"
-      >
-        <ToggleGroupItem value="cards" aria-label="Card view" className="px-3">
-          <Grid3X3 className="h-4 w-4" />
-        </ToggleGroupItem>
-        <ToggleGroupItem value="table" aria-label="Table view" className="px-3">
-          <TableIcon className="h-4 w-4" />
-        </ToggleGroupItem>
-      </ToggleGroup>
+    <div className="flex flex-col gap-4 mb-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-foreground">Top Creatives</h2>
+        <ToggleGroup 
+          type="single" 
+          value={viewMode} 
+          onValueChange={(value) => value && setViewMode(value as ViewMode)}
+          className="border rounded-md"
+        >
+          <ToggleGroupItem value="cards" aria-label="Card view" className="px-3">
+            <Grid3X3 className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="table" aria-label="Table view" className="px-3">
+            <TableIcon className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+      <PlatformFilterBar
+        activePlatform={activePlatform}
+        onPlatformChange={setActivePlatform}
+        counts={platformCounts}
+      />
     </div>
   );
 
@@ -209,13 +256,13 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
     );
   }
 
-  if (error) {
+  if (errors.length > 0 && data.length === 0) {
     return (
       <div className="mt-8">
         {headerContent}
         <Card>
           <CardContent className="py-8">
-            <p className="text-destructive text-center">Error loading creatives: {error}</p>
+            <p className="text-destructive text-center">Error loading creatives: {errors.join(", ")}</p>
           </CardContent>
         </Card>
       </div>
@@ -241,11 +288,11 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
       {viewMode === "cards" ? (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.map((creative) => (
-            <CreativeCard key={creative.adId} creative={creative} />
+            <CreativeCard key={`${creative.platform}-${creative.adId}`} creative={creative} showPlatform={showPlatformBadge} />
           ))}
         </div>
       ) : (
-        <CreativePerformanceTable data={data} />
+        <CreativePerformanceTable data={data} showPlatform={showPlatformBadge} />
       )}
     </div>
   );

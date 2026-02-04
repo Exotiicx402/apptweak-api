@@ -2,10 +2,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ImageIcon, Film, LayoutGrid } from "lucide-react";
-import { EnrichedCreative } from "@/hooks/useCreativePerformance";
+import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
 
 interface CreativePerformanceTableProps {
   data: EnrichedCreative[];
+  showPlatform?: boolean;
 }
 
 function formatCurrency(value: number): string {
@@ -48,13 +49,25 @@ function truncateName(name: string, maxLength: number = 40): string {
   return name.substring(0, maxLength) + "...";
 }
 
-export function CreativePerformanceTable({ data }: CreativePerformanceTableProps) {
+function getPlatformLabel(platform: string): string {
+  switch (platform) {
+    case "meta": return "Meta";
+    case "snapchat": return "Snapchat";
+    case "tiktok": return "TikTok";
+    case "google": return "Google";
+    case "blended": return "Blended";
+    default: return platform;
+  }
+}
+
+export function CreativePerformanceTable({ data, showPlatform = false }: CreativePerformanceTableProps) {
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[280px]">Creative Name</TableHead>
+            {showPlatform && <TableHead>Platform</TableHead>}
             <TableHead>Asset Type</TableHead>
             <TableHead>Angle</TableHead>
             <TableHead>Tactic</TableHead>
@@ -67,7 +80,7 @@ export function CreativePerformanceTable({ data }: CreativePerformanceTableProps
         </TableHeader>
         <TableBody>
           {data.map((creative) => (
-            <TableRow key={creative.adId}>
+            <TableRow key={`${creative.platform}-${creative.adId}`}>
               <TableCell>
                 <TooltipProvider>
                   <Tooltip>
@@ -82,6 +95,13 @@ export function CreativePerformanceTable({ data }: CreativePerformanceTableProps
                   </Tooltip>
                 </TooltipProvider>
               </TableCell>
+              {showPlatform && (
+                <TableCell>
+                  <Badge variant="outline" className="text-xs">
+                    {getPlatformLabel(creative.platform)}
+                  </Badge>
+                </TableCell>
+              )}
               <TableCell>
                 <Badge variant="secondary" className="gap-1">
                   {getAssetTypeIcon(creative.parsed.assetType || "IMG")}

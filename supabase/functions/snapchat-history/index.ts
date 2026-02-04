@@ -366,6 +366,25 @@ serve(async (req) => {
       ORDER BY spend DESC
     ` : null;
 
+    // Ad-level query (fault-tolerant - may not have ad_id/ad_name columns)
+    const adsQuery = shouldQueryBigQuery ? `
+      SELECT 
+        ad_id,
+        ad_name,
+        SUM(spend) as spend,
+        SUM(impressions) as impressions,
+        SUM(swipes) as swipes,
+        SUM(total_installs) as installs,
+        SAFE_DIVIDE(SUM(swipes), NULLIF(SUM(impressions), 0)) as swipe_rate,
+        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(total_installs), 0)) as cpi
+      FROM ${fullTable}
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+      AND ad_id IS NOT NULL AND ad_id != ''
+      GROUP BY ad_id, ad_name
+      ORDER BY spend DESC
+      LIMIT 50
+    ` : null;
+
     const totalsQuery = shouldQueryBigQuery ? `
       SELECT 
         SUM(spend) as total_spend,
@@ -421,6 +440,17 @@ serve(async (req) => {
 
     const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, liveData] = await Promise.all(promises);
 
+    // Fetch ad-level data separately (fault-tolerant)
+    let bqAdsData: any[] = [];
+    if (shouldQueryBigQuery && adsQuery) {
+      try {
+        bqAdsData = await queryBigQuery(adsQuery, googleAccessToken);
+      } catch (adsError) {
+        console.log("Ad-level query failed (columns may not exist):", adsError);
+        bqAdsData = [];
+      }
+    }
+
     // Process BigQuery data
     let dailyData = bqDailyData.map((row: any) => ({
       date: row.date,
@@ -472,12 +502,25 @@ serve(async (req) => {
 
     const prevTotals = prevTotalsData[0] || {};
 
+    // Process ad-level data
+    const adsData = bqAdsData.map((row: any) => ({
+      ad_id: row.ad_id,
+      ad_name: row.ad_name,
+      spend: parseFloat(row.spend) || 0,
+      impressions: parseInt(row.impressions) || 0,
+      clicks: parseInt(row.swipes) || 0, // swipes = clicks for Snapchat
+      installs: parseInt(row.installs) || 0,
+      ctr: parseFloat(row.swipe_rate) || 0,
+      cpi: parseFloat(row.cpi) || 0,
+    }));
+
     return new Response(
       JSON.stringify({
         success: true,
         data: {
           daily: dailyData,
           campaigns: campaignData,
+          ads: adsData,
           totals,
           previousTotals: {
             spend: parseFloat(prevTotals.total_spend) || 0,
