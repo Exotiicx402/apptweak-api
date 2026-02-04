@@ -232,7 +232,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
     return `Ad-level creative data is not yet available for ${name}. This platform currently syncs at campaign level only.`;
   };
 
-  const showPlatformBadge = activePlatform === "all" || activePlatform === "blended";
+  const showPlatformBadge = activePlatform === "blended";
 
   const headerContent = (
     <div className="flex flex-col gap-4 mb-4">

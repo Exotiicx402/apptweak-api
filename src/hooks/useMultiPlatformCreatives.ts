@@ -1,9 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { parseCreativeName, ParsedCreativeName } from "@/lib/creativeNamingParser";
 
 interface AdMetric {
-  ad_id: string;
+  ad_id?: string; // Optional - some platforms (TikTok) don't have ad_id
   ad_name: string;
   spend: number;
   impressions: number;
@@ -13,7 +13,7 @@ interface AdMetric {
   cpi: number;
 }
 
-export type Platform = "all" | "meta" | "snapchat" | "tiktok" | "google" | "blended";
+export type Platform = "meta" | "snapchat" | "tiktok" | "google" | "blended";
 
 export interface EnrichedCreative {
   adId: string;
@@ -37,7 +37,7 @@ export function useMultiPlatformCreatives() {
   const [snapchat, setSnapchat] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [tiktok, setTiktok] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [google, setGoogle] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
-  const [activePlatform, setActivePlatform] = useState<Platform>("all");
+  const [activePlatform, setActivePlatform] = useState<Platform>("blended"); // Default to blended
 
   const fetchPlatform = async (
     platform: string,
@@ -89,7 +89,7 @@ export function useMultiPlatformCreatives() {
   // Enrich ads with parsed naming convention data
   const enrichAds = (ads: AdMetric[], platform: string): EnrichedCreative[] => {
     return ads.map((ad) => ({
-      adId: ad.ad_id,
+      adId: ad.ad_id || ad.ad_name, // Use ad_name as fallback ID if ad_id not available
       adName: ad.ad_name,
       spend: ad.spend,
       installs: ad.installs,
@@ -124,13 +124,14 @@ export function useMultiPlatformCreatives() {
     return Array.from(grouped.values());
   };
 
-  // Get filtered/processed creatives based on active platform
-  const getCreatives = useCallback((): EnrichedCreative[] => {
-    const metaAds = enrichAds(meta.ads, "meta");
-    const snapchatAds = enrichAds(snapchat.ads, "snapchat");
-    const tiktokAds = enrichAds(tiktok.ads, "tiktok");
-    const googleAds = enrichAds(google.ads, "google");
+  // Memoize enriched ads to prevent recalculation on every render
+  const metaAds = useMemo(() => enrichAds(meta.ads, "meta"), [meta.ads]);
+  const snapchatAds = useMemo(() => enrichAds(snapchat.ads, "snapchat"), [snapchat.ads]);
+  const tiktokAds = useMemo(() => enrichAds(tiktok.ads, "tiktok"), [tiktok.ads]);
+  const googleAds = useMemo(() => enrichAds(google.ads, "google"), [google.ads]);
 
+  // Get filtered/processed creatives based on active platform
+  const data = useMemo((): EnrichedCreative[] => {
     let result: EnrichedCreative[] = [];
 
     switch (activePlatform) {
@@ -147,18 +148,15 @@ export function useMultiPlatformCreatives() {
         result = googleAds;
         break;
       case "blended":
+      default:
         const all = [...metaAds, ...snapchatAds, ...tiktokAds, ...googleAds];
         result = blendCreatives(all);
-        break;
-      case "all":
-      default:
-        result = [...metaAds, ...snapchatAds, ...tiktokAds, ...googleAds];
         break;
     }
 
     // Sort by spend descending and limit to top 50
     return result.sort((a, b) => b.spend - a.spend).slice(0, 50);
-  }, [meta.ads, snapchat.ads, tiktok.ads, google.ads, activePlatform]);
+  }, [metaAds, snapchatAds, tiktokAds, googleAds, activePlatform]);
 
   const isLoading = meta.isLoading || snapchat.isLoading || tiktok.isLoading || google.isLoading;
 
@@ -179,7 +177,7 @@ export function useMultiPlatformCreatives() {
   ].filter((e): e is string => e !== null);
 
   return {
-    data: getCreatives(),
+    data,
     isLoading,
     errors,
     activePlatform,
