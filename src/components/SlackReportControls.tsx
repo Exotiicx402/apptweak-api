@@ -143,7 +143,7 @@ const SlackReportControls = () => {
               <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3 space-y-1">
                 <p><span className="font-medium text-foreground">Report Date:</span> Previous day's data</p>
                 <p><span className="font-medium text-foreground">Comparison:</span> Day-over-day % change</p>
-                <p><span className="font-medium text-foreground">Platforms:</span> Meta, Snapchat, Unity, Google Ads, TikTok, Moloco</p>
+                <p><span className="font-medium text-foreground">Platforms:</span> Meta, Snapchat, Google Ads, TikTok</p>
               </div>
             </div>
           ) : (

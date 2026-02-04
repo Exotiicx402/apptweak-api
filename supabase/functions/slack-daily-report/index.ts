@@ -173,7 +173,7 @@ function buildSlackMessage(results: PlatformResult[], date: string, options: For
   const previousTotalCpi = totals.previousInstalls > 0 ? totals.previousSpend / totals.previousInstalls : 0;
 
   // Build the table rows
-  const platformOrder = ['Meta', 'Snapchat', 'Unity', 'Google Ads', 'TikTok', 'Moloco'];
+  const platformOrder = ['Meta', 'Snapchat', 'Google Ads', 'TikTok'];
   const sortedResults = platformOrder.map(
     p => results.find(r => r.platform === p) || { 
       platform: p, spend: 0, installs: 0, cpi: 0, 
@@ -297,10 +297,8 @@ serve(async (req) => {
     const platforms = [
       { name: 'Meta', endpoint: 'meta-history' },
       { name: 'Snapchat', endpoint: 'snapchat-history' },
-      { name: 'Unity', endpoint: 'unity-history' },
       { name: 'Google Ads', endpoint: 'google-ads-history' },
       { name: 'TikTok', endpoint: 'tiktok-history' },
-      { name: 'Moloco', endpoint: 'moloco-history' },
     ];
 
     const results = await Promise.all(
