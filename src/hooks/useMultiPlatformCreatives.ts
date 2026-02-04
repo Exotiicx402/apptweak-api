@@ -162,6 +162,14 @@ export function useMultiPlatformCreatives() {
 
   const isLoading = meta.isLoading || snapchat.isLoading || tiktok.isLoading || google.isLoading;
 
+  // Check if a specific platform has ad-level data available
+  const hasAdData = {
+    meta: meta.ads.length > 0,
+    snapchat: snapchat.ads.length > 0,
+    tiktok: tiktok.ads.length > 0,
+    google: google.ads.length > 0,
+  };
+
   // Get errors from any platform
   const errors: string[] = [
     meta.error,
@@ -178,6 +186,7 @@ export function useMultiPlatformCreatives() {
     setActivePlatform,
     fetchAllPlatforms,
     clearData,
+    hasAdData,
     platformCounts: {
       meta: meta.ads.length,
       snapchat: snapchat.ads.length,
