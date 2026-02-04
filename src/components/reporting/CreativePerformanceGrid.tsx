@@ -1,10 +1,14 @@
-import { useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ImageIcon, Film, LayoutGrid, DollarSign, Download, MousePointer, Target } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ImageIcon, Film, LayoutGrid, DollarSign, Download, MousePointer, Target, Grid3X3, TableIcon } from "lucide-react";
 import { useCreativePerformance, EnrichedCreative } from "@/hooks/useCreativePerformance";
+import { CreativePerformanceTable } from "./CreativePerformanceTable";
+
+type ViewMode = "cards" | "table";
 
 interface CreativePerformanceGridProps {
   startDate: string;
@@ -161,6 +165,7 @@ function CreativeCardSkeleton() {
 
 export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: CreativePerformanceGridProps) {
   const { data, isLoading, error, fetchCreatives } = useCreativePerformance();
+  const [viewMode, setViewMode] = useState<ViewMode>("cards");
 
   useEffect(() => {
     if (dataFetched && startDate && endDate) {
@@ -172,10 +177,29 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
     return null;
   }
 
+  const headerContent = (
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-lg font-semibold text-foreground">Top Creatives (Meta)</h2>
+      <ToggleGroup 
+        type="single" 
+        value={viewMode} 
+        onValueChange={(value) => value && setViewMode(value as ViewMode)}
+        className="border rounded-md"
+      >
+        <ToggleGroupItem value="cards" aria-label="Card view" className="px-3">
+          <Grid3X3 className="h-4 w-4" />
+        </ToggleGroupItem>
+        <ToggleGroupItem value="table" aria-label="Table view" className="px-3">
+          <TableIcon className="h-4 w-4" />
+        </ToggleGroupItem>
+      </ToggleGroup>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="mt-8">
-        <h2 className="text-lg font-semibold mb-4 text-foreground">Top Creatives (Meta)</h2>
+        {headerContent}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <CreativeCardSkeleton key={i} />
@@ -188,7 +212,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
   if (error) {
     return (
       <div className="mt-8">
-        <h2 className="text-lg font-semibold mb-4 text-foreground">Top Creatives (Meta)</h2>
+        {headerContent}
         <Card>
           <CardContent className="py-8">
             <p className="text-destructive text-center">Error loading creatives: {error}</p>
@@ -201,7 +225,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
   if (data.length === 0) {
     return (
       <div className="mt-8">
-        <h2 className="text-lg font-semibold mb-4 text-foreground">Top Creatives (Meta)</h2>
+        {headerContent}
         <Card>
           <CardContent className="py-8">
             <p className="text-muted-foreground text-center">No creative data available for this date range</p>
@@ -213,12 +237,16 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
 
   return (
     <div className="mt-8">
-      <h2 className="text-lg font-semibold mb-4 text-foreground">Top Creatives (Meta)</h2>
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {data.map((creative) => (
-          <CreativeCard key={creative.adId} creative={creative} />
-        ))}
-      </div>
+      {headerContent}
+      {viewMode === "cards" ? (
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {data.map((creative) => (
+            <CreativeCard key={creative.adId} creative={creative} />
+          ))}
+        </div>
+      ) : (
+        <CreativePerformanceTable data={data} />
+      )}
     </div>
   );
 }
