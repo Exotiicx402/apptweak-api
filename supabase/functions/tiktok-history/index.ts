@@ -184,10 +184,9 @@ serve(async (req) => {
       ORDER BY spend DESC
     `;
 
-    // Ad-level query (fault-tolerant - may not have ad_id/ad_name columns)
+    // Ad-level query using ad_name only (ad_id doesn't exist in TikTok Windsor data)
     const adsQuery = `
       SELECT 
-        ad_id,
         ad_name,
         SUM(spend) as spend,
         SUM(impressions) as impressions,
@@ -197,8 +196,8 @@ serve(async (req) => {
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
       FROM ${fullTable}
       WHERE date BETWEEN '${bqStartDate}' AND '${bqEndDate}'
-      AND ad_id IS NOT NULL AND ad_id != ''
-      GROUP BY ad_id, ad_name
+      AND ad_name IS NOT NULL AND ad_name != ''
+      GROUP BY ad_name
       ORDER BY spend DESC
       LIMIT 50
     `;
@@ -271,7 +270,6 @@ serve(async (req) => {
             cpi: row.installs > 0 ? parseFloat(row.spend) / parseFloat(row.installs) : 0,
           })),
           ads: adsData.map((row: any) => ({
-            ad_id: row.ad_id,
             ad_name: row.ad_name,
             spend: parseFloat(row.spend) || 0,
             impressions: parseInt(row.impressions) || 0,
