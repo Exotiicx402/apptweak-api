@@ -61,6 +61,57 @@ function calculatePercentChange(current: number, previous: number): string {
   return `${sign}${change.toFixed(1)}%`;
 }
 
+async function fetchRankingForDate(
+  supabaseUrl: string,
+  anonKey: string,
+  date: string
+): Promise<{ rank: number | null; categoryName: string; error?: string }> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/apptweak-ranking-history`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({ 
+        appId: '6648798962', 
+        country: 'us', 
+        device: 'iphone',
+        startDate: date,
+        endDate: date,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const rankings = data?.result?.['6648798962']?.rankings || [];
+    
+    // Find Sports category (6004) with "free" chart type
+    for (const ranking of rankings) {
+      for (const value of ranking.value || []) {
+        if (value.category === '6004' && value.chart_type === 'free') {
+          return {
+            rank: value.rank,
+            categoryName: value.category_name || 'Sports',
+          };
+        }
+      }
+    }
+    
+    return { rank: null, categoryName: 'Sports' };
+  } catch (error) {
+    console.error(`Error fetching ranking for ${date}:`, error);
+    return {
+      rank: null,
+      categoryName: 'Sports',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 async function fetchPlatformDataForDate(
   platform: string,
   endpoint: string,
@@ -155,7 +206,13 @@ interface FormatOptions {
   showPlatformSpacing: boolean;
 }
 
-function buildSlackMessage(results: PlatformResult[], date: string, options: FormatOptions): object {
+interface RankingData {
+  rank: number | null;
+  categoryName: string;
+  error?: string;
+}
+
+function buildSlackMessage(results: PlatformResult[], date: string, options: FormatOptions, ranking: RankingData): object {
   const displayDate = formatDateForDisplay(date);
   
   // Calculate totals for current and previous period
@@ -221,6 +278,13 @@ function buildSlackMessage(results: PlatformResult[], date: string, options: For
 
   const tableContent = [header, separator, ...rows, separator, ...totalRows].join('\n');
 
+  // Build ranking text
+  const rankingText = ranking.rank !== null 
+    ? `🏆 *App Store Ranking:* #${ranking.rank} in ${ranking.categoryName} (Free)`
+    : ranking.error 
+      ? `🏆 *App Store Ranking:* Unable to fetch`
+      : `🏆 *App Store Ranking:* No data available`;
+
   return {
     blocks: [
       {
@@ -229,6 +293,13 @@ function buildSlackMessage(results: PlatformResult[], date: string, options: For
           type: 'plain_text',
           text: `📊 Daily Performance Report - ${displayDate}`,
           emoji: true,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: rankingText,
         },
       },
       {
@@ -293,7 +364,7 @@ serve(async (req) => {
     console.log(`Generating report for: ${reportDate} (comparing to ${previousDate})`);
     console.log(`Format options:`, formatOptions);
 
-    // Fetch all platform data in parallel (both current and previous day)
+    // Fetch all platform data and ranking in parallel
     const platforms = [
       { name: 'Meta', endpoint: 'meta-history' },
       { name: 'Snapchat', endpoint: 'snapchat-history' },
@@ -301,14 +372,18 @@ serve(async (req) => {
       { name: 'TikTok', endpoint: 'tiktok-history' },
     ];
 
-    const results = await Promise.all(
-      platforms.map(p => fetchPlatformData(p.name, p.endpoint, supabaseUrl, anonKey, reportDate, previousDate))
-    );
+    const [platformResults, rankingData] = await Promise.all([
+      Promise.all(
+        platforms.map(p => fetchPlatformData(p.name, p.endpoint, supabaseUrl, anonKey, reportDate, previousDate))
+      ),
+      fetchRankingForDate(supabaseUrl, anonKey, reportDate),
+    ]);
 
-    console.log('Platform results:', JSON.stringify(results, null, 2));
+    console.log('Platform results:', JSON.stringify(platformResults, null, 2));
+    console.log('Ranking data:', JSON.stringify(rankingData, null, 2));
 
     // Build and send Slack message
-    const slackMessage = buildSlackMessage(results, reportDate, formatOptions);
+    const slackMessage = buildSlackMessage(platformResults, reportDate, formatOptions, rankingData);
     
     const slackResponse = await fetch(slackWebhookUrl, {
       method: 'POST',
@@ -324,7 +399,7 @@ serve(async (req) => {
     console.log('Slack message sent successfully');
 
     return new Response(
-      JSON.stringify({ success: true, date: reportDate, formatOptions, results }),
+      JSON.stringify({ success: true, date: reportDate, formatOptions, results: platformResults, ranking: rankingData }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
