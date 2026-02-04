@@ -43,11 +43,19 @@ async function logSync(
 type CachedOAuthToken = { token: string; expiresAtMs: number };
 let snapchatTokenCache: CachedOAuthToken | null = null;
 
-// Get yesterday's date in YYYY-MM-DD format
+// Get yesterday's date in YYYY-MM-DD format (EST timezone)
 function getYesterdayDate(): string {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  return yesterday.toISOString().split('T')[0];
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    .replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_, y, m, d) => {
+      const date = new Date(Date.UTC(parseInt(y), parseInt(m) - 1, parseInt(d)));
+      date.setUTCDate(date.getUTCDate() - 1);
+      return date.toISOString().split('T')[0];
+    });
+}
+
+// Get today's date in YYYY-MM-DD format (EST timezone)
+function getTodayDateEST(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
 // Helper function to sleep for a given number of milliseconds
@@ -678,6 +686,65 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<void
   console.log(`BigQuery merge completed. Job ID: ${result.jobReference?.jobId}`);
 }
 
+// Helper function to sync a single date
+async function syncSingleDate(
+  targetDate: string,
+  snapchatToken: string,
+  googleToken: string,
+  campaignNames: Map<string, string>
+): Promise<{
+  date: string;
+  rowsProcessed: number;
+  accountTotals: { spend: number; note: string };
+  campaignTotals: { spend: number; impressions: number; installs: number };
+  discrepancy: { spend: number };
+}> {
+  console.log(`Syncing Snapchat data for date: ${targetDate}`);
+
+  // Fetch both account-level and campaign-level stats in parallel
+  const [accountStats, campaignResult] = await Promise.all([
+    fetchAccountLevelStats(snapchatToken, targetDate),
+    fetchSnapchatStats(snapchatToken, targetDate, campaignNames),
+  ]);
+
+  const { stats, campaignTotals } = campaignResult;
+
+  // Check for spend discrepancy
+  const spendDiff = Math.abs(accountStats.spend - campaignTotals.spend);
+  
+  if (accountStats.spend > 0 && spendDiff > 0.01) {
+    console.warn(`⚠️ SPEND DISCREPANCY for ${targetDate}:`);
+    console.warn(`   Account-level: $${accountStats.spend.toFixed(2)}, Campaign sum: $${campaignTotals.spend.toFixed(2)}`);
+    console.warn(`   Difference: $${spendDiff.toFixed(2)} (${((spendDiff / accountStats.spend) * 100).toFixed(1)}% missing)`);
+  }
+
+  if (stats.length === 0) {
+    console.log(`No Snapchat stats found for ${targetDate}`);
+    return {
+      date: targetDate,
+      rowsProcessed: 0,
+      accountTotals: accountStats,
+      campaignTotals,
+      discrepancy: { spend: spendDiff },
+    };
+  }
+
+  // Transform and merge into BigQuery
+  const fetchedAt = new Date().toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+  const transformedData = transformData(stats, fetchedAt);
+  await mergeIntoBigQuery(transformedData, googleToken);
+
+  console.log(`Successfully synced ${transformedData.length} rows for ${targetDate}`);
+
+  return {
+    date: targetDate,
+    rowsProcessed: transformedData.length,
+    accountTotals: accountStats,
+    campaignTotals,
+    discrepancy: { spend: spendDiff },
+  };
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -686,6 +753,7 @@ serve(async (req) => {
 
   const startTime = Date.now();
   let targetDate = getYesterdayDate();
+  let backfillYesterday = false;
 
   try {
     // Parse request body for optional date parameter
@@ -693,12 +761,18 @@ serve(async (req) => {
       const body = await req.json();
       if (body.date) {
         targetDate = body.date;
+        // If syncing today, also backfill yesterday to ensure finalized data
+        const todayEST = getTodayDateEST();
+        if (targetDate === todayEST) {
+          backfillYesterday = true;
+          console.log(`Syncing today (${todayEST}), will also backfill yesterday for finalized data`);
+        }
       }
     } catch {
       // No body or invalid JSON, use default date
     }
 
-    console.log(`Starting Snapchat to BigQuery sync for date: ${targetDate}`);
+    console.log(`Starting Snapchat to BigQuery sync for date: ${targetDate}${backfillYesterday ? ' (+ yesterday backfill)' : ''}`);
 
     // Get access tokens
     const snapchatToken = await getSnapchatAccessToken();
@@ -707,67 +781,42 @@ serve(async (req) => {
     // Fetch campaign names
     const campaignNames = await fetchCampaignNames(snapchatToken);
 
-    // Fetch both account-level and campaign-level stats in parallel
-    const [accountStats, campaignResult] = await Promise.all([
-      fetchAccountLevelStats(snapchatToken, targetDate),
-      fetchSnapchatStats(snapchatToken, targetDate, campaignNames),
-    ]);
+    const results: any[] = [];
 
-    const { stats, campaignTotals } = campaignResult;
-
-    // Check for spend discrepancy between account-level and campaign-level totals
-    // Note: Snapchat API only supports 'spend' at account level, installs comparison not possible
-    const spendDiff = Math.abs(accountStats.spend - campaignTotals.spend);
-    
-    if (accountStats.spend > 0 && spendDiff > 0.01) {
-      console.warn(`⚠️ SPEND DISCREPANCY DETECTED:`);
-      console.warn(`   Account-level total: $${accountStats.spend.toFixed(2)}`);
-      console.warn(`   Campaign breakdown sum: $${campaignTotals.spend.toFixed(2)}`);
-      console.warn(`   Difference: $${spendDiff.toFixed(2)} (${((spendDiff / accountStats.spend) * 100).toFixed(1)}% missing)`);
-      console.warn(`   This may indicate campaigns not appearing in the breakdown.`);
-    } else if (accountStats.spend === 0 && campaignTotals.spend > 0) {
-      console.warn(`⚠️ Account-level query returned $0 but campaign breakdown shows $${campaignTotals.spend.toFixed(2)}`);
-      console.warn(`   This might indicate an API issue with account-level queries.`);
+    // Backfill yesterday first if needed (to get finalized data)
+    if (backfillYesterday) {
+      const yesterdayDate = addDaysYmd(targetDate, -1);
+      try {
+        const yesterdayResult = await syncSingleDate(yesterdayDate, snapchatToken, googleToken, campaignNames);
+        results.push(yesterdayResult);
+        await logSync(yesterdayDate, 'success', yesterdayResult.rowsProcessed, Date.now() - startTime);
+      } catch (err) {
+        console.error(`Failed to backfill yesterday (${yesterdayDate}):`, err);
+        // Continue with today even if yesterday fails
+      }
     }
 
-    if (stats.length === 0) {
-      const duration = Date.now() - startTime;
-      console.log('No Snapchat stats found for the specified date');
-      await logSync(targetDate, 'success', 0, duration);
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'No data found for the specified date',
-          date: targetDate,
-          rowsProcessed: 0,
-          accountTotals: accountStats,
-          campaignTotals,
-          discrepancy: { spend: spendDiff },
-          durationMs: duration,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Transform and merge into BigQuery
-    const fetchedAt = new Date().toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
-    const transformedData = transformData(stats, fetchedAt);
-    await mergeIntoBigQuery(transformedData, googleToken);
+    // Sync the target date
+    const targetResult = await syncSingleDate(targetDate, snapchatToken, googleToken, campaignNames);
+    results.push(targetResult);
 
     const duration = Date.now() - startTime;
-    console.log(`Successfully synced ${transformedData.length} rows to BigQuery in ${duration}ms`);
+    const totalRows = results.reduce((sum, r) => sum + r.rowsProcessed, 0);
+    
+    console.log(`Successfully synced ${totalRows} total rows in ${duration}ms`);
 
-    await logSync(targetDate, 'success', transformedData.length, duration);
+    await logSync(targetDate, 'success', targetResult.rowsProcessed, duration);
 
     return new Response(
       JSON.stringify({
         success: true,
         message: `Successfully synced Snapchat data to BigQuery`,
         date: targetDate,
-        rowsProcessed: transformedData.length,
-        accountTotals: accountStats,
-        campaignTotals,
-        discrepancy: { spend: spendDiff },
+        rowsProcessed: targetResult.rowsProcessed,
+        accountTotals: targetResult.accountTotals,
+        campaignTotals: targetResult.campaignTotals,
+        discrepancy: targetResult.discrepancy,
+        backfillResults: backfillYesterday ? results.slice(0, -1) : undefined,
         durationMs: duration,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
