@@ -79,14 +79,17 @@ function getPlatformColor(platform: string): string {
 function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: string | null }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const handlePlay = () => {
+    setIsLoading(true);
     setIsPlaying(true);
-    // Small delay to let the video load
-    setTimeout(() => {
-      videoRef.current?.play();
-    }, 100);
+  };
+
+  const handleCanPlay = () => {
+    setIsLoading(false);
+    videoRef.current?.play();
   };
 
   if (hasError) {
@@ -124,14 +127,25 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
   }
 
   return (
-    <video
-      ref={videoRef}
-      src={videoUrl}
-      poster={posterUrl || undefined}
-      controls
-      className="w-full h-full object-contain"
-      onError={() => setHasError(true)}
-    />
+    <div className="relative w-full h-full">
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        poster={posterUrl || undefined}
+        controls
+        className="w-full h-full object-contain"
+        onCanPlay={handleCanPlay}
+        onError={() => {
+          setHasError(true);
+          setIsLoading(false);
+        }}
+      />
+    </div>
   );
 }
 
@@ -219,14 +233,19 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
  
    const { parsed } = creative;
    const assetType = parsed.assetType || "IMG";
-  const isVideo = creative.assetType === 'video' || assetType.toUpperCase().includes('VID');
+  // Detect video by checking if fullAssetUrl is an MP4 or if assetType indicates video
+  const isVideo = 
+    creative.assetType === 'video' || 
+    assetType.toUpperCase().includes('VID') ||
+    (creative.fullAssetUrl && creative.fullAssetUrl.includes('.mp4'));
   const hasAsset = !!creative.assetUrl || !!creative.fullAssetUrl;
   const showBreakdown = isBlended && platformBreakdown.length > 0;
 
-  // Use full asset URL if available, otherwise fall back to thumbnail
-  const displayUrl = creative.fullAssetUrl || creative.assetUrl;
-  const videoUrl = creative.fullAssetUrl;
-  const posterImage = creative.posterUrl || creative.assetUrl;
+  // For videos: use fullAssetUrl as the MP4, posterUrl for the poster
+  // For images: use fullAssetUrl or assetUrl for display
+  const videoUrl = isVideo ? creative.fullAssetUrl : null;
+  const posterImage = creative.posterUrl || creative.assetUrl || null;
+  const displayUrl = isVideo ? posterImage : (creative.fullAssetUrl || creative.assetUrl);
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>

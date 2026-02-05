@@ -19,6 +19,7 @@ interface CreativeAsset {
   asset_type: string | null;
   full_asset_url: string | null;
   poster_url: string | null;
+  updated_at: string | null;
 }
 
 export type Platform = "meta" | "snapchat" | "tiktok" | "google" | "blended";
@@ -86,7 +87,7 @@ export function useMultiPlatformCreatives() {
     try {
       const { data, error } = await supabase
         .from('creative_assets')
-        .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url');
+        .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at');
 
       if (error) {
         console.error('Error fetching creative assets:', error);
@@ -95,11 +96,21 @@ export function useMultiPlatformCreatives() {
 
       const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>();
       for (const asset of (data as CreativeAsset[]) || []) {
+        // Add cache-busting query param based on updated_at
+        const cacheBust = asset.updated_at ? `?v=${new Date(asset.updated_at).getTime()}` : '';
+        
+        // For grid display: use thumbnail (which should be the poster for videos, or full image)
+        // For preview: use full_asset_url (which is the MP4 for videos, or full image)
+        const thumbnailWithCache = asset.thumbnail_url ? asset.thumbnail_url + cacheBust : null;
+        const fullWithCache = asset.full_asset_url ? asset.full_asset_url + cacheBust : null;
+        const posterWithCache = asset.poster_url ? asset.poster_url + cacheBust : null;
+        
         map.set(asset.creative_name, {
-          url: asset.full_asset_url || asset.thumbnail_url,
+          // For card display: prefer thumbnail (poster for videos), never show an MP4 URL here
+          url: thumbnailWithCache || posterWithCache,
           type: asset.asset_type,
-          fullAssetUrl: asset.full_asset_url,
-          posterUrl: asset.poster_url,
+          fullAssetUrl: fullWithCache,
+          posterUrl: posterWithCache || thumbnailWithCache,
         });
       }
       setAssetMap(map);
