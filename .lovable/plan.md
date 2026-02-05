@@ -1,119 +1,161 @@
 
+## What I’m seeing (why it’s still blurry + why videos don’t play)
 
-# Download Full-Resolution Creative Assets
+### 1) Most rows still don’t have a “full asset”
+From the database right now:
+- Meta creatives total: **352**
+- With `full_asset_url`: **96**
+- Videos with posters: **42**
+- Videos with actual MP4 (`full_asset_url` for video): effectively **0** (edge logs show **Videos: 0**)
 
-## Problem
-The creative thumbnails are blurry because Meta's API returns 64x64 pixel preview URLs (containing `p64x64` in the URL string). All 336 currently stored assets came from these low-res previews. The previous attempt to use `object_story_spec` didn't help because Meta's CDN transforms all URLs to 64x64 by default.
+So the UI is still showing:
+- **Old low-res images** (because many rows never got upgraded)
+- **Video posters only** (so clicking can’t play, because `CreativePreviewDialog` only plays if `fullAssetUrl` exists)
 
-## Solution
-Fetch the **actual creative asset** files directly from Meta's Creative API instead of the ad-level thumbnail URLs. For video ads, we'll download the source video file and generate a custom 640px thumbnail.
+### 2) The Meta fetch is still built around the **/ads** endpoint
+The current backend function (`fetch-creative-assets`) still fetches creatives via:
+- `GET /{adAccountId}/ads?fields=...creative{...}`
 
----
+This is a big reason you’re not getting true source media reliably, and why many creatives never get updated.
 
-## Technical Approach
+### 3) Caching can also make “re-downloaded” assets look unchanged
+Uploads are currently done with:
+- `cacheControl: '31536000'` (1 year)
 
-### 1. Use Meta's Creatives Endpoint Directly
+Even if we overwrite the same storage path, browsers/CDNs can keep serving the old object unless we:
+- change the filename/path, or
+- add a cache-busting query string in the UI, or
+- use a much shorter cache policy (and still ideally cache-bust)
 
-Instead of fetching via the ads endpoint, query the creatives endpoint which provides direct access to source files:
+## Do we need to repopulate?
+Yes — but repopulating only helps after we fix the backend to actually:
+1) fetch true full-resolution media, and  
+2) store a proper video MP4 URL, and  
+3) generate/store our own 640px thumbnails, and  
+4) ensure the UI bypasses old cached objects.
 
-```text
-GET /v19.0/{ad-account-id}/adcreatives
-Fields: id,name,effective_object_story_id,source_instagram_media_id,
-        object_story_spec,image_url,video_id
-```
-
-For **images**: The `image_url` field returns the full-resolution source image (not CDN-transformed).
-
-For **videos**: Use the `video_id` to fetch the video source via:
-```text
-GET /v19.0/{video_id}?fields=source,picture
-```
-- `source` = Full MP4 file URL
-- `picture` = Video poster image (usually 720p+)
-
-### 2. Download and Store Full Assets
-
-| Asset Type | What to Download | Storage Path |
-|------------|------------------|--------------|
-| Image | Full source image | `creative-assets/meta/{conceptId}/{uniqueId}.{ext}` |
-| Video | MP4 source + poster | `creative-assets/meta/{conceptId}/{uniqueId}.mp4` + `..._poster.jpg` |
-
-### 3. Generate Optimized Thumbnails (640px wide)
-
-After downloading the full asset:
-- For images: The original is stored as-is (Meta images are typically web-optimized already)
-- For videos: Store both the MP4 and the poster image
-
-The UI cards will use the poster for videos and the full image for images. These will be much sharper than 64x64.
-
-### 4. Update Database Schema
-
-Add new columns to track full asset URLs:
-
-| Column | Type | Purpose |
-|--------|------|---------|
-| `full_asset_url` | text | URL to stored full image or video |
-| `poster_url` | text | URL to video poster (videos only) |
-| `source_resolution` | text | Original resolution e.g. "1080x1920" |
+Once that’s done, we run the sync with `forceRefresh: true` to rebuild everything.
 
 ---
 
-## File Changes
+## Implementation plan (fix quality + playability end-to-end)
 
-| File | Change |
-|------|--------|
-| `supabase/functions/fetch-creative-assets/index.ts` | Complete rewrite of Meta fetching logic to use creatives endpoint, download source files, handle videos |
-| Database migration | Add `full_asset_url`, `poster_url`, `source_resolution` columns |
-| `src/hooks/useMultiPlatformCreatives.ts` | Update to prefer `full_asset_url` over `thumbnail_url` |
-| `src/components/reporting/CreativePerformanceGrid.tsx` | Display video poster for video assets |
-| `src/components/reporting/CreativePreviewDialog.tsx` | Add video playback support for video assets |
+### A) Backend: change Meta ingestion to fetch true source assets
+Update `supabase/functions/fetch-creative-assets/index.ts`:
+
+1) **Switch Meta fetching to the creatives endpoint (with pagination)**
+Use:
+- `GET /v19.0/{adAccountId}/adcreatives?fields=id,name,object_type,image_url,video_id,object_story_spec,...&limit=500`
+Then follow `paging.next` until complete.
+
+This will cover creatives beyond the first 500 ads, and avoids relying on ad-level thumbnail behavior.
+
+2) **Videos: download the real MP4**
+For each creative with `video_id`:
+- `GET /v19.0/{video_id}?fields=source,picture`
+- Download `source` (MP4) and upload to storage
+- Download `picture` (poster) and upload to storage
+
+Write to DB:
+- `full_asset_url` = stored MP4 public URL
+- `poster_url` = stored poster public URL
+- `thumbnail_url` = generated 640px thumbnail (see below)
+
+3) **Images: download full res, then generate our own 640px thumbnail**
+For each creative with `image_url` (or best available high-res URL from story spec):
+- Download full image → upload as “full”
+- Generate 640px-wide thumbnail (WebP recommended) → upload as “thumb”
+
+Write to DB:
+- `full_asset_url` = stored original full-res URL
+- `thumbnail_url` = stored 640px thumb URL
+
+4) **Generate thumbnails (640px wide) in the backend**
+Add ImageScript to the backend function:
+- `import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";`
+Flow:
+- decode downloaded image/poster
+- resize to width 640 (keep aspect ratio)
+- encode to WebP (or JPG if WebP fails)
+- upload thumb
+
+Note: For videos, we thumbnail the **poster** image (not the MP4) to avoid requiring ffmpeg.
+
+5) **Fix caching so updates show immediately**
+Do both (belt + suspenders):
+- Change upload `cacheControl` from `31536000` to something safer for assets that may be overwritten (e.g. `3600`)
+- Also store and use `updated_at` for cache-busting on the frontend (see section B)
+
+6) **Improve logging + result summary**
+Add explicit logs for:
+- video source fetch success/failure
+- when a creative is video but missing `videoSourceUrl`
+Return counts like:
+- `videos_with_source`, `videos_missing_source`, `thumbs_generated`, etc.
+
+### B) Frontend: always use generated thumbnail for grid; full asset for preview
+Update `src/hooks/useMultiPlatformCreatives.ts`:
+
+1) Fetch `updated_at` too:
+- `select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at')`
+
+2) Build URLs like:
+- `thumbUrl = thumbnail_url ? thumbnail_url + '?v=' + updated_at : null`
+- `fullUrl = full_asset_url ? full_asset_url + '?v=' + updated_at : null`
+- `posterUrl = poster_url ? poster_url + '?v=' + updated_at : null`
+
+3) Change mapping logic so card images never accidentally point at an MP4:
+- `assetUrl` should always be the **thumbnail_url** (the generated 640px image)
+- `fullAssetUrl` is used only for the preview modal (and video playback)
+- `posterUrl` used for video poster display
+
+Update `src/components/reporting/CreativePerformanceGrid.tsx`:
+- keep `<img src={creative.assetUrl}>` (now always a thumbnail image)
+
+Update `src/components/reporting/CreativePreviewDialog.tsx`:
+- Video: `videoUrl = creative.fullAssetUrl` (MP4)
+- Poster: prefer `creative.posterUrl` (high-res poster), fall back to `creative.assetUrl` (thumb)
+
+### C) Add a simple “Repopulate assets” control in the UI
+Right now, there’s no obvious place in `/reporting` to kick off `fetch-creative-assets` with `forceRefresh`.
+
+Add a button (likely on `/controls`) that calls:
+- `supabase.functions.invoke('fetch-creative-assets', { body: { platforms: ['meta'], forceRefresh: true } })`
+
+Also:
+- show progress/toast
+- invalidate the creative asset queries afterward so thumbnails refresh immediately
+
+### D) Repopulate (after code ships)
+Once the above is implemented:
+1) Click “Repopulate Meta assets (force refresh)”
+2) Wait for completion
+3) Verify:
+   - DB `full_asset_url` count increases substantially
+   - edge logs show `Videos: > 0`
+   - reporting grid thumbnails are crisp
+   - video plays in the modal
 
 ---
 
-## Data Flow
-
-```text
-Meta Creatives API
-       │
-       ├── Image Ads ─────► Fetch image_url (full-res)
-       │                         │
-       │                         ▼
-       │                    Download & Store
-       │                    creative-assets/meta/{concept}/{id}.jpg
-       │
-       └── Video Ads ─────► Fetch video_id
-                                 │
-                                 ▼
-                           Fetch /v19.0/{video_id}?fields=source,picture
-                                 │
-                                 ├── source → Store MP4
-                                 └── picture → Store poster.jpg
-```
+## Acceptance criteria (how we’ll know it’s fixed)
+- Grid thumbnails are sharp (generated 640px thumbs, not platform previews)
+- Clicking a video creative shows a playable MP4 in the modal
+- Re-syncing updates assets without “stuck” caching (cache-busted URLs)
 
 ---
 
-## Why This Works
+## Files involved
+Backend:
+- `supabase/functions/fetch-creative-assets/index.ts` (rewrite Meta portion + add thumbnail generation + caching changes)
 
-1. **Source files not CDN-transformed**: Meta's `image_url` and video `source` fields return the original uploaded files, not the 64x64 CDN previews
-2. **Video playback**: By storing the actual MP4, you can play videos in the preview dialog
-3. **Sharp thumbnails**: Video `picture` field returns a poster image typically at 720p+ resolution
-4. **Future-proof**: Full assets enable future features like video analysis, A/B comparisons, etc.
-
----
-
-## Migration Strategy
-
-1. Deploy the updated function
-2. Run sync with `forceRefresh: true` to re-download all assets at full resolution
-3. Existing 336 records will be updated with new high-res URLs
-4. UI will immediately show sharp images once sync completes
+Frontend:
+- `src/hooks/useMultiPlatformCreatives.ts` (use thumb vs full, add cache busting, fetch `updated_at`)
+- `src/components/reporting/CreativePreviewDialog.tsx` (ensure video uses MP4 URL; poster uses poster_url)
+- `src/pages/Controls.tsx` (add “Repopulate assets” button using existing invoke pattern)
 
 ---
 
-## Video Playback in Preview Dialog
-
-The CreativePreviewDialog will be enhanced to:
-- Detect if asset is video (by checking `asset_type` or file extension)
-- Show a video player with play button overlay
-- Fall back to poster image if video fails to load
-
+## Notes / constraints
+- We will not store any binary data in the database (only storage URLs + metadata).
+- Thumbnail generation will be done server-side using ImageScript to ensure consistent quality and sizing.
