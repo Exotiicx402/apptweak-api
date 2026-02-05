@@ -2,6 +2,7 @@
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
  import { Badge } from "@/components/ui/badge";
  import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
+import { useMemo } from "react";
  
  interface CreativeBreakdownDialogProps {
    open: boolean;
@@ -53,16 +54,55 @@
    creative, 
    platformBreakdown 
  }: CreativeBreakdownDialogProps) {
-   if (!creative) return null;
- 
-   // Calculate totals
-   const totals = platformBreakdown.reduce(
-     (acc, item) => ({
-       spend: acc.spend + item.spend,
-       installs: acc.installs + item.installs,
-     }),
-     { spend: 0, installs: 0 }
-   );
+  // Calculate totals and averages - must be before any early return
+  const { totals, ctrRange } = useMemo(() => {
+    if (!platformBreakdown || platformBreakdown.length === 0) {
+      return {
+        totals: { spend: 0, installs: 0, avgCtr: 0 },
+        ctrRange: { min: 0, max: 0 },
+      };
+    }
+
+    const result = platformBreakdown.reduce(
+      (acc, item) => ({
+        spend: acc.spend + item.spend,
+        installs: acc.installs + item.installs,
+        ctrSum: acc.ctrSum + item.ctr,
+        ctrMin: Math.min(acc.ctrMin, item.ctr),
+        ctrMax: Math.max(acc.ctrMax, item.ctr),
+      }),
+      { spend: 0, installs: 0, ctrSum: 0, ctrMin: Infinity, ctrMax: -Infinity }
+    );
+
+    const avgCtr = platformBreakdown.length > 0 ? result.ctrSum / platformBreakdown.length : 0;
+
+    return {
+      totals: {
+        spend: result.spend,
+        installs: result.installs,
+        avgCtr,
+      },
+      ctrRange: {
+        min: result.ctrMin === Infinity ? 0 : result.ctrMin,
+        max: result.ctrMax === -Infinity ? 0 : result.ctrMax,
+      },
+    };
+  }, [platformBreakdown]);
+
+  // Get intensity for color coding (0-1)
+  const getCtrIntensity = (ctr: number): number => {
+    if (ctrRange.max === ctrRange.min) return 0.5;
+    return (ctr - ctrRange.min) / (ctrRange.max - ctrRange.min);
+  };
+
+  // Generate background color style based on intensity
+  const getCtrStyle = (intensity: number): React.CSSProperties => {
+    if (intensity < 0.1) return {};
+    const alpha = 0.15 + intensity * 0.45;
+    return { backgroundColor: `hsla(262, 83%, 58%, ${alpha})` }; // Purple for CTR
+  };
+
+  if (!creative) return null;
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>
@@ -102,7 +142,10 @@
                          <TableCell className="text-right">
                            {formatNumber(item.installs)}
                          </TableCell>
-                         <TableCell className="text-right">
+                        <TableCell 
+                          className="text-right"
+                          style={getCtrStyle(getCtrIntensity(item.ctr))}
+                        >
                            {formatPercent(item.ctr)}
                          </TableCell>
                          <TableCell className="text-right">
@@ -121,7 +164,9 @@
                        <TableCell className="text-right font-semibold">
                          {formatNumber(totals.installs)}
                        </TableCell>
-                       <TableCell className="text-right text-muted-foreground">—</TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatPercent(totals.avgCtr)}
+                      </TableCell>
                        <TableCell className="text-right font-semibold">
                          {totals.installs > 0 ? formatCurrency(totals.spend / totals.installs) : "—"}
                        </TableCell>
