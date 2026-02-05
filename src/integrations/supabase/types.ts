@@ -110,11 +110,14 @@ export type Database = {
           concept_id: string | null
           created_at: string | null
           creative_name: string
+          full_asset_url: string | null
           height: number | null
           id: string
           original_url: string | null
           platform: string
           platform_creative_id: string | null
+          poster_url: string | null
+          source_resolution: string | null
           thumbnail_url: string | null
           unique_identifier: string | null
           updated_at: string | null
@@ -125,11 +128,14 @@ export type Database = {
           concept_id?: string | null
           created_at?: string | null
           creative_name: string
+          full_asset_url?: string | null
           height?: number | null
           id?: string
           original_url?: string | null
           platform: string
           platform_creative_id?: string | null
+          poster_url?: string | null
+          source_resolution?: string | null
           thumbnail_url?: string | null
           unique_identifier?: string | null
           updated_at?: string | null
@@ -140,11 +146,14 @@ export type Database = {
           concept_id?: string | null
           created_at?: string | null
           creative_name?: string
+          full_asset_url?: string | null
           height?: number | null
           id?: string
           original_url?: string | null
           platform?: string
           platform_creative_id?: string | null
+          poster_url?: string | null
+          source_resolution?: string | null
           thumbnail_url?: string | null
           unique_identifier?: string | null
           updated_at?: string | null

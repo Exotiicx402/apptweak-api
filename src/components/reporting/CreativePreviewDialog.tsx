@@ -9,8 +9,8 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
  import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3 } from "lucide-react";
-import { useMemo } from "react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play } from "lucide-react";
+import { useMemo, useState, useRef } from "react";
  
  interface CreativePreviewDialogProps {
    open: boolean;
@@ -73,6 +73,66 @@ function getPlatformColor(platform: string): string {
     case "google": return "bg-red-100 text-red-800 border-red-200";
     default: return "";
   }
+}
+
+// Video player component with play button overlay
+function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: string | null }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const handlePlay = () => {
+    setIsPlaying(true);
+    // Small delay to let the video load
+    setTimeout(() => {
+      videoRef.current?.play();
+    }, 100);
+  };
+
+  if (hasError) {
+    // Fall back to poster image if video fails
+    return posterUrl ? (
+      <img src={posterUrl} alt="Video poster" className="w-full h-full object-contain" />
+    ) : (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
+        <Film className="h-16 w-16 text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!isPlaying) {
+    return (
+      <div 
+        className="relative w-full h-full cursor-pointer group"
+        onClick={handlePlay}
+      >
+        {posterUrl ? (
+          <img src={posterUrl} alt="Video poster" className="w-full h-full object-contain" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
+            <Film className="h-16 w-16 text-muted-foreground" />
+          </div>
+        )}
+        {/* Play button overlay */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+          <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <Play className="h-8 w-8 text-foreground ml-1" fill="currentColor" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      src={videoUrl}
+      poster={posterUrl || undefined}
+      controls
+      className="w-full h-full object-contain"
+      onError={() => setHasError(true)}
+    />
+  );
 }
 
  export function CreativePreviewDialog({
@@ -159,8 +219,14 @@ function getPlatformColor(platform: string): string {
  
    const { parsed } = creative;
    const assetType = parsed.assetType || "IMG";
-   const hasImage = !!creative.assetUrl;
+  const isVideo = creative.assetType === 'video' || assetType.toUpperCase().includes('VID');
+  const hasAsset = !!creative.assetUrl || !!creative.fullAssetUrl;
   const showBreakdown = isBlended && platformBreakdown.length > 0;
+
+  // Use full asset URL if available, otherwise fall back to thumbnail
+  const displayUrl = creative.fullAssetUrl || creative.assetUrl;
+  const videoUrl = creative.fullAssetUrl;
+  const posterImage = creative.posterUrl || creative.assetUrl;
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>
@@ -174,21 +240,23 @@ function getPlatformColor(platform: string): string {
          <div className="grid gap-6 md:grid-cols-2">
            {/* Image Preview */}
            <div className="relative">
-             <AspectRatio ratio={4 / 3} className="bg-muted rounded-lg overflow-hidden">
-               {hasImage ? (
-                 <img
-                   src={creative.assetUrl!}
-                   alt={creative.adName}
-                   className="w-full h-full object-contain"
-                 />
-               ) : (
-                 <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
-                   <div className="text-muted-foreground scale-[3]">
-                     {getAssetTypeIcon(assetType)}
-                   </div>
-                 </div>
-               )}
-             </AspectRatio>
+            <AspectRatio ratio={4 / 3} className="bg-muted rounded-lg overflow-hidden">
+              {isVideo && videoUrl ? (
+                <VideoPlayer videoUrl={videoUrl} posterUrl={posterImage} />
+              ) : hasAsset ? (
+                <img
+                  src={displayUrl!}
+                  alt={creative.adName}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
+                  <div className="text-muted-foreground scale-[3]">
+                    {getAssetTypeIcon(assetType)}
+                  </div>
+                </div>
+              )}
+            </AspectRatio>
              <Badge className="absolute bottom-3 left-3 bg-black/70 text-white border-0 hover:bg-black/70">
                {getAssetTypeLabel(assetType)}
              </Badge>
