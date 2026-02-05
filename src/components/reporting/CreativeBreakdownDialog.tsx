@@ -55,11 +55,16 @@ import { useMemo } from "react";
    platformBreakdown 
  }: CreativeBreakdownDialogProps) {
   // Calculate totals and averages - must be before any early return
-  const { totals, ctrRange } = useMemo(() => {
+  const { totals, ranges } = useMemo(() => {
     if (!platformBreakdown || platformBreakdown.length === 0) {
       return {
         totals: { spend: 0, installs: 0, avgCtr: 0 },
-        ctrRange: { min: 0, max: 0 },
+        ranges: {
+          spend: { min: 0, max: 0 },
+          installs: { min: 0, max: 0 },
+          ctr: { min: 0, max: 0 },
+          cpi: { min: 0, max: 0 },
+        },
       };
     }
 
@@ -68,10 +73,22 @@ import { useMemo } from "react";
         spend: acc.spend + item.spend,
         installs: acc.installs + item.installs,
         ctrSum: acc.ctrSum + item.ctr,
+        spendMin: Math.min(acc.spendMin, item.spend),
+        spendMax: Math.max(acc.spendMax, item.spend),
+        installsMin: Math.min(acc.installsMin, item.installs),
+        installsMax: Math.max(acc.installsMax, item.installs),
         ctrMin: Math.min(acc.ctrMin, item.ctr),
         ctrMax: Math.max(acc.ctrMax, item.ctr),
+        cpiMin: item.cpi > 0 ? Math.min(acc.cpiMin, item.cpi) : acc.cpiMin,
+        cpiMax: Math.max(acc.cpiMax, item.cpi),
       }),
-      { spend: 0, installs: 0, ctrSum: 0, ctrMin: Infinity, ctrMax: -Infinity }
+      { 
+        spend: 0, installs: 0, ctrSum: 0, 
+        spendMin: Infinity, spendMax: -Infinity,
+        installsMin: Infinity, installsMax: -Infinity,
+        ctrMin: Infinity, ctrMax: -Infinity,
+        cpiMin: Infinity, cpiMax: -Infinity,
+      }
     );
 
     const avgCtr = platformBreakdown.length > 0 ? result.ctrSum / platformBreakdown.length : 0;
@@ -82,24 +99,34 @@ import { useMemo } from "react";
         installs: result.installs,
         avgCtr,
       },
-      ctrRange: {
-        min: result.ctrMin === Infinity ? 0 : result.ctrMin,
-        max: result.ctrMax === -Infinity ? 0 : result.ctrMax,
+      ranges: {
+        spend: { min: result.spendMin === Infinity ? 0 : result.spendMin, max: result.spendMax === -Infinity ? 0 : result.spendMax },
+        installs: { min: result.installsMin === Infinity ? 0 : result.installsMin, max: result.installsMax === -Infinity ? 0 : result.installsMax },
+        ctr: { min: result.ctrMin === Infinity ? 0 : result.ctrMin, max: result.ctrMax === -Infinity ? 0 : result.ctrMax },
+        cpi: { min: result.cpiMin === Infinity ? 0 : result.cpiMin, max: result.cpiMax === -Infinity ? 0 : result.cpiMax },
       },
     };
   }, [platformBreakdown]);
 
   // Get intensity for color coding (0-1)
-  const getCtrIntensity = (ctr: number): number => {
-    if (ctrRange.max === ctrRange.min) return 0.5;
-    return (ctr - ctrRange.min) / (ctrRange.max - ctrRange.min);
+  const getIntensity = (value: number, min: number, max: number): number => {
+    if (max === min) return 0.5;
+    return (value - min) / (max - min);
   };
 
   // Generate background color style based on intensity
-  const getCtrStyle = (intensity: number): React.CSSProperties => {
+  const getHeatmapStyle = (intensity: number, color: "blue" | "green" | "purple" | "amber"): React.CSSProperties => {
     if (intensity < 0.1) return {};
     const alpha = 0.15 + intensity * 0.45;
-    return { backgroundColor: `hsla(262, 83%, 58%, ${alpha})` }; // Purple for CTR
+    
+    const colors = {
+      blue: `hsla(217, 91%, 60%, ${alpha})`,    // Blue for spend
+      green: `hsla(142, 76%, 36%, ${alpha})`,   // Green for installs
+      purple: `hsla(262, 83%, 58%, ${alpha})`,  // Purple for CTR
+      amber: `hsla(38, 92%, 50%, ${alpha})`,    // Amber for CPI (inverted - lower is better)
+    };
+
+    return { backgroundColor: colors[color] };
   };
 
   if (!creative) return null;
@@ -136,19 +163,31 @@ import { useMemo } from "react";
                              {getPlatformLabel(item.platform)}
                            </Badge>
                          </TableCell>
-                         <TableCell className="text-right font-medium">
+                        <TableCell 
+                          className="text-right font-medium"
+                          style={getHeatmapStyle(getIntensity(item.spend, ranges.spend.min, ranges.spend.max), "blue")}
+                        >
                            {formatCurrency(item.spend)}
                          </TableCell>
-                         <TableCell className="text-right">
+                        <TableCell 
+                          className="text-right"
+                          style={getHeatmapStyle(getIntensity(item.installs, ranges.installs.min, ranges.installs.max), "green")}
+                        >
                            {formatNumber(item.installs)}
                          </TableCell>
                         <TableCell 
                           className="text-right"
-                          style={getCtrStyle(getCtrIntensity(item.ctr))}
+                          style={getHeatmapStyle(getIntensity(item.ctr, ranges.ctr.min, ranges.ctr.max), "purple")}
                         >
                            {formatPercent(item.ctr)}
                          </TableCell>
-                         <TableCell className="text-right">
+                        <TableCell 
+                          className="text-right"
+                          style={getHeatmapStyle(
+                            item.cpi > 0 ? 1 - getIntensity(item.cpi, ranges.cpi.min, ranges.cpi.max) : 0,
+                            "amber"
+                          )}
+                        >
                            {formatCurrency(item.cpi)}
                          </TableCell>
                        </TableRow>
