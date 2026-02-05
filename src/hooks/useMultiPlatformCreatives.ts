@@ -130,6 +130,34 @@ export function useMultiPlatformCreatives() {
   const tiktokAds = useMemo(() => enrichAds(tiktok.ads, "tiktok"), [tiktok.ads]);
   const googleAds = useMemo(() => enrichAds(google.ads, "google"), [google.ads]);
 
+  // All enriched ads by platform (for drill-down)
+  const allEnrichedByPlatform = useMemo(() => ({
+    meta: metaAds,
+    snapchat: snapchatAds,
+    tiktok: tiktokAds,
+    google: googleAds,
+  }), [metaAds, snapchatAds, tiktokAds, googleAds]);
+
+  // Get platform breakdown for a specific creative name
+  const getPlatformBreakdown = useCallback((adName: string): EnrichedCreative[] => {
+    const breakdown: EnrichedCreative[] = [];
+    
+    for (const ad of metaAds) {
+      if (ad.adName === adName) breakdown.push(ad);
+    }
+    for (const ad of snapchatAds) {
+      if (ad.adName === adName) breakdown.push(ad);
+    }
+    for (const ad of tiktokAds) {
+      if (ad.adName === adName) breakdown.push(ad);
+    }
+    for (const ad of googleAds) {
+      if (ad.adName === adName) breakdown.push(ad);
+    }
+    
+    return breakdown.sort((a, b) => b.spend - a.spend);
+  }, [metaAds, snapchatAds, tiktokAds, googleAds]);
+
   // Get filtered/processed creatives based on active platform
   const data = useMemo((): EnrichedCreative[] => {
     let result: EnrichedCreative[] = [];
@@ -191,5 +219,7 @@ export function useMultiPlatformCreatives() {
       tiktok: tiktok.ads.length,
       google: google.ads.length,
     },
+    getPlatformBreakdown,
+    allEnrichedByPlatform,
   };
 }

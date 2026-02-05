@@ -9,6 +9,7 @@ import { useMultiPlatformCreatives, EnrichedCreative, Platform } from "@/hooks/u
 import { CreativePerformanceTable } from "./CreativePerformanceTable";
 import { PlatformFilterBar } from "./PlatformFilterBar";
 import { ColumnSettingsPopover, ColumnConfig, defaultColumnConfig } from "./ColumnSettingsPopover";
+import { CreativeBreakdownDialog } from "./CreativeBreakdownDialog";
 
 type ViewMode = "cards" | "table";
 
@@ -84,15 +85,20 @@ interface CreativeCardProps {
   creative: EnrichedCreative;
   showPlatform: boolean;
   columnConfig: ColumnConfig;
+  onClick?: () => void;
+  isClickable?: boolean;
 }
 
-function CreativeCard({ creative, showPlatform, columnConfig }: CreativeCardProps) {
+function CreativeCard({ creative, showPlatform, columnConfig, onClick, isClickable }: CreativeCardProps) {
   const { parsed } = creative;
   const assetType = parsed.assetType || "IMG";
   const { metrics, attributes } = columnConfig;
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow">
+    <Card 
+      className={`overflow-hidden hover:shadow-lg transition-shadow ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-primary/20' : ''}`}
+      onClick={onClick}
+    >
       {/* Header with asset type */}
       <div className="bg-muted px-4 py-2 flex items-center justify-between border-b">
         <div className="flex items-center gap-2">
@@ -233,10 +239,24 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
     setActivePlatform, 
     fetchAllPlatforms,
     hasAdData,
-    platformCounts 
+    platformCounts,
+    getPlatformBreakdown
   } = useMultiPlatformCreatives();
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [columnConfig, setColumnConfig] = useState<ColumnConfig>(defaultColumnConfig);
+  const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+
+  const handleCreativeClick = (creative: EnrichedCreative) => {
+    if (activePlatform === "blended") {
+      setSelectedCreative(creative);
+      setBreakdownOpen(true);
+    }
+  };
+
+  const platformBreakdown = selectedCreative 
+    ? getPlatformBreakdown(selectedCreative.adName) 
+    : [];
 
   useEffect(() => {
     if (dataFetched && startDate && endDate) {
@@ -359,12 +379,26 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
               creative={creative} 
               showPlatform={showPlatformBadge}
               columnConfig={columnConfig}
+              onClick={() => handleCreativeClick(creative)}
+              isClickable={activePlatform === "blended"}
             />
           ))}
         </div>
       ) : (
-        <CreativePerformanceTable data={data} showPlatform={showPlatformBadge} columnConfig={columnConfig} />
+        <CreativePerformanceTable 
+          data={data} 
+          showPlatform={showPlatformBadge} 
+          columnConfig={columnConfig}
+          onRowClick={activePlatform === "blended" ? handleCreativeClick : undefined}
+        />
       )}
+
+      <CreativeBreakdownDialog
+        open={breakdownOpen}
+        onOpenChange={setBreakdownOpen}
+        creative={selectedCreative}
+        platformBreakdown={platformBreakdown}
+      />
     </div>
   );
 }

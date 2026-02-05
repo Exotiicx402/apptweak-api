@@ -11,6 +11,7 @@ interface CreativePerformanceTableProps {
   data: EnrichedCreative[];
   showPlatform?: boolean;
   columnConfig: ColumnConfig;
+  onRowClick?: (creative: EnrichedCreative) => void;
 }
 
 function formatCurrency(value: number): string {
@@ -130,7 +131,7 @@ function getHeatmapStyle(intensity: number, color: "blue" | "green" | "purple" |
   return { backgroundColor: colors[color] };
 }
 
-export function CreativePerformanceTable({ data, showPlatform = false, columnConfig }: CreativePerformanceTableProps) {
+export function CreativePerformanceTable({ data, showPlatform = false, columnConfig, onRowClick }: CreativePerformanceTableProps) {
   const { metrics, attributes } = columnConfig;
   const ranges = useMetricRanges(data);
   const [sort, setSort] = useState<SortState>({ column: "spend", direction: "desc" });
@@ -260,7 +261,11 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
         </TableHeader>
         <TableBody>
           {sortedData.map((creative) => (
-            <TableRow key={`${creative.platform}-${creative.adId}`}>
+            <TableRow 
+              key={`${creative.platform}-${creative.adId}`}
+              className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
+              onClick={() => onRowClick?.(creative)}
+            >
               <TableCell>
                 <TooltipProvider>
                   <Tooltip>
