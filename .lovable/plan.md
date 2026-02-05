@@ -1,132 +1,119 @@
 
 
-# Fix Blurry Thumbnails & Add Creative Preview
+# Download Full-Resolution Creative Assets
 
-## Problem Analysis
-
-### Why Thumbnails are Blurry
-The current `fetch-creative-assets` function downloads Meta's `thumbnail_url`, which is a **64x64 pixel** preview image. This is visible in the stored URLs which contain `p64x64_q75` parameters.
-
-### Why There's No Preview
-The creative cards have no click handler for viewing the full creative. In "Blended" mode, clicking opens the platform breakdown dialog, not an image viewer.
-
----
+## Problem
+The creative thumbnails are blurry because Meta's API returns 64x64 pixel preview URLs (containing `p64x64` in the URL string). All 336 currently stored assets came from these low-res previews. The previous attempt to use `object_story_spec` didn't help because Meta's CDN transforms all URLs to 64x64 by default.
 
 ## Solution
-
-### Part 1: Fetch High-Resolution Images from Meta
-
-Update the `fetch-creative-assets` function to request the `object_story_spec` field from the Meta API, which contains the full-resolution image URLs:
-
-```text
-API Request Changes:
-- Current: "creative{id,name,thumbnail_url,image_url,object_type}"
-- New:     "creative{id,name,thumbnail_url,image_url,object_type,object_story_spec}"
-```
-
-The `object_story_spec` contains:
-- `photo_data.url` - Full-resolution image for photo ads
-- `link_data.image_hash` - Can be resolved to full URL via the ad images endpoint
-- `video_data.image_url` - Video thumbnail in higher resolution
-
-Priority for image source:
-1. `object_story_spec.photo_data.url` (full-res photo)
-2. `object_story_spec.link_data.picture` (link preview image)
-3. `creative.image_url` (fallback)
-4. `creative.thumbnail_url` (last resort)
-
-### Part 2: Add Creative Preview Dialog
-
-Create a new dialog component that opens when clicking a creative card to show:
-- Full-size thumbnail/image (or video player for video assets)
-- Creative name and metadata
-- Performance metrics summary
-- Button to open platform breakdown (if blended)
+Fetch the **actual creative asset** files directly from Meta's Creative API instead of the ad-level thumbnail URLs. For video ads, we'll download the source video file and generate a custom 640px thumbnail.
 
 ---
 
-## Technical Implementation
+## Technical Approach
 
-### Files to Modify
+### 1. Use Meta's Creatives Endpoint Directly
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/fetch-creative-assets/index.ts` | Update Meta API request to include `object_story_spec`, extract high-res URLs |
-| `src/components/reporting/CreativePerformanceGrid.tsx` | Add preview click handler and dialog |
-| `src/components/reporting/CreativePreviewDialog.tsx` | New component for full-size preview |
+Instead of fetching via the ads endpoint, query the creatives endpoint which provides direct access to source files:
 
-### Meta API Changes
-
-```typescript
-// Update the fields requested from Meta
-const adsUrl = new URL(`https://graph.facebook.com/v19.0/${adAccountId}/ads`);
-adsUrl.searchParams.set("fields", 
-  "id,name,creative{id,name,thumbnail_url,image_url,object_type,object_story_spec}"
-);
-
-// Extract best available image URL
-function getBestImageUrl(creative: any): string | null {
-  // 1. Check photo_data for full-res image
-  const photoUrl = creative.object_story_spec?.photo_data?.url;
-  if (photoUrl) return photoUrl;
-  
-  // 2. Check link_data for picture
-  const linkPicture = creative.object_story_spec?.link_data?.picture;
-  if (linkPicture) return linkPicture;
-  
-  // 3. Check video_data for video thumbnail
-  const videoThumb = creative.object_story_spec?.video_data?.image_url;
-  if (videoThumb) return videoThumb;
-  
-  // 4. Fallback to image_url
-  if (creative.image_url) return creative.image_url;
-  
-  // 5. Last resort: thumbnail
-  return creative.thumbnail_url;
-}
+```text
+GET /v19.0/{ad-account-id}/adcreatives
+Fields: id,name,effective_object_story_id,source_instagram_media_id,
+        object_story_spec,image_url,video_id
 ```
 
-### Preview Dialog Features
+For **images**: The `image_url` field returns the full-resolution source image (not CDN-transformed).
 
-The new `CreativePreviewDialog` component will include:
-- Large image display with proper aspect ratio
-- Image zoom on hover or click
-- Creative metadata (name, asset type, content type, angle, etc.)
-- Quick performance stats (spend, installs, CTR, CPI)
-- "View Platform Breakdown" button for blended creatives
-- Video playback for video assets (if the full video URL is available)
+For **videos**: Use the `video_id` to fetch the video source via:
+```text
+GET /v19.0/{video_id}?fields=source,picture
+```
+- `source` = Full MP4 file URL
+- `picture` = Video poster image (usually 720p+)
+
+### 2. Download and Store Full Assets
+
+| Asset Type | What to Download | Storage Path |
+|------------|------------------|--------------|
+| Image | Full source image | `creative-assets/meta/{conceptId}/{uniqueId}.{ext}` |
+| Video | MP4 source + poster | `creative-assets/meta/{conceptId}/{uniqueId}.mp4` + `..._poster.jpg` |
+
+### 3. Generate Optimized Thumbnails (640px wide)
+
+After downloading the full asset:
+- For images: The original is stored as-is (Meta images are typically web-optimized already)
+- For videos: Store both the MP4 and the poster image
+
+The UI cards will use the poster for videos and the full image for images. These will be much sharper than 64x64.
+
+### 4. Update Database Schema
+
+Add new columns to track full asset URLs:
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `full_asset_url` | text | URL to stored full image or video |
+| `poster_url` | text | URL to video poster (videos only) |
+| `source_resolution` | text | Original resolution e.g. "1080x1920" |
 
 ---
 
-## User Experience Flow
+## File Changes
+
+| File | Change |
+|------|--------|
+| `supabase/functions/fetch-creative-assets/index.ts` | Complete rewrite of Meta fetching logic to use creatives endpoint, download source files, handle videos |
+| Database migration | Add `full_asset_url`, `poster_url`, `source_resolution` columns |
+| `src/hooks/useMultiPlatformCreatives.ts` | Update to prefer `full_asset_url` over `thumbnail_url` |
+| `src/components/reporting/CreativePerformanceGrid.tsx` | Display video poster for video assets |
+| `src/components/reporting/CreativePreviewDialog.tsx` | Add video playback support for video assets |
+
+---
+
+## Data Flow
 
 ```text
-Card Click (any mode)
-    │
-    ├─► Opens CreativePreviewDialog
-    │       │
-    │       └─► Shows large image/video + metrics
-    │           │
-    │           └─► "View Breakdown" button (blended only)
-    │                   │
-    │                   └─► Opens CreativeBreakdownDialog
+Meta Creatives API
+       │
+       ├── Image Ads ─────► Fetch image_url (full-res)
+       │                         │
+       │                         ▼
+       │                    Download & Store
+       │                    creative-assets/meta/{concept}/{id}.jpg
+       │
+       └── Video Ads ─────► Fetch video_id
+                                 │
+                                 ▼
+                           Fetch /v19.0/{video_id}?fields=source,picture
+                                 │
+                                 ├── source → Store MP4
+                                 └── picture → Store poster.jpg
 ```
+
+---
+
+## Why This Works
+
+1. **Source files not CDN-transformed**: Meta's `image_url` and video `source` fields return the original uploaded files, not the 64x64 CDN previews
+2. **Video playback**: By storing the actual MP4, you can play videos in the preview dialog
+3. **Sharp thumbnails**: Video `picture` field returns a poster image typically at 720p+ resolution
+4. **Future-proof**: Full assets enable future features like video analysis, A/B comparisons, etc.
 
 ---
 
 ## Migration Strategy
 
-1. Deploy updated `fetch-creative-assets` function
-2. Run sync with `forceRefresh: true` to re-download assets at higher resolution
-3. Existing assets will be overwritten with better quality versions
+1. Deploy the updated function
+2. Run sync with `forceRefresh: true` to re-download all assets at full resolution
+3. Existing 336 records will be updated with new high-res URLs
+4. UI will immediately show sharp images once sync completes
 
 ---
 
-## What Gets Created/Modified
+## Video Playback in Preview Dialog
 
-| File | Type | Description |
-|------|------|-------------|
-| `supabase/functions/fetch-creative-assets/index.ts` | Modified | Fetch high-res images from `object_story_spec` |
-| `src/components/reporting/CreativePreviewDialog.tsx` | New | Full-size creative preview modal |
-| `src/components/reporting/CreativePerformanceGrid.tsx` | Modified | Add preview click handler |
+The CreativePreviewDialog will be enhanced to:
+- Detect if asset is video (by checking `asset_type` or file extension)
+- Show a video player with play button overlay
+- Fall back to poster image if video fails to load
 
