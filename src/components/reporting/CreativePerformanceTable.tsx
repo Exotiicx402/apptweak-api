@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ImageIcon, Film, LayoutGrid } from "lucide-react";
 import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
 import { ColumnConfig } from "./ColumnSettingsPopover";
+import { useMemo } from "react";
 
 interface CreativePerformanceTableProps {
   data: EnrichedCreative[];
@@ -62,8 +63,67 @@ function getPlatformLabel(platform: string): string {
   }
 }
 
+// Calculate min/max for each metric to determine color intensity
+function useMetricRanges(data: EnrichedCreative[]) {
+  return useMemo(() => {
+    if (data.length === 0) {
+      return { spend: { min: 0, max: 0 }, installs: { min: 0, max: 0 }, ctr: { min: 0, max: 0 }, cpi: { min: 0, max: 0 } };
+    }
+
+    const ranges = {
+      spend: { min: Infinity, max: -Infinity },
+      installs: { min: Infinity, max: -Infinity },
+      ctr: { min: Infinity, max: -Infinity },
+      cpi: { min: Infinity, max: -Infinity },
+    };
+
+    for (const item of data) {
+      if (item.spend < ranges.spend.min) ranges.spend.min = item.spend;
+      if (item.spend > ranges.spend.max) ranges.spend.max = item.spend;
+      if (item.installs < ranges.installs.min) ranges.installs.min = item.installs;
+      if (item.installs > ranges.installs.max) ranges.installs.max = item.installs;
+      if (item.ctr < ranges.ctr.min) ranges.ctr.min = item.ctr;
+      if (item.ctr > ranges.ctr.max) ranges.ctr.max = item.ctr;
+      if (item.cpi > 0 && item.cpi < ranges.cpi.min) ranges.cpi.min = item.cpi;
+      if (item.cpi > ranges.cpi.max) ranges.cpi.max = item.cpi;
+    }
+
+    // Handle edge cases where all values are the same
+    if (ranges.spend.min === Infinity) ranges.spend.min = 0;
+    if (ranges.installs.min === Infinity) ranges.installs.min = 0;
+    if (ranges.ctr.min === Infinity) ranges.ctr.min = 0;
+    if (ranges.cpi.min === Infinity) ranges.cpi.min = 0;
+
+    return ranges;
+  }, [data]);
+}
+
+// Get intensity (0-1) for a value within a range
+function getIntensity(value: number, min: number, max: number): number {
+  if (max === min) return 0.5;
+  return (value - min) / (max - min);
+}
+
+// Generate background color style based on intensity
+// Higher values = darker/more saturated
+function getHeatmapStyle(intensity: number, color: "blue" | "green" | "purple" | "amber"): React.CSSProperties {
+  if (intensity < 0.1) return {}; // No color for very low values
+  
+  const alpha = 0.15 + intensity * 0.45; // Range from 0.15 to 0.6 opacity
+  
+  const colors = {
+    blue: `hsla(217, 91%, 60%, ${alpha})`,    // Blue for spend
+    green: `hsla(142, 76%, 36%, ${alpha})`,   // Green for installs
+    purple: `hsla(262, 83%, 58%, ${alpha})`,  // Purple for CTR
+    amber: `hsla(38, 92%, 50%, ${alpha})`,    // Amber/orange for CPI (lower is better, so inverted)
+  };
+
+  return { backgroundColor: colors[color] };
+}
+
 export function CreativePerformanceTable({ data, showPlatform = false, columnConfig }: CreativePerformanceTableProps) {
   const { metrics, attributes } = columnConfig;
+  const ranges = useMetricRanges(data);
 
   return (
     <div className="rounded-md border">
@@ -172,22 +232,37 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
                 </TableCell>
               )}
               {metrics.spend && (
-                <TableCell className="text-right font-medium">
+                <TableCell 
+                  className="text-right font-medium"
+                  style={getHeatmapStyle(getIntensity(creative.spend, ranges.spend.min, ranges.spend.max), "blue")}
+                >
                   {formatCurrency(creative.spend)}
                 </TableCell>
               )}
               {metrics.installs && (
-                <TableCell className="text-right">
+                <TableCell 
+                  className="text-right"
+                  style={getHeatmapStyle(getIntensity(creative.installs, ranges.installs.min, ranges.installs.max), "green")}
+                >
                   {formatNumber(creative.installs)}
                 </TableCell>
               )}
               {metrics.ctr && (
-                <TableCell className="text-right">
+                <TableCell 
+                  className="text-right"
+                  style={getHeatmapStyle(getIntensity(creative.ctr, ranges.ctr.min, ranges.ctr.max), "purple")}
+                >
                   {formatPercent(creative.ctr)}
                 </TableCell>
               )}
               {metrics.cpi && (
-                <TableCell className="text-right">
+                <TableCell 
+                  className="text-right"
+                  style={getHeatmapStyle(
+                    creative.cpi > 0 ? 1 - getIntensity(creative.cpi, ranges.cpi.min, ranges.cpi.max) : 0,
+                    "amber"
+                  )}
+                >
                   {formatCurrency(creative.cpi)}
                 </TableCell>
               )}
