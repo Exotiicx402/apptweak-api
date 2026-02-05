@@ -1,5 +1,8 @@
 project_id = "agususzieosizftucxxq"
 
+ [functions.creative-insights]
+ verify_jwt = false
+ 
 [functions.slack-daily-report]
 verify_jwt = false
 
