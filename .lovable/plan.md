@@ -1,171 +1,152 @@
 
-# API Endpoint for Creative Performance Data (LLM Integration)
+
+# Enhance Creative Insights API with Stored Asset URLs
 
 ## Overview
-Create a new backend function that exposes aggregated creative performance data from all platforms (Meta, Snapchat, TikTok, and Google Ads) in a structured format optimized for LLM consumption and deep research.
+Integrate the existing `creative_assets` storage system with the `creative-insights` API endpoint, so LLMs receive both performance data AND visual asset URLs for each creative.
 
 ---
 
-## What This Enables
+## What Already Exists
 
-- **LLM Integration**: Connect Claude, GPT, Manus, or any other AI tool to analyze your creative performance data
-- **Cross-Platform Analysis**: Get blended creative metrics with platform breakdowns in a single API call
-- **Deep Research**: AI agents can query historical performance, identify patterns, and generate insights
-- **Automation**: Build workflows that automatically analyze and report on creative performance
+| Component | Status | Details |
+|-----------|--------|---------|
+| `creative_assets` table | ✅ Ready | 336 Meta assets already stored |
+| `creative-assets` storage bucket | ✅ Ready | Files stored at permanent public URLs |
+| `fetch-creative-assets` function | ✅ Built | Downloads from Meta/Snapchat APIs |
+| `creative-insights` API | ✅ Built | Returns performance data (no assets yet) |
 
 ---
 
-## API Design
+## What Gets Enhanced
 
-### Endpoint
-```
-POST /functions/v1/creative-insights
-```
+### 1. Update `creative-insights` API to Include Asset URLs
 
-### Request Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `startDate` | string | Yes | Start of date range (YYYY-MM-DD) |
-| `endDate` | string | Yes | End of date range (YYYY-MM-DD) |
-| `platforms` | array | No | Filter to specific platforms: `["meta", "snapchat", "tiktok", "google"]` |
-| `limit` | number | No | Max creatives to return (default: 50, max: 200) |
-| `sortBy` | string | No | Sort field: `spend`, `installs`, `ctr`, `cpi` (default: spend) |
-| `includeBreakdown` | boolean | No | Include per-platform breakdown for blended creatives (default: true) |
-| `minSpend` | number | No | Filter out creatives with spend below this threshold |
+Add a database lookup to match `ad_name` with stored assets and include the `thumbnail_url` in the response.
 
-### Response Structure
+**New response field per creative:**
 ```json
 {
-  "success": true,
+  "adName": "BrandPage | UGC | Video | CONCEPT001 | ...",
+  "metrics": { ... },
+  "parsed": { ... },
+  "platformBreakdown": [ ... ],
+  "assetUrl": "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/CONCEPT001/V1_HERO.jpg",
+  "assetType": "video"
+}
+```
+
+### 2. Add Optional Asset Sync Trigger
+
+Allow the `creative-insights` API to optionally trigger a fresh asset sync before returning data:
+- `syncAssets: true` in request body
+- Calls `fetch-creative-assets` first, then returns enriched data
+- Default: `false` (fast mode, uses cached assets)
+
+### 3. Summary Statistics for Assets
+
+Include asset coverage in the response metadata:
+```json
+{
   "meta": {
-    "dateRange": { "startDate": "2025-01-01", "endDate": "2025-01-31" },
-    "platformsQueried": ["meta", "snapchat", "tiktok", "google"],
     "totalCreatives": 47,
-    "generatedAt": "2025-02-05T12:00:00Z"
-  },
-  "totals": {
-    "spend": 125000.00,
-    "installs": 8500,
-    "avgCtr": 0.025,
-    "avgCpi": 14.70
-  },
-  "creatives": [
-    {
-      "adName": "BrandPage | UGC | Video | CONCEPT001 | Lifestyle | Trust | V1_HERO | Acquisition | CreatorX | Installs | app.com/download | 2025-01-15",
-      "metrics": {
-        "spend": 5200.00,
-        "installs": 380,
-        "ctr": 0.032,
-        "cpi": 13.68
-      },
-      "parsed": {
-        "page": "BrandPage",
-        "contentType": "UGC",
-        "assetType": "Video",
-        "conceptId": "CONCEPT001",
-        "category": "Lifestyle",
-        "angle": "Trust",
-        "uniqueIdentifier": "V1_HERO",
-        "tactic": "Acquisition",
-        "creativeOwner": "CreatorX",
-        "objective": "Installs",
-        "landingPage": "app.com/download",
-        "launchDate": "2025-01-15"
-      },
-      "platformBreakdown": [
-        { "platform": "meta", "spend": 3100.00, "installs": 230, "ctr": 0.035, "cpi": 13.48 },
-        { "platform": "snapchat", "spend": 1400.00, "installs": 95, "ctr": 0.028, "cpi": 14.74 },
-        { "platform": "tiktok", "spend": 700.00, "installs": 55, "ctr": 0.030, "cpi": 12.73 }
-      ],
-      "platformCount": 3
-    }
-  ],
-  "insights": {
-    "topPerformingAngle": "Trust",
-    "topPerformingAssetType": "Video",
-    "avgCpiByPlatform": {
-      "meta": 14.20,
-      "snapchat": 15.80,
-      "tiktok": 12.50,
-      "google": 18.40
-    }
+    "creativesWithAssets": 38,
+    "assetCoverage": 0.81
   }
 }
 ```
 
 ---
 
+## Data Flow
+
+```text
++------------------+     +------------------------+
+|  LLM / Agent     | --> |  creative-insights     |
++------------------+     +------------------------+
+                                   |
+         +-----------+-------------+-------------+
+         |           |             |             |
+         v           v             v             v
+    +--------+  +--------+  +------------+  +------------+
+    | Meta   |  | Snap   |  | creative_  |  | Storage    |
+    | BQ     |  | BQ     |  | assets DB  |  | Bucket     |
+    +--------+  +--------+  +------------+  +------------+
+                                  |               |
+                                  +-------+-------+
+                                          |
+                                          v
+                                  +----------------+
+                                  | Enriched       |
+                                  | Response with  |
+                                  | Asset URLs     |
+                                  +----------------+
+```
+
+---
+
+## Triggering Asset Sync (For Initial Population)
+
+You can manually sync all Meta creatives with this call:
+
+```bash
+curl -X POST https://agususzieosizftucxxq.supabase.co/functions/v1/fetch-creative-assets \
+  -H "Content-Type: application/json" \
+  -d '{"platforms": ["meta"], "forceRefresh": false}'
+```
+
+This downloads all Meta ad thumbnails and stores them permanently.
+
+---
+
 ## Technical Implementation
 
-### New Edge Function
-**File**: `supabase/functions/creative-insights/index.ts`
+### File Changes
 
-The function will:
-1. Accept date range and optional filters
-2. Query BigQuery for each platform in parallel (reusing existing query logic from platform-specific functions)
-3. Aggregate creatives by `ad_name` (the naming convention key)
-4. Parse each creative name using the 12-part naming convention
-5. Calculate blended metrics and platform breakdowns
-6. Include pre-computed insights for LLM context
+| File | Change |
+|------|--------|
+| `supabase/functions/creative-insights/index.ts` | Add Supabase client, query `creative_assets` table, join asset URLs to response |
 
-### Data Flow
-```text
-+------------------+     +-----------------------+
-|  LLM / Claude /  | --> |  creative-insights    |
-|  Manus / Agent   |     |  Edge Function        |
-+------------------+     +-----------------------+
-                                   |
-            +----------+-----------+-----------+
-            |          |           |           |
-            v          v           v           v
-      +--------+  +--------+  +--------+  +--------+
-      |  Meta  |  |  Snap  |  | TikTok |  | Google |
-      |   BQ   |  |   BQ   |  |   BQ   |  |   BQ   |
-      +--------+  +--------+  +--------+  +--------+
-```
+### Key Code Addition
 
-### Security
-- JWT verification disabled (public API for LLM access)
-- Consider adding an optional API key header for authentication if needed later
-- Rate limiting handled by Supabase infrastructure
+```typescript
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabase = createClient(supabaseUrl!, supabaseServiceKey!);
 
----
+// Fetch all stored assets for matching
+const { data: assets } = await supabase
+  .from('creative_assets')
+  .select('creative_name, thumbnail_url, asset_type');
 
-## Configuration Update
+const assetMap = new Map(
+  (assets || []).map(a => [a.creative_name, { url: a.thumbnail_url, type: a.asset_type }])
+);
 
-Add to `supabase/config.toml`:
-```toml
-[functions.creative-insights]
-verify_jwt = false
+// When building response, add asset info:
+for (const creative of blendedCreatives) {
+  const asset = assetMap.get(creative.adName);
+  creative.assetUrl = asset?.url || null;
+  creative.assetType = asset?.type || null;
+}
 ```
 
 ---
 
-## Example LLM Prompts This Enables
+## Why Meta is the Best Source
 
-Once the API is live, you can use prompts like:
-
-> "Analyze my creative performance from the last 30 days. Which angles are performing best? Are there any creatives that are significantly underperforming their CPI target of $15?"
-
-> "Compare the performance of UGC content vs Produced content across all platforms. Which platform shows the biggest difference?"
-
-> "Identify creatives that are performing well on Meta but poorly on TikTok. What might explain the difference?"
+1. **Already working**: 336 assets stored and ready
+2. **Stable URLs**: Meta provides permanent `thumbnail_url` values
+3. **Direct API**: No OAuth dance like Snapchat's 3-step media fetch
+4. **Naming match**: Uses exact `ad_name` that matches your convention
+5. **Coverage**: Meta likely has the most spend, so highest value assets
 
 ---
 
-## What Gets Created
+## Next Steps After This
 
-| File | Description |
-|------|-------------|
-| `supabase/functions/creative-insights/index.ts` | New edge function with full API implementation |
-| `supabase/config.toml` | Updated with new function config |
+- **Snapchat assets**: The function already supports Snapchat, but it's limited to 50 media items and URLs are ephemeral - could enhance this later
+- **Schedule sync**: Set up a daily cron job to sync new creatives automatically
+- **Asset type filtering**: Allow LLMs to request "only video creatives" or "only image creatives"
 
----
-
-## Future Enhancements (Not in This Plan)
-
-- Add time-series data for trend analysis
-- Include creative asset URLs from `creative_assets` table
-- Add comparison to previous period metrics
-- Implement caching for repeated queries
-- Add webhook support for automated reports
