@@ -3,10 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ImageIcon, Film, LayoutGrid } from "lucide-react";
 import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
+import { ColumnConfig } from "./ColumnSettingsPopover";
 
 interface CreativePerformanceTableProps {
   data: EnrichedCreative[];
   showPlatform?: boolean;
+  columnConfig: ColumnConfig;
 }
 
 function formatCurrency(value: number): string {
@@ -60,7 +62,9 @@ function getPlatformLabel(platform: string): string {
   }
 }
 
-export function CreativePerformanceTable({ data, showPlatform = false }: CreativePerformanceTableProps) {
+export function CreativePerformanceTable({ data, showPlatform = false, columnConfig }: CreativePerformanceTableProps) {
+  const { metrics, attributes } = columnConfig;
+
   return (
     <div className="rounded-md border">
       <Table>
@@ -68,14 +72,17 @@ export function CreativePerformanceTable({ data, showPlatform = false }: Creativ
           <TableRow>
             <TableHead className="min-w-[280px]">Creative Name</TableHead>
             {showPlatform && <TableHead>Platform</TableHead>}
-            <TableHead>Asset Type</TableHead>
-            <TableHead>Angle</TableHead>
-            <TableHead>Tactic</TableHead>
-            <TableHead>Launch Date</TableHead>
-            <TableHead className="text-right">Spend</TableHead>
-            <TableHead className="text-right">Installs</TableHead>
-            <TableHead className="text-right">CTR</TableHead>
-            <TableHead className="text-right">CPI</TableHead>
+            {attributes.assetType && <TableHead>Asset Type</TableHead>}
+            {attributes.category && <TableHead>Category</TableHead>}
+            {attributes.angle && <TableHead>Messaging Angle</TableHead>}
+            {attributes.tactic && <TableHead>Hook Tactic</TableHead>}
+            {attributes.contentType && <TableHead>Content Type</TableHead>}
+            {attributes.conceptId && <TableHead>Concept ID</TableHead>}
+            {attributes.launchDate && <TableHead>Launch Date</TableHead>}
+            {metrics.spend && <TableHead className="text-right">Spend</TableHead>}
+            {metrics.installs && <TableHead className="text-right">Installs</TableHead>}
+            {metrics.ctr && <TableHead className="text-right">CTR</TableHead>}
+            {metrics.cpi && <TableHead className="text-right">CPI</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -102,45 +109,88 @@ export function CreativePerformanceTable({ data, showPlatform = false }: Creativ
                   </Badge>
                 </TableCell>
               )}
-              <TableCell>
-                <Badge variant="secondary" className="gap-1">
-                  {getAssetTypeIcon(creative.parsed.assetType || "IMG")}
-                  {getAssetTypeLabel(creative.parsed.assetType || "IMG")}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                {creative.parsed.angle ? (
-                  <Badge variant="outline">{creative.parsed.angle}</Badge>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {creative.parsed.tactic ? (
-                  <Badge variant="outline">{creative.parsed.tactic}</Badge>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {creative.parsed.launchDate ? (
-                  <span className="text-sm">{creative.parsed.launchDate}</span>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell className="text-right font-medium">
-                {formatCurrency(creative.spend)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatNumber(creative.installs)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatPercent(creative.ctr)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(creative.cpi)}
-              </TableCell>
+              {attributes.assetType && (
+                <TableCell>
+                  <Badge variant="secondary" className="gap-1">
+                    {getAssetTypeIcon(creative.parsed.assetType || "IMG")}
+                    {getAssetTypeLabel(creative.parsed.assetType || "IMG")}
+                  </Badge>
+                </TableCell>
+              )}
+              {attributes.category && (
+                <TableCell>
+                  {creative.parsed.category ? (
+                    <Badge variant="outline">{creative.parsed.category}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {attributes.angle && (
+                <TableCell>
+                  {creative.parsed.angle ? (
+                    <Badge variant="outline">{creative.parsed.angle}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {attributes.tactic && (
+                <TableCell>
+                  {creative.parsed.tactic ? (
+                    <Badge variant="outline">{creative.parsed.tactic}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {attributes.contentType && (
+                <TableCell>
+                  {creative.parsed.contentType ? (
+                    <Badge variant="outline">{creative.parsed.contentType}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {attributes.conceptId && (
+                <TableCell>
+                  {creative.parsed.conceptId ? (
+                    <span className="text-sm font-mono">{creative.parsed.conceptId}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {attributes.launchDate && (
+                <TableCell>
+                  {creative.parsed.launchDate ? (
+                    <span className="text-sm">{creative.parsed.launchDate}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {metrics.spend && (
+                <TableCell className="text-right font-medium">
+                  {formatCurrency(creative.spend)}
+                </TableCell>
+              )}
+              {metrics.installs && (
+                <TableCell className="text-right">
+                  {formatNumber(creative.installs)}
+                </TableCell>
+              )}
+              {metrics.ctr && (
+                <TableCell className="text-right">
+                  {formatPercent(creative.ctr)}
+                </TableCell>
+              )}
+              {metrics.cpi && (
+                <TableCell className="text-right">
+                  {formatCurrency(creative.cpi)}
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>
