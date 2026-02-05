@@ -209,7 +209,7 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent"
+                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent hover:text-blue-600"
                   onClick={() => handleSort("spend")}
                 >
                   Spend
@@ -222,7 +222,7 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent"
+                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent hover:text-blue-600"
                   onClick={() => handleSort("installs")}
                 >
                   Installs
@@ -235,7 +235,7 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent"
+                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent hover:text-blue-600"
                   onClick={() => handleSort("ctr")}
                 >
                   CTR
@@ -248,7 +248,7 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent"
+                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent hover:text-blue-600"
                   onClick={() => handleSort("cpi")}
                 >
                   CPI
