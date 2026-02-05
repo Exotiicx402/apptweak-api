@@ -5,16 +5,18 @@
    DialogTitle,
  } from "@/components/ui/dialog";
  import { Badge } from "@/components/ui/badge";
- import { Button } from "@/components/ui/button";
  import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
  import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
- import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3 } from "lucide-react";
+import { useMemo } from "react";
  
  interface CreativePreviewDialogProps {
    open: boolean;
    onOpenChange: (open: boolean) => void;
    creative: EnrichedCreative | null;
-   onViewBreakdown?: () => void;
+  platformBreakdown?: EnrichedCreative[];
    isBlended?: boolean;
  }
  
@@ -53,22 +55,116 @@
    return "Image";
  }
  
+function getPlatformLabel(platform: string): string {
+  switch (platform) {
+    case "meta": return "Meta";
+    case "snapchat": return "Snapchat";
+    case "tiktok": return "TikTok";
+    case "google": return "Google Ads";
+    default: return platform;
+  }
+}
+
+function getPlatformColor(platform: string): string {
+  switch (platform) {
+    case "meta": return "bg-blue-100 text-blue-800 border-blue-200";
+    case "snapchat": return "bg-yellow-100 text-yellow-800 border-yellow-200";
+    case "tiktok": return "bg-pink-100 text-pink-800 border-pink-200";
+    case "google": return "bg-red-100 text-red-800 border-red-200";
+    default: return "";
+  }
+}
+
  export function CreativePreviewDialog({
    open,
    onOpenChange,
    creative,
-   onViewBreakdown,
+  platformBreakdown = [],
    isBlended = false,
  }: CreativePreviewDialogProps) {
+  // Calculate totals for platform breakdown
+  const { totals, ranges } = useMemo(() => {
+    if (!platformBreakdown || platformBreakdown.length === 0) {
+      return {
+        totals: { spend: 0, installs: 0, avgCtr: 0 },
+        ranges: {
+          spend: { min: 0, max: 0 },
+          installs: { min: 0, max: 0 },
+          ctr: { min: 0, max: 0 },
+          cpi: { min: 0, max: 0 },
+        },
+      };
+    }
+
+    const result = platformBreakdown.reduce(
+      (acc, item) => ({
+        spend: acc.spend + item.spend,
+        installs: acc.installs + item.installs,
+        ctrSum: acc.ctrSum + item.ctr,
+        spendMin: Math.min(acc.spendMin, item.spend),
+        spendMax: Math.max(acc.spendMax, item.spend),
+        installsMin: Math.min(acc.installsMin, item.installs),
+        installsMax: Math.max(acc.installsMax, item.installs),
+        ctrMin: Math.min(acc.ctrMin, item.ctr),
+        ctrMax: Math.max(acc.ctrMax, item.ctr),
+        cpiMin: item.cpi > 0 ? Math.min(acc.cpiMin, item.cpi) : acc.cpiMin,
+        cpiMax: Math.max(acc.cpiMax, item.cpi),
+      }),
+      { 
+        spend: 0, installs: 0, ctrSum: 0, 
+        spendMin: Infinity, spendMax: -Infinity,
+        installsMin: Infinity, installsMax: -Infinity,
+        ctrMin: Infinity, ctrMax: -Infinity,
+        cpiMin: Infinity, cpiMax: -Infinity,
+      }
+    );
+
+    const avgCtr = platformBreakdown.length > 0 ? result.ctrSum / platformBreakdown.length : 0;
+
+    return {
+      totals: {
+        spend: result.spend,
+        installs: result.installs,
+        avgCtr,
+      },
+      ranges: {
+        spend: { min: result.spendMin === Infinity ? 0 : result.spendMin, max: result.spendMax === -Infinity ? 0 : result.spendMax },
+        installs: { min: result.installsMin === Infinity ? 0 : result.installsMin, max: result.installsMax === -Infinity ? 0 : result.installsMax },
+        ctr: { min: result.ctrMin === Infinity ? 0 : result.ctrMin, max: result.ctrMax === -Infinity ? 0 : result.ctrMax },
+        cpi: { min: result.cpiMin === Infinity ? 0 : result.cpiMin, max: result.cpiMax === -Infinity ? 0 : result.cpiMax },
+      },
+    };
+  }, [platformBreakdown]);
+
+  const getIntensity = (value: number, min: number, max: number): number => {
+    if (max === min) return 0.5;
+    return (value - min) / (max - min);
+  };
+
+  const getHeatmapStyle = (intensity: number, color: "blue" | "green" | "purple" | "amber"): React.CSSProperties => {
+    if (intensity < 0.1) return {};
+    const alpha = 0.15 + intensity * 0.45;
+    
+    const colors = {
+      blue: `hsla(217, 91%, 60%, ${alpha})`,
+      green: `hsla(142, 76%, 36%, ${alpha})`,
+      purple: `hsla(262, 83%, 58%, ${alpha})`,
+      amber: `hsla(38, 92%, 50%, ${alpha})`,
+    };
+
+    return { backgroundColor: colors[color] };
+  };
+
    if (!creative) return null;
  
    const { parsed } = creative;
    const assetType = parsed.assetType || "IMG";
    const hasImage = !!creative.assetUrl;
+  const showBreakdown = isBlended && platformBreakdown.length > 0;
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>
-       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
          <DialogHeader>
            <DialogTitle className="text-base font-medium pr-8 break-words">
              {creative.adName}
@@ -135,7 +231,7 @@
                    <div className="flex items-center gap-2">
                      <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                      <span className="text-sm text-muted-foreground">Content Type:</span>
-                     <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
                        {parsed.contentType}
                      </Badge>
                    </div>
@@ -144,7 +240,7 @@
                    <div className="flex items-center gap-2">
                      <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                      <span className="text-sm text-muted-foreground">Angle:</span>
-                     <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">
                        {parsed.angle}
                      </Badge>
                    </div>
@@ -153,7 +249,7 @@
                    <div className="flex items-center gap-2">
                      <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                      <span className="text-sm text-muted-foreground">Tactic:</span>
-                     <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
                        {parsed.tactic}
                      </Badge>
                    </div>
@@ -162,23 +258,116 @@
                    <div className="flex items-center gap-2">
                      <Layers className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                      <span className="text-sm text-muted-foreground">Category:</span>
-                     <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                    <Badge variant="outline" className="bg-violet-500/10 text-violet-700 border-violet-500/20">
                        {parsed.category}
                      </Badge>
                    </div>
                  )}
                </div>
              </div>
- 
-             {/* View Breakdown Button (for blended mode) */}
-             {isBlended && onViewBreakdown && (
-               <Button onClick={onViewBreakdown} variant="outline" className="w-full">
-                 <Layers className="h-4 w-4 mr-2" />
-                 View Platform Breakdown
-               </Button>
-             )}
            </div>
          </div>
+
+        {/* Platform Breakdown Section (inline for blended mode) */}
+        {showBreakdown && (
+          <>
+            <Separator className="my-4" />
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="h-5 w-5 text-muted-foreground" />
+                <h4 className="text-sm font-medium">Platform Breakdown</h4>
+              </div>
+              
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Platform</TableHead>
+                      <TableHead className="text-right">Spend</TableHead>
+                      <TableHead className="text-right">Installs</TableHead>
+                      <TableHead className="text-right">CTR</TableHead>
+                      <TableHead className="text-right">CPI</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {platformBreakdown.map((item) => (
+                      <TableRow key={item.platform}>
+                        <TableCell>
+                          <Badge variant="outline" className={getPlatformColor(item.platform)}>
+                            {getPlatformLabel(item.platform)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell 
+                          className="text-right font-medium"
+                          style={getHeatmapStyle(getIntensity(item.spend, ranges.spend.min, ranges.spend.max), "blue")}
+                        >
+                          {formatCurrency(item.spend)}
+                        </TableCell>
+                        <TableCell 
+                          className="text-right"
+                          style={getHeatmapStyle(getIntensity(item.installs, ranges.installs.min, ranges.installs.max), "green")}
+                        >
+                          {formatNumber(item.installs)}
+                        </TableCell>
+                        <TableCell 
+                          className="text-right"
+                          style={getHeatmapStyle(getIntensity(item.ctr, ranges.ctr.min, ranges.ctr.max), "purple")}
+                        >
+                          {formatPercent(item.ctr)}
+                        </TableCell>
+                        <TableCell 
+                          className="text-right"
+                          style={getHeatmapStyle(
+                            item.cpi > 0 ? 1 - getIntensity(item.cpi, ranges.cpi.min, ranges.cpi.max) : 0,
+                            "amber"
+                          )}
+                        >
+                          {formatCurrency(item.cpi)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {/* Totals row */}
+                    <TableRow className="bg-muted/50 font-medium">
+                      <TableCell>
+                        <span className="font-semibold">Total</span>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatCurrency(totals.spend)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatNumber(totals.installs)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatPercent(totals.avgCtr)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {totals.installs > 0 ? formatCurrency(totals.spend / totals.installs) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Platform distribution badges */}
+              <div className="mt-4 flex gap-2 flex-wrap">
+                {platformBreakdown.map((item) => {
+                  const percentage = totals.spend > 0 ? (item.spend / totals.spend) * 100 : 0;
+                  return (
+                    <div 
+                      key={item.platform}
+                      className="flex items-center gap-2 text-sm"
+                    >
+                      <Badge variant="outline" className={getPlatformColor(item.platform)}>
+                        {getPlatformLabel(item.platform)}
+                      </Badge>
+                      <span className="text-muted-foreground">{percentage.toFixed(1)}% of spend</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
        </DialogContent>
      </Dialog>
    );
