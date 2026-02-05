@@ -1,10 +1,11 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ImageIcon, Film, LayoutGrid } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
 import { ColumnConfig } from "./ColumnSettingsPopover";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 interface CreativePerformanceTableProps {
   data: EnrichedCreative[];
@@ -61,6 +62,14 @@ function getPlatformLabel(platform: string): string {
     case "blended": return "Blended";
     default: return platform;
   }
+}
+
+type SortColumn = "spend" | "installs" | "ctr" | "cpi" | null;
+type SortDirection = "asc" | "desc";
+
+interface SortState {
+  column: SortColumn;
+  direction: SortDirection;
 }
 
 // Calculate min/max for each metric to determine color intensity
@@ -124,6 +133,62 @@ function getHeatmapStyle(intensity: number, color: "blue" | "green" | "purple" |
 export function CreativePerformanceTable({ data, showPlatform = false, columnConfig }: CreativePerformanceTableProps) {
   const { metrics, attributes } = columnConfig;
   const ranges = useMetricRanges(data);
+  const [sort, setSort] = useState<SortState>({ column: "spend", direction: "desc" });
+
+  // Sort the data based on current sort state
+  const sortedData = useMemo(() => {
+    if (!sort.column) return data;
+
+    return [...data].sort((a, b) => {
+      let aVal: number, bVal: number;
+      
+      switch (sort.column) {
+        case "spend":
+          aVal = a.spend;
+          bVal = b.spend;
+          break;
+        case "installs":
+          aVal = a.installs;
+          bVal = b.installs;
+          break;
+        case "ctr":
+          aVal = a.ctr;
+          bVal = b.ctr;
+          break;
+        case "cpi":
+          aVal = a.cpi;
+          bVal = b.cpi;
+          break;
+        default:
+          return 0;
+      }
+
+      if (sort.direction === "asc") {
+        return aVal - bVal;
+      }
+      return bVal - aVal;
+    });
+  }, [data, sort]);
+
+  const handleSort = (column: SortColumn) => {
+    setSort((prev) => {
+      if (prev.column === column) {
+        // Toggle direction if same column
+        return { column, direction: prev.direction === "desc" ? "asc" : "desc" };
+      }
+      // New column, default to descending
+      return { column, direction: "desc" };
+    });
+  };
+
+  const getSortIcon = (column: SortColumn) => {
+    if (sort.column !== column) {
+      return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
+    }
+    return sort.direction === "desc" 
+      ? <ArrowDown className="h-4 w-4 ml-1" />
+      : <ArrowUp className="h-4 w-4 ml-1" />;
+  };
 
   return (
     <div className="rounded-md border">
@@ -139,14 +204,62 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
             {attributes.contentType && <TableHead>Content Type</TableHead>}
             {attributes.conceptId && <TableHead>Concept ID</TableHead>}
             {attributes.launchDate && <TableHead>Launch Date</TableHead>}
-            {metrics.spend && <TableHead className="text-right">Spend</TableHead>}
-            {metrics.installs && <TableHead className="text-right">Installs</TableHead>}
-            {metrics.ctr && <TableHead className="text-right">CTR</TableHead>}
-            {metrics.cpi && <TableHead className="text-right">CPI</TableHead>}
+            {metrics.spend && (
+              <TableHead className="text-right">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent"
+                  onClick={() => handleSort("spend")}
+                >
+                  Spend
+                  {getSortIcon("spend")}
+                </Button>
+              </TableHead>
+            )}
+            {metrics.installs && (
+              <TableHead className="text-right">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent"
+                  onClick={() => handleSort("installs")}
+                >
+                  Installs
+                  {getSortIcon("installs")}
+                </Button>
+              </TableHead>
+            )}
+            {metrics.ctr && (
+              <TableHead className="text-right">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent"
+                  onClick={() => handleSort("ctr")}
+                >
+                  CTR
+                  {getSortIcon("ctr")}
+                </Button>
+              </TableHead>
+            )}
+            {metrics.cpi && (
+              <TableHead className="text-right">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 px-2 -mr-2 font-medium hover:bg-transparent"
+                  onClick={() => handleSort("cpi")}
+                >
+                  CPI
+                  {getSortIcon("cpi")}
+                </Button>
+              </TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((creative) => (
+          {sortedData.map((creative) => (
             <TableRow key={`${creative.platform}-${creative.adId}`}>
               <TableCell>
                 <TooltipProvider>
