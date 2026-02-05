@@ -8,6 +8,7 @@ import { ImageIcon, Film, LayoutGrid, DollarSign, Download, MousePointer, Target
 import { useMultiPlatformCreatives, EnrichedCreative, Platform } from "@/hooks/useMultiPlatformCreatives";
 import { CreativePerformanceTable } from "./CreativePerformanceTable";
 import { PlatformFilterBar } from "./PlatformFilterBar";
+import { ColumnSettingsPopover, ColumnConfig, defaultColumnConfig } from "./ColumnSettingsPopover";
 
 type ViewMode = "cards" | "table";
 
@@ -79,9 +80,16 @@ function getPlatformBadgeVariant(platform: string): "default" | "secondary" | "o
   }
 }
 
-function CreativeCard({ creative, showPlatform }: { creative: EnrichedCreative; showPlatform: boolean }) {
+interface CreativeCardProps {
+  creative: EnrichedCreative;
+  showPlatform: boolean;
+  columnConfig: ColumnConfig;
+}
+
+function CreativeCard({ creative, showPlatform, columnConfig }: CreativeCardProps) {
   const { parsed } = creative;
   const assetType = parsed.assetType || "IMG";
+  const { metrics, attributes } = columnConfig;
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -117,53 +125,76 @@ function CreativeCard({ creative, showPlatform }: { creative: EnrichedCreative; 
 
         {/* Metadata badges */}
         <div className="flex flex-wrap gap-1.5 mb-4">
-          {parsed.angle && (
+          {attributes.angle && parsed.angle && (
             <Badge variant="secondary" className="text-xs">
               Angle: {parsed.angle}
             </Badge>
           )}
-          {parsed.tactic && (
+          {attributes.tactic && parsed.tactic && (
             <Badge variant="outline" className="text-xs">
               Tactic: {parsed.tactic}
             </Badge>
           )}
-          {parsed.category && (
+          {attributes.category && parsed.category && (
             <Badge variant="outline" className="text-xs">
               {parsed.category}
+            </Badge>
+          )}
+          {attributes.contentType && parsed.contentType && (
+            <Badge variant="outline" className="text-xs">
+              {parsed.contentType}
+            </Badge>
+          )}
+          {attributes.conceptId && parsed.conceptId && (
+            <Badge variant="outline" className="text-xs">
+              ID: {parsed.conceptId}
+            </Badge>
+          )}
+          {attributes.launchDate && parsed.launchDate && (
+            <Badge variant="outline" className="text-xs">
+              {parsed.launchDate}
             </Badge>
           )}
         </div>
 
         {/* Performance metrics */}
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <div className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Spend</p>
-              <p className="font-medium">{formatCurrency(creative.spend)}</p>
+          {metrics.spend && (
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">Spend</p>
+                <p className="font-medium">{formatCurrency(creative.spend)}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Download className="h-4 w-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Installs</p>
-              <p className="font-medium">{formatNumber(creative.installs)}</p>
+          )}
+          {metrics.installs && (
+            <div className="flex items-center gap-2">
+              <Download className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">Installs</p>
+                <p className="font-medium">{formatNumber(creative.installs)}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <MousePointer className="h-4 w-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">CTR</p>
-              <p className="font-medium">{formatPercent(creative.ctr)}</p>
+          )}
+          {metrics.ctr && (
+            <div className="flex items-center gap-2">
+              <MousePointer className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">CTR</p>
+                <p className="font-medium">{formatPercent(creative.ctr)}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">CPI</p>
-              <p className="font-medium">{formatCurrency(creative.cpi)}</p>
+          )}
+          {metrics.cpi && (
+            <div className="flex items-center gap-2">
+              <Target className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">CPI</p>
+                <p className="font-medium">{formatCurrency(creative.cpi)}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -205,6 +236,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
     platformCounts 
   } = useMultiPlatformCreatives();
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const [columnConfig, setColumnConfig] = useState<ColumnConfig>(defaultColumnConfig);
 
   useEffect(() => {
     if (dataFetched && startDate && endDate) {
@@ -238,19 +270,22 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
     <div className="flex flex-col gap-4 mb-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Top Creatives</h2>
-        <ToggleGroup 
-          type="single" 
-          value={viewMode} 
-          onValueChange={(value) => value && setViewMode(value as ViewMode)}
-          className="border rounded-md"
-        >
-          <ToggleGroupItem value="cards" aria-label="Card view" className="px-3">
-            <Grid3X3 className="h-4 w-4" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="table" aria-label="Table view" className="px-3">
-            <TableIcon className="h-4 w-4" />
-          </ToggleGroupItem>
-        </ToggleGroup>
+        <div className="flex items-center gap-2">
+          <ColumnSettingsPopover config={columnConfig} onChange={setColumnConfig} />
+          <ToggleGroup 
+            type="single" 
+            value={viewMode} 
+            onValueChange={(value) => value && setViewMode(value as ViewMode)}
+            className="border rounded-md"
+          >
+            <ToggleGroupItem value="cards" aria-label="Card view" className="px-3">
+              <Grid3X3 className="h-4 w-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="table" aria-label="Table view" className="px-3">
+              <TableIcon className="h-4 w-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
       </div>
       <PlatformFilterBar
         activePlatform={activePlatform}
@@ -319,11 +354,16 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
       {viewMode === "cards" ? (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.map((creative) => (
-            <CreativeCard key={`${creative.platform}-${creative.adId}`} creative={creative} showPlatform={showPlatformBadge} />
+            <CreativeCard 
+              key={`${creative.platform}-${creative.adId}`} 
+              creative={creative} 
+              showPlatform={showPlatformBadge}
+              columnConfig={columnConfig}
+            />
           ))}
         </div>
       ) : (
-        <CreativePerformanceTable data={data} showPlatform={showPlatformBadge} />
+        <CreativePerformanceTable data={data} showPlatform={showPlatformBadge} columnConfig={columnConfig} />
       )}
     </div>
   );
