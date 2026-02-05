@@ -255,17 +255,11 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [columnConfig, setColumnConfig] = useState<ColumnConfig>(defaultColumnConfig);
   const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
-  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleCreativeClick = (creative: EnrichedCreative) => {
     setSelectedCreative(creative);
     setPreviewOpen(true);
-  };
-
-  const handleViewBreakdown = () => {
-    setPreviewOpen(false);
-    setBreakdownOpen(true);
   };
 
   const platformBreakdown = selectedCreative 
@@ -411,15 +405,8 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
         open={previewOpen}
         onOpenChange={setPreviewOpen}
         creative={selectedCreative}
-        onViewBreakdown={handleViewBreakdown}
-        isBlended={activePlatform === "blended"}
-      />
-
-      <CreativeBreakdownDialog
-        open={breakdownOpen}
-        onOpenChange={setBreakdownOpen}
-        creative={selectedCreative}
         platformBreakdown={platformBreakdown}
+        isBlended={activePlatform === "blended"}
       />
     </div>
   );
