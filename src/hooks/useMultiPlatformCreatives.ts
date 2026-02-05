@@ -17,6 +17,8 @@ interface CreativeAsset {
   creative_name: string;
   thumbnail_url: string | null;
   asset_type: string | null;
+  full_asset_url: string | null;
+  poster_url: string | null;
 }
 
 export type Platform = "meta" | "snapchat" | "tiktok" | "google" | "blended";
@@ -32,6 +34,8 @@ export interface EnrichedCreative {
   parsed: ParsedCreativeName;
   assetUrl: string | null;
   assetType: string | null;
+  fullAssetUrl: string | null;
+  posterUrl: string | null;
 }
 
 interface PlatformData {
@@ -45,7 +49,7 @@ export function useMultiPlatformCreatives() {
   const [snapchat, setSnapchat] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [tiktok, setTiktok] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [google, setGoogle] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
-  const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null }>>(new Map());
+  const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>>(new Map());
   const [activePlatform, setActivePlatform] = useState<Platform>("blended"); // Default to blended
 
   const fetchPlatform = async (
@@ -82,18 +86,20 @@ export function useMultiPlatformCreatives() {
     try {
       const { data, error } = await supabase
         .from('creative_assets')
-        .select('creative_name, thumbnail_url, asset_type');
+        .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url');
 
       if (error) {
         console.error('Error fetching creative assets:', error);
         return;
       }
 
-      const map = new Map<string, { url: string | null; type: string | null }>();
+      const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>();
       for (const asset of (data as CreativeAsset[]) || []) {
         map.set(asset.creative_name, {
-          url: asset.thumbnail_url,
+          url: asset.full_asset_url || asset.thumbnail_url,
           type: asset.asset_type,
+          fullAssetUrl: asset.full_asset_url,
+          posterUrl: asset.poster_url,
         });
       }
       setAssetMap(map);
@@ -135,6 +141,8 @@ export function useMultiPlatformCreatives() {
       parsed: parseCreativeName(ad.ad_name),
         assetUrl: asset?.url || null,
         assetType: asset?.type || null,
+        fullAssetUrl: asset?.fullAssetUrl || null,
+        posterUrl: asset?.posterUrl || null,
       };
     });
   }, [assetMap]);
