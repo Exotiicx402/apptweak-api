@@ -66,10 +66,10 @@
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>
-       <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl w-[95vw]">
          <DialogHeader>
            <DialogTitle className="text-lg font-semibold">Platform Breakdown</DialogTitle>
-           <p className="text-sm text-muted-foreground mt-1 truncate">{creative.adName}</p>
+          <p className="text-sm text-muted-foreground mt-1 break-words">{creative.adName}</p>
          </DialogHeader>
  
          <div className="mt-4">
