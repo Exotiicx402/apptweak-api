@@ -1,4 +1,5 @@
  import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
  
  const corsHeaders = {
    "Access-Control-Allow-Origin": "*",
@@ -324,6 +325,8 @@
      cpi: number;
    };
    parsed: ParsedCreativeName;
+  assetUrl: string | null;
+  assetType: string | null;
    platformBreakdown: Array<{
      platform: string;
      spend: number;
@@ -362,6 +365,8 @@
          cpi,
        },
        parsed: parseCreativeName(adName),
+        assetUrl: null,
+        assetType: null,
        platformBreakdown: ads.map(a => ({
          platform: a.platform,
          spend: a.spend,
@@ -436,6 +441,7 @@
        sortBy = "spend",
        includeBreakdown = true,
        minSpend = 0,
+      syncAssets = false,
      } = body;
  
      if (!startDate || !endDate) {
@@ -450,6 +456,38 @@
  
      console.log(`Creative Insights API - Date range: ${startDate} to ${endDate}, platforms: ${platforms.join(", ")}`);
  
+      // Initialize Supabase client
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      
+      if (!supabaseUrl || !supabaseServiceKey) {
+        throw new Error("Missing Supabase configuration");
+      }
+      
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+      // Optionally trigger asset sync first
+      if (syncAssets) {
+        console.log("Triggering asset sync before fetching data...");
+        try {
+          const syncResponse = await fetch(`${supabaseUrl}/functions/v1/fetch-creative-assets`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({ platforms: ["meta"], forceRefresh: false }),
+          });
+          if (syncResponse.ok) {
+            console.log("Asset sync completed successfully");
+          } else {
+            console.warn("Asset sync failed, continuing with cached assets");
+          }
+        } catch (syncError) {
+          console.warn("Asset sync error, continuing with cached assets:", syncError);
+        }
+      }
+
      const accessToken = await getGoogleAccessToken();
  
      // Fetch all platforms in parallel
@@ -478,8 +516,34 @@
  
      console.log(`Fetched ${allAds.length} total ads across ${platformsQueried.length} platforms`);
  
+      // Fetch stored creative assets from database
+      const { data: storedAssets, error: assetsError } = await supabase
+        .from('creative_assets')
+        .select('creative_name, thumbnail_url, asset_type');
+
+      if (assetsError) {
+        console.warn("Failed to fetch stored assets:", assetsError.message);
+      }
+
+      // Build asset lookup map
+      const assetMap = new Map<string, { url: string | null; type: string | null }>(
+        (storedAssets || []).map((a: any) => [
+          a.creative_name,
+          { url: a.thumbnail_url, type: a.asset_type }
+        ])
+      );
+
+      console.log(`Loaded ${assetMap.size} stored creative assets for matching`);
+
      // Blend creatives by ad_name
      let blendedCreatives = blendCreatives(allAds);
+
+      // Enrich with asset URLs
+      for (const creative of blendedCreatives) {
+        const asset = assetMap.get(creative.adName);
+        creative.assetUrl = asset?.url || null;
+        creative.assetType = asset?.type || null;
+      }
  
      // Apply minSpend filter
      if (minSpend > 0) {
@@ -505,6 +569,12 @@
      // Apply limit
      const limitedCreatives = blendedCreatives.slice(0, effectiveLimit);
  
+      // Calculate asset coverage
+      const creativesWithAssets = blendedCreatives.filter(c => c.assetUrl !== null).length;
+      const assetCoverage = blendedCreatives.length > 0 
+        ? Math.round((creativesWithAssets / blendedCreatives.length) * 100) / 100 
+        : 0;
+
      // Calculate totals
      const totalSpend = allAds.reduce((sum, a) => sum + a.spend, 0);
      const totalInstalls = allAds.reduce((sum, a) => sum + a.installs, 0);
@@ -521,6 +591,8 @@
          metrics: c.metrics,
          parsed: c.parsed,
          platformCount: c.platformCount,
+          assetUrl: c.assetUrl,
+          assetType: c.assetType,
        };
        if (includeBreakdown) {
          base.platformBreakdown = c.platformBreakdown;
@@ -538,6 +610,8 @@
            platformsQueried,
            totalCreatives: blendedCreatives.length,
            returnedCreatives: limitedCreatives.length,
+            creativesWithAssets,
+            assetCoverage,
            generatedAt: new Date().toISOString(),
            durationMs,
          },
