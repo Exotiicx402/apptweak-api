@@ -1,125 +1,132 @@
-# Enhance Creative Insights API with Stored Asset URLs
 
-## Overview
-Integrate the existing `creative_assets` storage system with the `creative-insights` API endpoint, so LLMs receive both performance data AND visual asset URLs for each creative.
 
----
+# Fix Blurry Thumbnails & Add Creative Preview
 
-## Status: ✅ Complete
+## Problem Analysis
 
-All components are now fully integrated:
+### Why Thumbnails are Blurry
+The current `fetch-creative-assets` function downloads Meta's `thumbnail_url`, which is a **64x64 pixel** preview image. This is visible in the stored URLs which contain `p64x64_q75` parameters.
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| `creative_assets` table | ✅ Ready | 336+ Meta assets stored |
-| `creative-assets` storage bucket | ✅ Ready | Files stored at permanent public URLs |
-| `fetch-creative-assets` function | ✅ Built | Downloads from Meta/Snapchat APIs |
-| `creative-insights` API | ✅ Enhanced | Returns performance data WITH asset URLs |
-| Creative Cards UI | ✅ Enhanced | Displays thumbnails from stored assets |
+### Why There's No Preview
+The creative cards have no click handler for viewing the full creative. In "Blended" mode, clicking opens the platform breakdown dialog, not an image viewer.
 
 ---
 
-## What Was Implemented
+## Solution
 
-### 1. Update `creative-insights` API to Include Asset URLs
+### Part 1: Fetch High-Resolution Images from Meta
 
-Added database lookup to match `ad_name` with stored assets. Response now includes:
-
-```json
-{
-  "adName": "BrandPage | UGC | Video | CONCEPT001 | ...",
-  "metrics": { ... },
-  "parsed": { ... },
-  "platformBreakdown": [ ... ],
-  "assetUrl": "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/CONCEPT001/V1_HERO.jpg",
-  "assetType": "image"
-}
-```
-
-### 2. Add Optional Asset Sync Trigger
-
-The API supports `syncAssets: true` in request body to trigger fresh asset sync before returning data.
-- `syncAssets: true` in request body
-- Calls `fetch-creative-assets` first, then returns enriched data
-- Default: `false` (fast mode, uses cached assets)
-
-### 3. Summary Statistics for Assets
-
-Response metadata includes asset coverage stats:
-```json
-{
-  "meta": {
-    "totalCreatives": 47,
-    "creativesWithAssets": 38,
-    "assetCoverage": 0.81
-  }
-}
-```
-
-### 4. Creative Cards UI with Thumbnails
-
-The reporting page creative cards now display:
-- Large 4:3 aspect ratio thumbnail images
-- Video/Image badge overlay on the image
-- Structured layout matching the reference design
-- Graceful fallback to icon when no asset is available
-
----
-
-## Data Flow
+Update the `fetch-creative-assets` function to request the `object_story_spec` field from the Meta API, which contains the full-resolution image URLs:
 
 ```text
-+------------------+     +------------------------+
-|  LLM / Agent     | --> |  creative-insights     |
-+------------------+     +------------------------+
-                                   |
-         +-----------+-------------+-------------+
-         |           |             |             |
-         v           v             v             v
-    +--------+  +--------+  +------------+  +------------+
-    | Meta   |  | Snap   |  | creative_  |  | Storage    |
-    | BQ     |  | BQ     |  | assets DB  |  | Bucket     |
-    +--------+  +--------+  +------------+  +------------+
-                                  |               |
-                                  +-------+-------+
-                                          |
-                                          v
-                                  +----------------+
-                                  | Enriched       |
-                                  | Response with  |
-                                  | Asset URLs     |
-                                  +----------------+
+API Request Changes:
+- Current: "creative{id,name,thumbnail_url,image_url,object_type}"
+- New:     "creative{id,name,thumbnail_url,image_url,object_type,object_story_spec}"
+```
+
+The `object_story_spec` contains:
+- `photo_data.url` - Full-resolution image for photo ads
+- `link_data.image_hash` - Can be resolved to full URL via the ad images endpoint
+- `video_data.image_url` - Video thumbnail in higher resolution
+
+Priority for image source:
+1. `object_story_spec.photo_data.url` (full-res photo)
+2. `object_story_spec.link_data.picture` (link preview image)
+3. `creative.image_url` (fallback)
+4. `creative.thumbnail_url` (last resort)
+
+### Part 2: Add Creative Preview Dialog
+
+Create a new dialog component that opens when clicking a creative card to show:
+- Full-size thumbnail/image (or video player for video assets)
+- Creative name and metadata
+- Performance metrics summary
+- Button to open platform breakdown (if blended)
+
+---
+
+## Technical Implementation
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `supabase/functions/fetch-creative-assets/index.ts` | Update Meta API request to include `object_story_spec`, extract high-res URLs |
+| `src/components/reporting/CreativePerformanceGrid.tsx` | Add preview click handler and dialog |
+| `src/components/reporting/CreativePreviewDialog.tsx` | New component for full-size preview |
+
+### Meta API Changes
+
+```typescript
+// Update the fields requested from Meta
+const adsUrl = new URL(`https://graph.facebook.com/v19.0/${adAccountId}/ads`);
+adsUrl.searchParams.set("fields", 
+  "id,name,creative{id,name,thumbnail_url,image_url,object_type,object_story_spec}"
+);
+
+// Extract best available image URL
+function getBestImageUrl(creative: any): string | null {
+  // 1. Check photo_data for full-res image
+  const photoUrl = creative.object_story_spec?.photo_data?.url;
+  if (photoUrl) return photoUrl;
+  
+  // 2. Check link_data for picture
+  const linkPicture = creative.object_story_spec?.link_data?.picture;
+  if (linkPicture) return linkPicture;
+  
+  // 3. Check video_data for video thumbnail
+  const videoThumb = creative.object_story_spec?.video_data?.image_url;
+  if (videoThumb) return videoThumb;
+  
+  // 4. Fallback to image_url
+  if (creative.image_url) return creative.image_url;
+  
+  // 5. Last resort: thumbnail
+  return creative.thumbnail_url;
+}
+```
+
+### Preview Dialog Features
+
+The new `CreativePreviewDialog` component will include:
+- Large image display with proper aspect ratio
+- Image zoom on hover or click
+- Creative metadata (name, asset type, content type, angle, etc.)
+- Quick performance stats (spend, installs, CTR, CPI)
+- "View Platform Breakdown" button for blended creatives
+- Video playback for video assets (if the full video URL is available)
+
+---
+
+## User Experience Flow
+
+```text
+Card Click (any mode)
+    │
+    ├─► Opens CreativePreviewDialog
+    │       │
+    │       └─► Shows large image/video + metrics
+    │           │
+    │           └─► "View Breakdown" button (blended only)
+    │                   │
+    │                   └─► Opens CreativeBreakdownDialog
 ```
 
 ---
 
-## Triggering Asset Sync (For Initial Population)
+## Migration Strategy
 
-You can manually sync all Meta creatives with this call:
-
-```bash
-curl -X POST https://agususzieosizftucxxq.supabase.co/functions/v1/fetch-creative-assets \
-  -H "Content-Type: application/json" \
-  -d '{"platforms": ["meta"], "forceRefresh": false}'
-```
-
-This downloads all Meta ad thumbnails and stores them permanently.
+1. Deploy updated `fetch-creative-assets` function
+2. Run sync with `forceRefresh: true` to re-download assets at higher resolution
+3. Existing assets will be overwritten with better quality versions
 
 ---
 
-## Why Meta is the Best Source
+## What Gets Created/Modified
 
-1. **Already working**: 336 assets stored and ready
-2. **Stable URLs**: Meta provides permanent `thumbnail_url` values
-3. **Direct API**: No OAuth dance like Snapchat's 3-step media fetch
-4. **Naming match**: Uses exact `ad_name` that matches your convention
-5. **Coverage**: Meta likely has the most spend, so highest value assets
-
----
-
-## Next Steps
-
-- **Snapchat assets**: The function already supports Snapchat, but it's limited to 50 media items and URLs are ephemeral - could enhance this later
-- **Schedule sync**: Set up a daily cron job to sync new creatives automatically
-- **Asset type filtering**: Allow LLMs to request "only video creatives" or "only image creatives"
+| File | Type | Description |
+|------|------|-------------|
+| `supabase/functions/fetch-creative-assets/index.ts` | Modified | Fetch high-res images from `object_story_spec` |
+| `src/components/reporting/CreativePreviewDialog.tsx` | New | Full-size creative preview modal |
+| `src/components/reporting/CreativePerformanceGrid.tsx` | Modified | Add preview click handler |
 
