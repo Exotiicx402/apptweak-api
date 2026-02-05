@@ -13,6 +13,12 @@ interface AdMetric {
   cpi: number;
 }
 
+interface CreativeAsset {
+  creative_name: string;
+  thumbnail_url: string | null;
+  asset_type: string | null;
+}
+
 export type Platform = "meta" | "snapchat" | "tiktok" | "google" | "blended";
 
 export interface EnrichedCreative {
@@ -24,6 +30,8 @@ export interface EnrichedCreative {
   cpi: number;
   platform: string;
   parsed: ParsedCreativeName;
+  assetUrl: string | null;
+  assetType: string | null;
 }
 
 interface PlatformData {
@@ -37,6 +45,7 @@ export function useMultiPlatformCreatives() {
   const [snapchat, setSnapchat] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [tiktok, setTiktok] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [google, setGoogle] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
+  const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null }>>(new Map());
   const [activePlatform, setActivePlatform] = useState<Platform>("blended"); // Default to blended
 
   const fetchPlatform = async (
@@ -69,13 +78,38 @@ export function useMultiPlatformCreatives() {
     }
   };
 
+  const fetchCreativeAssets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('creative_assets')
+        .select('creative_name, thumbnail_url, asset_type');
+
+      if (error) {
+        console.error('Error fetching creative assets:', error);
+        return;
+      }
+
+      const map = new Map<string, { url: string | null; type: string | null }>();
+      for (const asset of (data as CreativeAsset[]) || []) {
+        map.set(asset.creative_name, {
+          url: asset.thumbnail_url,
+          type: asset.asset_type,
+        });
+      }
+      setAssetMap(map);
+    } catch (err) {
+      console.error('Error fetching creative assets:', err);
+    }
+  };
+
   const fetchAllPlatforms = useCallback(async (startDate: string, endDate: string) => {
-    // Fetch all platforms in parallel
+    // Fetch all platforms and assets in parallel
     await Promise.all([
       fetchPlatform("meta", "meta-history", startDate, endDate, setMeta),
       fetchPlatform("snapchat", "snapchat-history", startDate, endDate, setSnapchat),
       fetchPlatform("tiktok", "tiktok-history", startDate, endDate, setTiktok),
       fetchPlatform("google", "google-ads-history", startDate, endDate, setGoogle),
+      fetchCreativeAssets(),
     ]);
   }, []);
 
@@ -87,8 +121,10 @@ export function useMultiPlatformCreatives() {
   }, []);
 
   // Enrich ads with parsed naming convention data
-  const enrichAds = (ads: AdMetric[], platform: string): EnrichedCreative[] => {
-    return ads.map((ad) => ({
+  const enrichAds = useCallback((ads: AdMetric[], platform: string): EnrichedCreative[] => {
+    return ads.map((ad) => {
+      const asset = assetMap.get(ad.ad_name);
+      return {
       adId: ad.ad_id || ad.ad_name, // Use ad_name as fallback ID if ad_id not available
       adName: ad.ad_name,
       spend: ad.spend,
@@ -97,8 +133,11 @@ export function useMultiPlatformCreatives() {
       cpi: ad.cpi,
       platform,
       parsed: parseCreativeName(ad.ad_name),
-    }));
-  };
+        assetUrl: asset?.url || null,
+        assetType: asset?.type || null,
+      };
+    });
+  }, [assetMap]);
 
   // Blend creatives with the same name across platforms
   const blendCreatives = (creatives: EnrichedCreative[]): EnrichedCreative[] => {
@@ -125,10 +164,10 @@ export function useMultiPlatformCreatives() {
   };
 
   // Memoize enriched ads to prevent recalculation on every render
-  const metaAds = useMemo(() => enrichAds(meta.ads, "meta"), [meta.ads]);
-  const snapchatAds = useMemo(() => enrichAds(snapchat.ads, "snapchat"), [snapchat.ads]);
-  const tiktokAds = useMemo(() => enrichAds(tiktok.ads, "tiktok"), [tiktok.ads]);
-  const googleAds = useMemo(() => enrichAds(google.ads, "google"), [google.ads]);
+  const metaAds = useMemo(() => enrichAds(meta.ads, "meta"), [meta.ads, enrichAds]);
+  const snapchatAds = useMemo(() => enrichAds(snapchat.ads, "snapchat"), [snapchat.ads, enrichAds]);
+  const tiktokAds = useMemo(() => enrichAds(tiktok.ads, "tiktok"), [tiktok.ads, enrichAds]);
+  const googleAds = useMemo(() => enrichAds(google.ads, "google"), [google.ads, enrichAds]);
 
   // All enriched ads by platform (for drill-down)
   const allEnrichedByPlatform = useMemo(() => ({

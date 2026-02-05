@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ImageIcon, Film, LayoutGrid, DollarSign, Download, MousePointer, Target, Grid3X3, TableIcon } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon } from "lucide-react";
 import { useMultiPlatformCreatives, EnrichedCreative, Platform } from "@/hooks/useMultiPlatformCreatives";
 import { CreativePerformanceTable } from "./CreativePerformanceTable";
 import { PlatformFilterBar } from "./PlatformFilterBar";
@@ -93,22 +93,42 @@ function CreativeCard({ creative, showPlatform, columnConfig, onClick, isClickab
   const { parsed } = creative;
   const assetType = parsed.assetType || "IMG";
   const { metrics, attributes } = columnConfig;
+  const [imageError, setImageError] = useState(false);
+
+  const hasImage = creative.assetUrl && !imageError;
 
   return (
     <Card 
       className={`overflow-hidden hover:shadow-lg transition-shadow ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-primary/20' : ''}`}
       onClick={onClick}
     >
-      {/* Header with asset type */}
-      <div className="bg-muted px-4 py-2 flex items-center justify-between border-b">
-        <div className="flex items-center gap-2">
-          {getAssetTypeIcon(assetType)}
-          <span className="text-sm font-medium text-muted-foreground">
+      {/* Thumbnail image area */}
+      <div className="relative aspect-[4/3] bg-muted overflow-hidden">
+        {hasImage ? (
+          <img
+            src={creative.assetUrl!}
+            alt={creative.adName}
+            className="w-full h-full object-cover"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
+            <div className="text-muted-foreground scale-150">
+              {getAssetTypeIcon(assetType)}
+            </div>
+          </div>
+        )}
+        {/* Asset type badge overlay */}
+        <div className="absolute bottom-2 left-2">
+          <Badge className="bg-black/70 text-white border-0 text-xs px-2 py-1 hover:bg-black/70">
             {getAssetTypeLabel(assetType)}
-          </span>
+          </Badge>
         </div>
         {showPlatform && (
-          <Badge variant={getPlatformBadgeVariant(creative.platform)} className="text-[10px]">
+          <Badge 
+            variant={getPlatformBadgeVariant(creative.platform)} 
+            className="absolute top-2 right-2 text-[10px]"
+          >
             {getPlatformLabel(creative.platform)}
           </Badge>
         )}
@@ -119,8 +139,8 @@ function CreativeCard({ creative, showPlatform, columnConfig, onClick, isClickab
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <p className="text-sm font-medium text-foreground truncate mb-3 cursor-default">
-                {truncateName(creative.adName)}
+              <p className="text-sm font-medium text-foreground truncate mb-2 cursor-default">
+                {truncateName(creative.adName, 40)}
               </p>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-md">
@@ -129,76 +149,62 @@ function CreativeCard({ creative, showPlatform, columnConfig, onClick, isClickab
           </Tooltip>
         </TooltipProvider>
 
-        {/* Metadata badges */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {attributes.angle && parsed.angle && (
-            <Badge variant="secondary" className="text-xs">
-              Angle: {parsed.angle}
-            </Badge>
-          )}
-          {attributes.tactic && parsed.tactic && (
-            <Badge variant="outline" className="text-xs">
-              Tactic: {parsed.tactic}
-            </Badge>
-          )}
-          {attributes.category && parsed.category && (
-            <Badge variant="outline" className="text-xs">
-              {parsed.category}
-            </Badge>
-          )}
-          {attributes.contentType && parsed.contentType && (
-            <Badge variant="outline" className="text-xs">
-              {parsed.contentType}
-            </Badge>
-          )}
-          {attributes.conceptId && parsed.conceptId && (
-            <Badge variant="outline" className="text-xs">
-              ID: {parsed.conceptId}
-            </Badge>
-          )}
-          {attributes.launchDate && parsed.launchDate && (
-            <Badge variant="outline" className="text-xs">
-              {parsed.launchDate}
-            </Badge>
-          )}
-        </div>
-
         {/* Performance metrics */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="space-y-1 text-sm mb-3">
           {metrics.spend && (
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">Spend</p>
-                <p className="font-medium">{formatCurrency(creative.spend)}</p>
-              </div>
-            </div>
-          )}
-          {metrics.installs && (
-            <div className="flex items-center gap-2">
-              <Download className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">Installs</p>
-                <p className="font-medium">{formatNumber(creative.installs)}</p>
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Spend</span>
+              <span className="font-medium">{formatCurrency(creative.spend)}</span>
             </div>
           )}
           {metrics.ctr && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">CTR (all)</span>
+              <span className="font-medium">{formatPercent(creative.ctr)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Metadata badges - styled like reference */}
+        <div className="space-y-2 mb-3">
+          {attributes.contentType && parsed.contentType && (
             <div className="flex items-center gap-2">
-              <MousePointer className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">CTR</p>
-                <p className="font-medium">{formatPercent(creative.ctr)}</p>
-              </div>
+              <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                {parsed.contentType}
+              </Badge>
+            </div>
+          )}
+          {attributes.angle && parsed.angle && (
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                {parsed.angle}
+              </Badge>
+            </div>
+          )}
+          {attributes.tactic && parsed.tactic && (
+            <div className="flex items-center gap-2">
+              <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-200">
+                {parsed.tactic}
+              </Badge>
+            </div>
+          )}
+        </div>
+
+        {/* Install metrics */}
+        <div className="space-y-1 text-sm border-t pt-3">
+          {metrics.installs && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">App installs</span>
+              <span className="font-medium">{creative.installs > 0 ? formatNumber(creative.installs) : '-'}</span>
             </div>
           )}
           {metrics.cpi && (
-            <div className="flex items-center gap-2">
-              <Target className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">CPI</p>
-                <p className="font-medium">{formatCurrency(creative.cpi)}</p>
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Cost per app install</span>
+              <span className="font-medium">{creative.cpi > 0 ? formatCurrency(creative.cpi) : '-'}</span>
             </div>
           )}
         </div>
@@ -210,20 +216,23 @@ function CreativeCard({ creative, showPlatform, columnConfig, onClick, isClickab
 function CreativeCardSkeleton() {
   return (
     <Card className="overflow-hidden">
-      <div className="bg-muted px-4 py-2 border-b">
-        <Skeleton className="h-4 w-16" />
+      <div className="aspect-[4/3] bg-muted">
+        <Skeleton className="w-full h-full" />
       </div>
       <CardContent className="p-4">
-        <Skeleton className="h-4 w-3/4 mb-3" />
-        <div className="flex gap-1.5 mb-4">
-          <Skeleton className="h-5 w-20" />
-          <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-4 w-3/4 mb-2" />
+        <div className="space-y-1 mb-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Skeleton className="h-10" />
-          <Skeleton className="h-10" />
-          <Skeleton className="h-10" />
-          <Skeleton className="h-10" />
+        <div className="space-y-2 mb-3">
+          <Skeleton className="h-5 w-24" />
+          <Skeleton className="h-5 w-28" />
+          <Skeleton className="h-5 w-20" />
+        </div>
+        <div className="border-t pt-3 space-y-1">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
         </div>
       </CardContent>
     </Card>
