@@ -1,5 +1,3 @@
-
-
 # Enhance Creative Insights API with Stored Asset URLs
 
 ## Overview
@@ -7,24 +5,26 @@ Integrate the existing `creative_assets` storage system with the `creative-insig
 
 ---
 
-## What Already Exists
+## Status: ✅ Complete
+
+All components are now fully integrated:
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| `creative_assets` table | ✅ Ready | 336 Meta assets already stored |
+| `creative_assets` table | ✅ Ready | 336+ Meta assets stored |
 | `creative-assets` storage bucket | ✅ Ready | Files stored at permanent public URLs |
 | `fetch-creative-assets` function | ✅ Built | Downloads from Meta/Snapchat APIs |
-| `creative-insights` API | ✅ Built | Returns performance data (no assets yet) |
+| `creative-insights` API | ✅ Enhanced | Returns performance data WITH asset URLs |
+| Creative Cards UI | ✅ Enhanced | Displays thumbnails from stored assets |
 
 ---
 
-## What Gets Enhanced
+## What Was Implemented
 
 ### 1. Update `creative-insights` API to Include Asset URLs
 
-Add a database lookup to match `ad_name` with stored assets and include the `thumbnail_url` in the response.
+Added database lookup to match `ad_name` with stored assets. Response now includes:
 
-**New response field per creative:**
 ```json
 {
   "adName": "BrandPage | UGC | Video | CONCEPT001 | ...",
@@ -32,20 +32,20 @@ Add a database lookup to match `ad_name` with stored assets and include the `thu
   "parsed": { ... },
   "platformBreakdown": [ ... ],
   "assetUrl": "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/CONCEPT001/V1_HERO.jpg",
-  "assetType": "video"
+  "assetType": "image"
 }
 ```
 
 ### 2. Add Optional Asset Sync Trigger
 
-Allow the `creative-insights` API to optionally trigger a fresh asset sync before returning data:
+The API supports `syncAssets: true` in request body to trigger fresh asset sync before returning data.
 - `syncAssets: true` in request body
 - Calls `fetch-creative-assets` first, then returns enriched data
 - Default: `false` (fast mode, uses cached assets)
 
 ### 3. Summary Statistics for Assets
 
-Include asset coverage in the response metadata:
+Response metadata includes asset coverage stats:
 ```json
 {
   "meta": {
@@ -55,6 +55,14 @@ Include asset coverage in the response metadata:
   }
 }
 ```
+
+### 4. Creative Cards UI with Thumbnails
+
+The reporting page creative cards now display:
+- Large 4:3 aspect ratio thumbnail images
+- Video/Image badge overlay on the image
+- Structured layout matching the reference design
+- Graceful fallback to icon when no asset is available
 
 ---
 
@@ -99,41 +107,6 @@ This downloads all Meta ad thumbnails and stores them permanently.
 
 ---
 
-## Technical Implementation
-
-### File Changes
-
-| File | Change |
-|------|--------|
-| `supabase/functions/creative-insights/index.ts` | Add Supabase client, query `creative_assets` table, join asset URLs to response |
-
-### Key Code Addition
-
-```typescript
-// Initialize Supabase client
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const supabase = createClient(supabaseUrl!, supabaseServiceKey!);
-
-// Fetch all stored assets for matching
-const { data: assets } = await supabase
-  .from('creative_assets')
-  .select('creative_name, thumbnail_url, asset_type');
-
-const assetMap = new Map(
-  (assets || []).map(a => [a.creative_name, { url: a.thumbnail_url, type: a.asset_type }])
-);
-
-// When building response, add asset info:
-for (const creative of blendedCreatives) {
-  const asset = assetMap.get(creative.adName);
-  creative.assetUrl = asset?.url || null;
-  creative.assetType = asset?.type || null;
-}
-```
-
----
-
 ## Why Meta is the Best Source
 
 1. **Already working**: 336 assets stored and ready
@@ -144,7 +117,7 @@ for (const creative of blendedCreatives) {
 
 ---
 
-## Next Steps After This
+## Next Steps
 
 - **Snapchat assets**: The function already supports Snapchat, but it's limited to 50 media items and URLs are ephemeral - could enhance this later
 - **Schedule sync**: Set up a daily cron job to sync new creatives automatically
