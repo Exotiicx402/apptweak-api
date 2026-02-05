@@ -10,6 +10,7 @@ import { CreativePerformanceTable } from "./CreativePerformanceTable";
 import { PlatformFilterBar } from "./PlatformFilterBar";
 import { ColumnSettingsPopover, ColumnConfig, defaultColumnConfig } from "./ColumnSettingsPopover";
 import { CreativeBreakdownDialog } from "./CreativeBreakdownDialog";
+import { CreativePreviewDialog } from "./CreativePreviewDialog";
 
 type ViewMode = "cards" | "table";
 
@@ -255,12 +256,16 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
   const [columnConfig, setColumnConfig] = useState<ColumnConfig>(defaultColumnConfig);
   const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleCreativeClick = (creative: EnrichedCreative) => {
-    if (activePlatform === "blended") {
-      setSelectedCreative(creative);
-      setBreakdownOpen(true);
-    }
+    setSelectedCreative(creative);
+    setPreviewOpen(true);
+  };
+
+  const handleViewBreakdown = () => {
+    setPreviewOpen(false);
+    setBreakdownOpen(true);
   };
 
   const platformBreakdown = selectedCreative 
@@ -389,7 +394,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
               showPlatform={showPlatformBadge}
               columnConfig={columnConfig}
               onClick={() => handleCreativeClick(creative)}
-              isClickable={activePlatform === "blended"}
+              isClickable={true}
             />
           ))}
         </div>
@@ -398,9 +403,17 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
           data={data} 
           showPlatform={showPlatformBadge} 
           columnConfig={columnConfig}
-          onRowClick={activePlatform === "blended" ? handleCreativeClick : undefined}
+          onRowClick={handleCreativeClick}
         />
       )}
+
+      <CreativePreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        creative={selectedCreative}
+        onViewBreakdown={handleViewBreakdown}
+        isBlended={activePlatform === "blended"}
+      />
 
       <CreativeBreakdownDialog
         open={breakdownOpen}

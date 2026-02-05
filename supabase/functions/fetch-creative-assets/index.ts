@@ -16,6 +16,52 @@ function parseCreativeName(name: string): { conceptId: string; uniqueId: string 
   };
 }
 
+// Extract best available image URL from Meta creative object
+function getBestImageUrl(creative: any): string | null {
+  const spec = creative.object_story_spec;
+  
+  // 1. Check photo_data for full-res image (photo ads)
+  if (spec?.photo_data?.url) {
+    console.log("Using photo_data.url (full-res)");
+    return spec.photo_data.url;
+  }
+  
+  // 2. Check link_data for picture (link ads)
+  if (spec?.link_data?.picture) {
+    console.log("Using link_data.picture");
+    return spec.link_data.picture;
+  }
+  
+  // 3. Check link_data for image_hash and resolve via child_attachments
+  if (spec?.link_data?.child_attachments?.length > 0) {
+    const firstAttachment = spec.link_data.child_attachments[0];
+    if (firstAttachment?.picture) {
+      console.log("Using child_attachment picture");
+      return firstAttachment.picture;
+    }
+  }
+  
+  // 4. Check video_data for video thumbnail (video ads)
+  if (spec?.video_data?.image_url) {
+    console.log("Using video_data.image_url");
+    return spec.video_data.image_url;
+  }
+  
+  // 5. Fallback to image_url if available
+  if (creative.image_url) {
+    console.log("Using fallback image_url");
+    return creative.image_url;
+  }
+  
+  // 6. Last resort: thumbnail_url (64x64 low-res)
+  if (creative.thumbnail_url) {
+    console.log("Using fallback thumbnail_url (low-res)");
+    return creative.thumbnail_url;
+  }
+  
+  return null;
+}
+
 // Sanitize filename for storage
 function sanitizeFilename(name: string): string {
   return name
@@ -125,7 +171,7 @@ async function fetchMetaCreatives(): Promise<Array<{
   try {
     // Fetch ads with their creatives
     const adsUrl = new URL(`https://graph.facebook.com/v19.0/${adAccountId}/ads`);
-    adsUrl.searchParams.set("fields", "id,name,creative{id,name,thumbnail_url,image_url,object_type}");
+    adsUrl.searchParams.set("fields", "id,name,creative{id,name,thumbnail_url,image_url,object_type,object_story_spec}");
     adsUrl.searchParams.set("limit", "500");
     adsUrl.searchParams.set("access_token", accessToken);
     
@@ -145,17 +191,26 @@ async function fetchMetaCreatives(): Promise<Array<{
       const creative = ad.creative;
       if (!creative) continue;
       
-      const thumbnailUrl = creative.thumbnail_url || creative.image_url;
+      // Extract best available image URL from object_story_spec
+      const thumbnailUrl = getBestImageUrl(creative);
       if (!thumbnailUrl) continue;
       
       // Use ad name (which follows naming convention) as creative name
       const creativeName = ad.name || creative.name || '';
       
+      // Determine asset type from object_type and object_story_spec
+      let assetType = 'image';
+      if (creative.object_type === 'VIDEO') {
+        assetType = 'video';
+      } else if (creative.object_story_spec?.video_data) {
+        assetType = 'video';
+      }
+      
       creatives.push({
         creativeName,
         platformCreativeId: creative.id || ad.id,
         thumbnailUrl,
-        assetType: creative.object_type === 'VIDEO' ? 'video' : 'image',
+        assetType,
       });
     }
     
