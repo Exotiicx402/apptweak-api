@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Zap, Upload, RefreshCw, Database, Loader2, Camera, MessagesSquare, TrendingUp } from "lucide-react";
+import { ArrowLeft, Zap, Upload, RefreshCw, Database, Loader2, Camera, MessagesSquare, TrendingUp, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAppTweakRankingHistory } from "@/hooks/useAppTweakRankingHistory";
 import SlackReportControls from "@/components/SlackReportControls";
+import { Progress } from "@/components/ui/progress";
 
 const Controls = () => {
   const queryClient = useQueryClient();
@@ -15,6 +16,8 @@ const Controls = () => {
   const [isSyncingToday, setIsSyncingToday] = useState(false);
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRepopulatingAssets, setIsRepopulatingAssets] = useState(false);
+  const [assetSyncProgress, setAssetSyncProgress] = useState<string | null>(null);
 
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
@@ -91,6 +94,42 @@ const Controls = () => {
     }, 1000);
   };
 
+  const handleRepopulateAssets = async () => {
+    setIsRepopulatingAssets(true);
+    setAssetSyncProgress("Starting asset sync...");
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-creative-assets', {
+        body: { platforms: ['meta'], forceRefresh: true }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        const summary = [
+          `Processed: ${data.processed || 0}`,
+          `Videos: ${data.videosDownloaded || 0}`,
+          `Images: ${data.imagesDownloaded || 0}`,
+          `Posters: ${data.postersDownloaded || 0}`,
+        ].join(', ');
+        
+        setAssetSyncProgress(null);
+        toast.success(`Asset sync complete! ${summary}`);
+        
+        // Invalidate creative asset queries
+        queryClient.invalidateQueries({ queryKey: ["creative-assets"] });
+      } else {
+        throw new Error(data?.error || 'Sync failed');
+      }
+    } catch (err) {
+      console.error("Asset sync error:", err);
+      setAssetSyncProgress(null);
+      toast.error(err instanceof Error ? err.message : "Failed to repopulate assets");
+    } finally {
+      setIsRepopulatingAssets(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div 
@@ -123,6 +162,44 @@ const Controls = () => {
 
         {/* Quick Actions */}
         <div className="grid gap-4 mb-8">
+          <Card className="border-amber-500/30">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <ImageIcon className="w-5 h-5 text-amber-500" />
+                Repopulate Creative Assets
+              </CardTitle>
+              <CardDescription>
+                Re-download all Meta creative assets at full resolution (may take several minutes)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {assetSyncProgress && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">{assetSyncProgress}</p>
+                  <Progress value={undefined} className="h-2" />
+                </div>
+              )}
+              <Button 
+                onClick={handleRepopulateAssets} 
+                disabled={isRepopulatingAssets}
+                variant="outline"
+                className="w-full border-amber-500/30 hover:bg-amber-500/10"
+              >
+                {isRepopulatingAssets ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Syncing assets...
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon className="w-4 h-4 mr-2" />
+                    Repopulate Meta Assets
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
           <Card className="border-primary/30">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
