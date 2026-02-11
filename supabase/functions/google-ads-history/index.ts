@@ -250,17 +250,18 @@ serve(async (req) => {
       const accessToken = await getAccessToken();
       const { projectId, datasetId, tableId } = resolveBigQueryTarget();
       const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
-      const countQuery = `
-        SELECT 
-          COUNT(*) as total_rows,
-          SUM(spend) as total_spend,
-          SUM(CASE WHEN asset_name IS NULL THEN spend ELSE 0 END) as null_asset_spend,
-          SUM(CASE WHEN asset_name IS NOT NULL THEN spend ELSE 0 END) as named_asset_spend
-        FROM ${fullTable}
-        WHERE date = '${startDate}'
-      `;
-      const rows = await queryBigQuery(countQuery, accessToken);
-      return new Response(JSON.stringify({ summary: rows[0] }), {
+      
+      // Schema discovery
+      const schemaQuery = `SELECT column_name, data_type FROM \`${projectId}.${datasetId}.INFORMATION_SCHEMA.COLUMNS\` WHERE table_name = '${tableId}' ORDER BY ordinal_position`;
+      let schema: any[] = [];
+      try { schema = await queryBigQuery(schemaQuery, accessToken); } catch (e) { console.error("Schema query failed:", e); }
+      
+      // Sample data
+      const sampleQuery = `SELECT * FROM ${fullTable} WHERE date = '${startDate}' LIMIT 3`;
+      let sample: any[] = [];
+      try { sample = await queryBigQuery(sampleQuery, accessToken); } catch (e) { console.error("Sample query failed:", e); }
+
+      return new Response(JSON.stringify({ schema, sample, table: `${projectId}.${datasetId}.${tableId}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
