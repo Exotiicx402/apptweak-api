@@ -244,7 +244,26 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { startDate, endDate, campaignId } = body;
+    const { startDate, endDate, campaignId, _diagnostic } = body;
+
+    if (_diagnostic) {
+      const accessToken = await getAccessToken();
+      const { projectId, datasetId, tableId } = resolveBigQueryTarget();
+      const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
+      const countQuery = `
+        SELECT 
+          COUNT(*) as total_rows,
+          SUM(spend) as total_spend,
+          SUM(CASE WHEN asset_name IS NULL THEN spend ELSE 0 END) as null_asset_spend,
+          SUM(CASE WHEN asset_name IS NOT NULL THEN spend ELSE 0 END) as named_asset_spend
+        FROM ${fullTable}
+        WHERE date = '${startDate}'
+      `;
+      const rows = await queryBigQuery(countQuery, accessToken);
+      return new Response(JSON.stringify({ summary: rows[0] }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!startDate || !endDate) {
       return new Response(
@@ -280,49 +299,43 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign = '${campaignId}'` : "";
 
-    // Deduplication CTE template — Windsor.ai syncs can produce duplicate rows
-    const dedupCTE = (dateFilter: string, extraFilter = "") => `
-      WITH deduped AS (
-        SELECT *, ROW_NUMBER() OVER (
-          PARTITION BY date, campaign, spend, clicks, conversions, average_cpm, asset_name
-          ORDER BY date
-        ) AS rn
-        FROM ${fullTable}
-        WHERE ${dateFilter}
-        ${extraFilter}
-      )
-    `;
+    // Windsor.ai stores both campaign-level aggregate rows (asset_name IS NULL)
+    // and asset-level breakdown rows in the same table. The campaign-level rows
+    // already include the full totals, so we must filter to asset_name IS NULL
+    // for daily/campaign/totals queries to avoid double-counting.
 
-    // Build queries
+    // Build queries — use only campaign-level rows (asset_name IS NULL) for aggregates
     const dailyQuery = shouldQueryBigQuery ? `
-      ${dedupCTE(`date BETWEEN '${startDate}' AND '${bqEndDate}'`, campaignFilter)}
       SELECT 
         date,
         SUM(spend) as spend,
         CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
         SUM(clicks) as clicks,
         SUM(conversions) as installs
-      FROM deduped WHERE rn = 1
+      FROM ${fullTable}
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
+      AND asset_name IS NULL
+      ${campaignFilter}
       GROUP BY date
       ORDER BY date
     ` : null;
 
     const campaignQuery = shouldQueryBigQuery ? `
-      ${dedupCTE(`date BETWEEN '${startDate}' AND '${bqEndDate}'`)}
       SELECT 
         campaign as campaign_name,
         SUM(spend) as spend,
         CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
         SUM(clicks) as clicks,
         SUM(conversions) as installs
-      FROM deduped WHERE rn = 1
+      FROM ${fullTable}
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
+      AND asset_name IS NULL
       GROUP BY campaign
       ORDER BY spend DESC
     ` : null;
 
-    // Ad-level query (fault-tolerant - may not have ad_id/ad_name columns)
+    // Ad-level query — use only asset-level rows (asset_name IS NOT NULL)
     const adsQuery = shouldQueryBigQuery ? `
-      ${dedupCTE(`date BETWEEN '${startDate}' AND '${bqEndDate}'`, `AND asset_name IS NOT NULL AND asset_name != ''`)}
       SELECT 
         asset_name,
         SUM(spend) as spend,
@@ -331,14 +344,15 @@ serve(async (req) => {
         SUM(conversions) as installs,
         SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr,
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
-      FROM deduped WHERE rn = 1
+      FROM ${fullTable}
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
+      AND asset_name IS NOT NULL AND asset_name != ''
       GROUP BY asset_name
       ORDER BY spend DESC
       LIMIT 50
     ` : null;
 
     const totalsQuery = shouldQueryBigQuery ? `
-      ${dedupCTE(`date BETWEEN '${startDate}' AND '${bqEndDate}'`, campaignFilter)}
       SELECT 
         SUM(spend) as total_spend,
         CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as total_impressions,
@@ -346,11 +360,13 @@ serve(async (req) => {
         SUM(conversions) as total_installs,
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
         SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr
-      FROM deduped WHERE rn = 1
+      FROM ${fullTable}
+      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
+      AND asset_name IS NULL
+      ${campaignFilter}
     ` : null;
 
     const prevTotalsQuery = `
-      ${dedupCTE(`date BETWEEN '${prevStartStr}' AND '${prevEndStr}'`, campaignFilter)}
       SELECT 
         SUM(spend) as total_spend,
         CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as total_impressions,
@@ -358,7 +374,10 @@ serve(async (req) => {
         SUM(conversions) as total_installs,
         SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
         SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr
-      FROM deduped WHERE rn = 1
+      FROM ${fullTable}
+      WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
+      AND asset_name IS NULL
+      ${campaignFilter}
     `;
 
     // Execute queries in parallel
