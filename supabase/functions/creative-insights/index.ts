@@ -281,21 +281,25 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
    
    const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
    
-   const query = `
-     SELECT 
-       asset_name as ad_name,
-       SUM(spend) as spend,
-       CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
-       SUM(clicks) as clicks,
-       SUM(conversions) as installs,
-       SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr,
-       SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
-     FROM ${fullTable}
-     WHERE date BETWEEN '${startDate}' AND '${endDate}'
-     AND asset_name IS NOT NULL AND asset_name != ''
-     GROUP BY asset_name
-     ORDER BY spend DESC
-   `;
+    const query = `
+      WITH deduped AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY date, campaign, ad_group_name ORDER BY spend DESC) as rn
+        FROM ${fullTable}
+        WHERE date BETWEEN '${startDate}' AND '${endDate}'
+        AND ad_group_name IS NOT NULL AND ad_group_name != ''
+      )
+      SELECT 
+        ad_group_name as ad_name,
+        SUM(CAST(spend AS FLOAT64)) as spend,
+        CAST(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000 AS INT64) as impressions,
+        SUM(CAST(clicks AS INT64)) as clicks,
+        SUM(CAST(conversions AS FLOAT64)) as installs,
+        SAFE_DIVIDE(SUM(CAST(clicks AS FLOAT64)), NULLIF(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000, 0)) as ctr,
+        SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(conversions AS FLOAT64)), 0)) as cpi
+      FROM deduped WHERE rn = 1
+      GROUP BY ad_group_name
+      ORDER BY spend DESC
+    `;
  
    try {
      const rows = await queryBigQuery(query, accessToken, projectId);
