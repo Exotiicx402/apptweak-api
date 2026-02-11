@@ -286,6 +286,7 @@ function buildSlackMessage(results: PlatformResult[], date: string, options: For
       : `🏆 *App Store Ranking:* No data available`;
 
   return {
+    channel: 'C0AED2ECQSZ',
     blocks: [
       {
         type: 'header',
