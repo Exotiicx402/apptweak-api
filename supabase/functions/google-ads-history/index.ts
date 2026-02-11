@@ -5,17 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Get today's date in EST timezone
-function getTodayDate(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-}
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
-}
-
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
@@ -108,134 +97,11 @@ async function queryBigQuery(query: string, accessToken: string): Promise<any[]>
   });
 }
 
-// Fetch live Google Ads data for a specific date
-async function fetchGoogleAdsLiveData(date: string, accessToken: string): Promise<any[]> {
-  const developerToken = Deno.env.get("GOOGLE_ADS_DEVELOPER_TOKEN");
-  const customerId = Deno.env.get("GOOGLE_ADS_CUSTOMER_ID")?.replace(/-/g, "");
-
-  if (!developerToken || !customerId) {
-    console.log("Missing Google Ads credentials, skipping live data fetch");
-    return [];
-  }
-
-  const query = `
-    SELECT
-      campaign.id,
-      campaign.name,
-      metrics.impressions,
-      metrics.clicks,
-      metrics.cost_micros,
-      metrics.conversions,
-      segments.date
-    FROM campaign
-    WHERE segments.date = '${date}'
-    AND campaign.status != 'REMOVED'
-  `;
-
-  console.log(`Fetching live Google Ads data for ${date}`);
-
-  try {
-    const response = await fetch(
-      `https://googleads.googleapis.com/v22/customers/${customerId}/googleAds:searchStream`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "developer-token": developerToken,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Google Ads API error:", errorText);
-      // Return empty array instead of throwing to allow BQ data to still be returned
-      return [];
-    }
-
-    const data = await response.json();
-    const results: any[] = [];
-
-    if (Array.isArray(data)) {
-      for (const batch of data) {
-        if (batch.results) {
-          for (const result of batch.results) {
-            const campaign = result.campaign || {};
-            const metrics = result.metrics || {};
-
-            const costMicros = Number(metrics.costMicros || 0);
-            const spend = costMicros / 1_000_000;
-            const installs = Number(metrics.conversions || 0);
-            const impressions = Number(metrics.impressions || 0);
-            const clicks = Number(metrics.clicks || 0);
-
-            results.push({
-              campaign_name: campaign.name || "",
-              impressions,
-              clicks,
-              spend,
-              installs: Math.round(installs),
-            });
-          }
-        }
-      }
-    }
-
-    return results;
-  } catch (error) {
-    console.error("Failed to fetch live Google Ads data:", error);
-    return [];
-  }
-}
-
-// Transform live data to daily format
-function transformLiveData(liveData: any[], date: string): {
-  daily: any;
-  campaigns: any[];
-  totals: any;
-} {
-  let totalSpend = 0;
-  let totalImpressions = 0;
-  let totalClicks = 0;
-  let totalInstalls = 0;
-
-  const campaigns = liveData.map(row => {
-    totalSpend += row.spend;
-    totalImpressions += row.impressions;
-    totalClicks += row.clicks;
-    totalInstalls += row.installs;
-
-    return {
-      campaign_name: row.campaign_name,
-      spend: row.spend,
-      impressions: row.impressions,
-      clicks: row.clicks,
-      installs: row.installs,
-      cpi: row.installs > 0 ? row.spend / row.installs : 0,
-    };
-  });
-
-  const daily = {
-    date,
-    spend: totalSpend,
-    impressions: totalImpressions,
-    clicks: totalClicks,
-    installs: totalInstalls,
-  };
-
-  const totals = {
-    spend: totalSpend,
-    impressions: totalImpressions,
-    clicks: totalClicks,
-    installs: totalInstalls,
-    cpi: totalInstalls > 0 ? totalSpend / totalInstalls : 0,
-    ctr: totalImpressions > 0 ? totalClicks / totalImpressions : 0,
-  };
-
-  return { daily, campaigns, totals };
-}
+// google_Final schema:
+// account_name, ad_group_name, ad_group_type, average_cpm, campaign, campaign_type,
+// clicks, conversions, cpc, ctr, datasource, date, source, spend
+// No impressions column — derive from spend/average_cpm * 1000
+// No asset_name column — use ad_group_name for breakdowns
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -250,17 +116,12 @@ serve(async (req) => {
       const accessToken = await getAccessToken();
       const { projectId, datasetId, tableId } = resolveBigQueryTarget();
       const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
-      
-      // Schema discovery
       const schemaQuery = `SELECT column_name, data_type FROM \`${projectId}.${datasetId}.INFORMATION_SCHEMA.COLUMNS\` WHERE table_name = '${tableId}' ORDER BY ordinal_position`;
       let schema: any[] = [];
       try { schema = await queryBigQuery(schemaQuery, accessToken); } catch (e) { console.error("Schema query failed:", e); }
-      
-      // Sample data
-      const sampleQuery = `SELECT * FROM ${fullTable} WHERE date = '${startDate}' LIMIT 3`;
+      const sampleQuery = `SELECT * FROM ${fullTable} WHERE date = '${startDate}' LIMIT 5`;
       let sample: any[] = [];
       try { sample = await queryBigQuery(sampleQuery, accessToken); } catch (e) { console.error("Sample query failed:", e); }
-
       return new Response(JSON.stringify({ schema, sample, table: `${projectId}.${datasetId}.${tableId}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -273,12 +134,7 @@ serve(async (req) => {
       );
     }
 
-    // Google Ads data is synced to BigQuery including today via Windsor.ai - no need to cap
-    const bqStartDate = startDate;
-    const bqEndDate = endDate;
-    const shouldQueryBigQuery = true;
-
-    console.log(`Query range: ${startDate} to ${endDate}, querying BigQuery for full range`);
+    console.log(`Query range: ${startDate} to ${endDate}`);
 
     const accessToken = await getAccessToken();
     const { projectId, datasetId, tableId } = resolveBigQueryTarget();
@@ -300,117 +156,127 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign = '${campaignId}'` : "";
 
-    // Windsor.ai stores both campaign-level aggregate rows (asset_name IS NULL)
-    // and asset-level breakdown rows in the same table. The campaign-level rows
-    // already include the full totals, so we must filter to asset_name IS NULL
-    // for daily/campaign/totals queries to avoid double-counting.
-
-    // Build queries — use only campaign-level rows (asset_name IS NULL) for aggregates
-    const dailyQuery = shouldQueryBigQuery ? `
-      SELECT 
-        date,
-        SUM(spend) as spend,
-        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
-        SUM(clicks) as clicks,
-        SUM(conversions) as installs
-      FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
-      AND asset_name IS NULL
-      ${campaignFilter}
-      GROUP BY date
-      ORDER BY date
-    ` : null;
-
-    const campaignQuery = shouldQueryBigQuery ? `
-      SELECT 
-        campaign as campaign_name,
-        SUM(spend) as spend,
-        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
-        SUM(clicks) as clicks,
-        SUM(conversions) as installs
-      FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
-      AND asset_name IS NULL
-      GROUP BY campaign
-      ORDER BY spend DESC
-    ` : null;
-
-    // Ad-level query — use only asset-level rows (asset_name IS NOT NULL)
-    const adsQuery = shouldQueryBigQuery ? `
-      SELECT 
-        asset_name,
-        SUM(spend) as spend,
-        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as impressions,
-        SUM(clicks) as clicks,
-        SUM(conversions) as installs,
-        SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr,
-        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi
-      FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
-      AND asset_name IS NOT NULL AND asset_name != ''
-      GROUP BY asset_name
-      ORDER BY spend DESC
-      LIMIT 50
-    ` : null;
-
-    const totalsQuery = shouldQueryBigQuery ? `
-      SELECT 
-        SUM(spend) as total_spend,
-        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as total_impressions,
-        SUM(clicks) as total_clicks,
-        SUM(conversions) as total_installs,
-        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
-        SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr
-      FROM ${fullTable}
-      WHERE date BETWEEN '${startDate}' AND '${bqEndDate}'
-      AND asset_name IS NULL
-      ${campaignFilter}
-    ` : null;
-
-    const prevTotalsQuery = `
-      SELECT 
-        SUM(spend) as total_spend,
-        CAST(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000 AS INT64) as total_impressions,
-        SUM(clicks) as total_clicks,
-        SUM(conversions) as total_installs,
-        SAFE_DIVIDE(SUM(spend), NULLIF(SUM(conversions), 0)) as cpi,
-        SAFE_DIVIDE(SUM(clicks), NULLIF(SAFE_DIVIDE(SUM(spend), NULLIF(SUM(average_cpm), 0)) * 1000, 0)) as ctr
-      FROM ${fullTable}
-      WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
-      AND asset_name IS NULL
-      ${campaignFilter}
+    // CTE to deduplicate exact duplicate rows in google_Final table
+    const dedup = (dateFilter: string, extraFilter: string = "") => `
+      WITH deduped AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY date, campaign, ad_group_name ORDER BY spend DESC) as rn
+        FROM ${fullTable}
+        WHERE ${dateFilter}
+        ${extraFilter}
+      )
+      SELECT * FROM deduped WHERE rn = 1
     `;
 
-    // Execute queries in parallel
-    const promises: Promise<any>[] = [];
-    
-    if (shouldQueryBigQuery) {
-      promises.push(
-        queryBigQuery(dailyQuery!, accessToken),
-        queryBigQuery(campaignQuery!, accessToken),
-        queryBigQuery(totalsQuery!, accessToken)
-      );
-    } else {
-      promises.push(Promise.resolve([]), Promise.resolve([]), Promise.resolve([]));
-    }
-    
-    promises.push(queryBigQuery(prevTotalsQuery, accessToken));
+    const dailyQuery = `
+      WITH deduped AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY date, campaign, ad_group_name ORDER BY spend DESC) as rn
+        FROM ${fullTable}
+        WHERE date BETWEEN '${startDate}' AND '${endDate}'
+        ${campaignFilter}
+      )
+      SELECT 
+        date,
+        SUM(CAST(spend AS FLOAT64)) as spend,
+        CAST(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000 AS INT64) as impressions,
+        SUM(CAST(clicks AS INT64)) as clicks,
+        SUM(CAST(conversions AS FLOAT64)) as installs
+      FROM deduped WHERE rn = 1
+      GROUP BY date
+      ORDER BY date
+    `;
 
-    const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData] = await Promise.all(promises);
+    const campaignQuery = `
+      WITH deduped AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY date, campaign, ad_group_name ORDER BY spend DESC) as rn
+        FROM ${fullTable}
+        WHERE date BETWEEN '${startDate}' AND '${endDate}'
+      )
+      SELECT 
+        campaign as campaign_name,
+        SUM(CAST(spend AS FLOAT64)) as spend,
+        CAST(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000 AS INT64) as impressions,
+        SUM(CAST(clicks AS INT64)) as clicks,
+        SUM(CAST(conversions AS FLOAT64)) as installs
+      FROM deduped WHERE rn = 1
+      GROUP BY campaign
+      ORDER BY spend DESC
+    `;
+
+    // Ad-group level breakdown for creative reporting
+    const adsQuery = `
+      WITH deduped AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY date, campaign, ad_group_name ORDER BY spend DESC) as rn
+        FROM ${fullTable}
+        WHERE date BETWEEN '${startDate}' AND '${endDate}'
+        AND ad_group_name IS NOT NULL AND ad_group_name != ''
+      )
+      SELECT 
+        ad_group_name as ad_name,
+        SUM(CAST(spend AS FLOAT64)) as spend,
+        CAST(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000 AS INT64) as impressions,
+        SUM(CAST(clicks AS INT64)) as clicks,
+        SUM(CAST(conversions AS FLOAT64)) as installs,
+        SAFE_DIVIDE(SUM(CAST(clicks AS FLOAT64)), NULLIF(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000, 0)) as ctr,
+        SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(conversions AS FLOAT64)), 0)) as cpi
+      FROM deduped WHERE rn = 1
+      GROUP BY ad_group_name
+      ORDER BY spend DESC
+      LIMIT 50
+    `;
+
+    const totalsQuery = `
+      WITH deduped AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY date, campaign, ad_group_name ORDER BY spend DESC) as rn
+        FROM ${fullTable}
+        WHERE date BETWEEN '${startDate}' AND '${endDate}'
+        ${campaignFilter}
+      )
+      SELECT 
+        SUM(CAST(spend AS FLOAT64)) as total_spend,
+        CAST(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000 AS INT64) as total_impressions,
+        SUM(CAST(clicks AS INT64)) as total_clicks,
+        SUM(CAST(conversions AS FLOAT64)) as total_installs,
+        SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(conversions AS FLOAT64)), 0)) as cpi,
+        SAFE_DIVIDE(SUM(CAST(clicks AS FLOAT64)), NULLIF(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000, 0)) as ctr
+      FROM deduped WHERE rn = 1
+    `;
+
+    const prevTotalsQuery = `
+      WITH deduped AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY date, campaign, ad_group_name ORDER BY spend DESC) as rn
+        FROM ${fullTable}
+        WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
+        ${campaignFilter}
+      )
+      SELECT 
+        SUM(CAST(spend AS FLOAT64)) as total_spend,
+        CAST(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000 AS INT64) as total_impressions,
+        SUM(CAST(clicks AS INT64)) as total_clicks,
+        SUM(CAST(conversions AS FLOAT64)) as total_installs,
+        SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(conversions AS FLOAT64)), 0)) as cpi,
+        SAFE_DIVIDE(SUM(CAST(clicks AS FLOAT64)), NULLIF(SAFE_DIVIDE(SUM(CAST(spend AS FLOAT64)), NULLIF(SUM(CAST(average_cpm AS FLOAT64)), 0)) * 1000, 0)) as ctr
+      FROM deduped WHERE rn = 1
+    `;
+
+    // Execute main queries in parallel
+    const [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData] = await Promise.all([
+      queryBigQuery(dailyQuery, accessToken),
+      queryBigQuery(campaignQuery, accessToken),
+      queryBigQuery(totalsQuery, accessToken),
+      queryBigQuery(prevTotalsQuery, accessToken),
+    ]);
 
     // Fetch ad-level data separately (fault-tolerant)
     let bqAdsData: any[] = [];
-    if (shouldQueryBigQuery && adsQuery) {
-      try {
-        bqAdsData = await queryBigQuery(adsQuery, accessToken);
-      } catch (adsError) {
-        console.log("Ad-level query failed (columns may not exist):", adsError);
-        bqAdsData = [];
-      }
+    try {
+      bqAdsData = await queryBigQuery(adsQuery, accessToken);
+    } catch (adsError) {
+      console.log("Ad-level query failed:", adsError);
+      bqAdsData = [];
     }
 
     // Process BigQuery data
-    let dailyData = bqDailyData.map((row: any) => ({
+    const dailyData = bqDailyData.map((row: any) => ({
       date: row.date,
       spend: parseFloat(row.spend) || 0,
       impressions: parseInt(row.impressions) || 0,
@@ -418,17 +284,17 @@ serve(async (req) => {
       installs: parseFloat(row.installs) || 0,
     }));
 
-    let campaignData = bqCampaignData.map((row: any) => ({
+    const campaignData = bqCampaignData.map((row: any) => ({
       campaign_name: row.campaign_name,
       spend: parseFloat(row.spend) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
       installs: parseFloat(row.installs) || 0,
-      cpi: row.installs > 0 ? parseFloat(row.spend) / parseFloat(row.installs) : 0,
-    }));
+      cpi: parseFloat(row.installs) > 0 ? parseFloat(row.spend) / parseFloat(row.installs) : 0,
+    })).sort((a: any, b: any) => b.spend - a.spend);
 
     const adsData = bqAdsData.map((row: any) => ({
-      ad_name: row.asset_name, // Map asset_name to ad_name for frontend consistency
+      ad_name: row.ad_name,
       spend: parseFloat(row.spend) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
@@ -446,9 +312,6 @@ serve(async (req) => {
       cpi: parseFloat(bqTotals.cpi) || 0,
       ctr: parseFloat(bqTotals.ctr) || 0,
     };
-
-    // Sort campaign data by spend desc
-    campaignData.sort((a: any, b: any) => b.spend - a.spend);
 
     const prevTotals = prevTotalsData[0] || {};
 
