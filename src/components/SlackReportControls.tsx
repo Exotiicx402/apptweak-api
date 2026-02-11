@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format, subDays } from "date-fns";
 import { CalendarIcon, Send, Loader2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,19 +16,41 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useSchedules, useToggleSchedule, useUpdateSchedule } from "@/hooks/useSchedules";
 
-const SCHEDULE_OPTIONS = [
-  { value: "0 14 * * *", label: "Daily at 9:00 AM EST" },
-  { value: "0 15 * * *", label: "Daily at 10:00 AM EST" },
-  { value: "0 13 * * *", label: "Daily at 8:00 AM EST" },
-  { value: "0 12 * * *", label: "Daily at 7:00 AM EST" },
-  { value: "0 16 * * *", label: "Daily at 11:00 AM EST" },
-  { value: "0 17 * * *", label: "Daily at 12:00 PM EST" },
-];
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 1); // 1-12
+const MINUTES = ["00", "15", "30", "45"];
+
+/** Parse a cron "M H * * *" into EST hour/minute/period */
+function cronToEst(cron: string): { hour: number; minute: string; period: "AM" | "PM" } | null {
+  const match = cron.match(/^(\d+)\s+(\d+)\s+\*\s+\*\s+\*$/);
+  if (!match) return null;
+  const minUtc = parseInt(match[1], 10);
+  let hourEst = parseInt(match[2], 10) - 5;
+  if (hourEst < 0) hourEst += 24;
+  const period: "AM" | "PM" = hourEst >= 12 ? "PM" : "AM";
+  const hour12 = hourEst === 0 ? 12 : hourEst > 12 ? hourEst - 12 : hourEst;
+  return { hour: hour12, minute: minUtc.toString().padStart(2, "0"), period };
+}
+
+/** Convert EST hour/minute/period to a UTC cron expression */
+function estToCron(hour: number, minute: string, period: "AM" | "PM"): string {
+  let h24 = period === "AM" ? (hour === 12 ? 0 : hour) : (hour === 12 ? 12 : hour + 12);
+  let utcHour = h24 + 5;
+  if (utcHour >= 24) utcHour -= 24;
+  return `${parseInt(minute, 10)} ${utcHour} * * *`;
+}
+
+function formatTimeLabel(hour: number, minute: string, period: "AM" | "PM"): string {
+  return `${hour}:${minute} ${period} EST`;
+}
 
 const SlackReportControls = () => {
   const [date, setDate] = useState<Date>(subDays(new Date(), 1));
   const [showPercentChanges, setShowPercentChanges] = useState(true);
   const [isSending, setIsSending] = useState(false);
+
+  const [selectedHour, setSelectedHour] = useState<number>(9);
+  const [selectedMinute, setSelectedMinute] = useState<string>("00");
+  const [selectedPeriod, setSelectedPeriod] = useState<"AM" | "PM">("AM");
 
   const { data: schedules, isLoading: schedulesLoading } = useSchedules();
   const toggleSchedule = useToggleSchedule();
@@ -40,6 +62,17 @@ const SlackReportControls = () => {
     s.name.toLowerCase().includes('slack') || 
     s.name.toLowerCase().includes('daily report')
   );
+
+  // Sync local state from current cron value
+  useEffect(() => {
+    if (!slackSchedule) return;
+    const parsed = cronToEst(slackSchedule.schedule);
+    if (parsed) {
+      setSelectedHour(parsed.hour);
+      setSelectedMinute(parsed.minute);
+      setSelectedPeriod(parsed.period);
+    }
+  }, [slackSchedule?.schedule]);
 
   const handleSendReport = async () => {
     setIsSending(true);
@@ -79,15 +112,16 @@ const SlackReportControls = () => {
     }
   };
 
-  const handleScheduleChange = async (newSchedule: string) => {
+  const handleTimeChange = useCallback(async (hour: number, minute: string, period: "AM" | "PM") => {
     if (!slackSchedule) return;
+    const newCron = estToCron(hour, minute, period);
     try {
-      await updateSchedule.mutateAsync({ jobId: slackSchedule.id, schedule: newSchedule });
-      toast.success("Schedule updated");
+      await updateSchedule.mutateAsync({ jobId: slackSchedule.id, schedule: newCron });
+      toast.success(`Schedule updated to ${formatTimeLabel(hour, minute, period)}`);
     } catch {
       toast.error("Failed to update schedule");
     }
-  };
+  }, [slackSchedule, updateSchedule]);
 
   return (
     <Card className="border-primary/30">
@@ -112,24 +146,47 @@ const SlackReportControls = () => {
             <Skeleton className="h-10 w-full" />
           ) : slackSchedule ? (
             <div className="space-y-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <Select
-                  value={slackSchedule.schedule}
-                  onValueChange={handleScheduleChange}
+                  value={String(selectedHour)}
+                  onValueChange={(v) => { const h = parseInt(v); setSelectedHour(h); handleTimeChange(h, selectedMinute, selectedPeriod); }}
                 >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select schedule" />
+                  <SelectTrigger className="w-[70px]">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {SCHEDULE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
+                    {HOURS.map((h) => (
+                      <SelectItem key={h} value={String(h)}>{h}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                
-                <div className="flex items-center gap-2">
+                <span className="text-muted-foreground font-medium">:</span>
+                <Select
+                  value={selectedMinute}
+                  onValueChange={(v) => { setSelectedMinute(v); handleTimeChange(selectedHour, v, selectedPeriod); }}
+                >
+                  <SelectTrigger className="w-[70px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MINUTES.map((m) => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedPeriod}
+                  onValueChange={(v: "AM" | "PM") => { setSelectedPeriod(v); handleTimeChange(selectedHour, selectedMinute, v); }}
+                >
+                  <SelectTrigger className="w-[72px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AM">AM</SelectItem>
+                    <SelectItem value="PM">PM</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-2 ml-auto">
                   <Badge variant={slackSchedule.active ? "default" : "secondary"}>
                     {slackSchedule.active ? "Active" : "Paused"}
                   </Badge>
