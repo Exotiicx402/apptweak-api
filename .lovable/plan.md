@@ -1,130 +1,44 @@
 
 
-## Plan: Add `overallTotals` to creative-insights API
+# Allow Custom Time Selection for Slack Daily Report
 
-### Problem Identified
+## Problem
+The schedule dropdown only offers 6 hardcoded hourly options (7 AM - 12 PM EST). You want 3:15 PM EST, which isn't available -- and future time changes would hit the same limitation.
 
-You're correct that within the `creative-insights` API, the individual creative spend/installs **do match** the reported totals. I verified this:
+## Solution
+Replace the fixed dropdown with hour + minute selectors, allowing any time in 15-minute increments.
 
-| Platform | Individual Sum | API Total | Match? |
-|----------|----------------|-----------|--------|
-| Meta | $126,304.66 | $126,304.66 | ✅ |
-| Snapchat | $182,825.37 | $182,825.37 | ✅ |
-| Google | $81,634.22 | $81,634.22 | ✅ |
-| TikTok | $80,766.04 | $80,766.04 | ✅ |
+## Changes
 
-However, the AI agent is comparing these to **overall platform spend**, which is much higher (especially for Google Ads):
+### 1. `src/components/SlackReportControls.tsx`
+- Replace the `SCHEDULE_OPTIONS` dropdown with two selectors: **Hour** (1-12) and **Minute** (00, 15, 30, 45) plus an AM/PM toggle
+- Convert the selected time to a UTC cron expression (EST is UTC-5, so 3:15 PM EST = `15 20 * * *`)
+- Display the current schedule as a human-readable time (e.g., "Daily at 3:15 PM EST")
+- Pre-populate the selectors based on the current cron value from the database
 
-| Platform | creative-insights | Dashboard Total | Gap |
-|----------|-------------------|-----------------|-----|
-| Google Ads | $81,634 | $1,163,222 | **$1,081,588** (93% missing) |
-| Meta | $126,305 | $126,305 | ~$0 |
-| Snapchat | $182,825 | $182,825 | ~$0 |
-| TikTok | $80,766 | $80,766 | ~$0 |
+### 2. `supabase/functions/manage-schedules/index.ts`
+- Update `parseSchedule()` to dynamically convert any cron expression like `M H * * *` into a readable EST time string (e.g., "Daily at 3:15 PM EST") instead of relying on a hardcoded mapping
+- This handles arbitrary times without needing to add new entries
 
-### Root Cause
+### 3. `src/pages/Schedules.tsx`
+- No changes needed -- it already accepts arbitrary cron values and displays `scheduleDisplay` from the edge function
 
-The `creative-insights` API filters with `WHERE ad_name IS NOT NULL AND ad_name != ''`, which excludes:
-- Campaign-level spend without asset breakdowns
-- Rows where the ad/asset name was not synced
+## Technical Details
 
-For Google Ads specifically, **93% of spend** doesn't have an `asset_name` in BigQuery because Windsor.ai syncs at campaign level for most rows.
-
----
-
-### Solution: Add `overallTotals` Section
-
-Add a separate section to the response that shows total platform spend **without the ad_name filter**, giving AI agents both perspectives:
-
-```json
-{
-  "totals": {
-    "spend": 471530.29,        // Creative-level only (sums correctly)
-    "installs": 31875
-  },
-  "overallTotals": {
-    "spend": 1553118.00,       // Full campaign spend
-    "installs": 109630,
-    "note": "Includes spend without ad-level attribution"
-  },
-  "creatives": [...]
-}
+**Time conversion logic (EST to UTC cron):**
+```text
+User selects: 3:15 PM EST
+  -> 15:15 EST
+  -> 20:15 UTC
+  -> Cron: "15 20 * * *"
 ```
 
----
-
-### Technical Changes
-
-**File: `supabase/functions/creative-insights/index.ts`**
-
-1. Add new platform total fetcher functions that query BigQuery **without the ad_name filter**:
-
-```typescript
-async function fetchPlatformTotals(
-  startDate: string, 
-  endDate: string, 
-  accessToken: string
-): Promise<{ platform: string; spend: number; installs: number }[]> {
-  // Query each platform's BQ table for totals WITHOUT ad_name filter
-  // Similar to existing history endpoints
-}
+**Dynamic `parseSchedule` in edge function:**
+```text
+Input:  "15 20 * * *"
+  -> minute=15, hour=20 UTC
+  -> 20-5=15 EST -> 3:15 PM
+  -> Output: "Daily at 3:15 PM EST"
 ```
 
-2. Call this in parallel with creative fetchers (minimal latency impact)
-
-3. Add `overallTotals` to response:
-```typescript
-overallTotals: {
-  spend: platformTotals.reduce((sum, p) => sum + p.spend, 0),
-  installs: platformTotals.reduce((sum, p) => sum + p.installs, 0),
-  byPlatform: platformTotals
-}
-```
-
----
-
-### Expected Response After Fix
-
-```json
-{
-  "success": true,
-  "meta": { ... },
-  "totals": {
-    "spend": 471530.29,
-    "installs": 31875,
-    "avgCpi": 14.79,
-    "note": "Spend attributed to specific creatives"
-  },
-  "overallTotals": {
-    "spend": 1553118.00,
-    "installs": 109630,
-    "avgCpi": 14.17,
-    "byPlatform": {
-      "meta": { "spend": 126305, "installs": 8017 },
-      "snapchat": { "spend": 182825, "installs": 15529 },
-      "google": { "spend": 1163222, "installs": 83211 },
-      "tiktok": { "spend": 80766, "installs": 2873 }
-    }
-  },
-  "creatives": [ ... ]
-}
-```
-
----
-
-### Files to Modify
-
-| File | Change |
-|------|--------|
-| `supabase/functions/creative-insights/index.ts` | Add `fetchPlatformTotals()` function and include `overallTotals` in response |
-
----
-
-### Why This Matters for AI Agents
-
-With this change:
-- AI agents can see **both** numbers and understand the distinction
-- They can report creative-level insights accurately
-- They can compare to overall spend and explain the gap ("X% of spend is attributed to specific creatives")
-- No confusion about data accuracy
-
+**Minute options:** 00, 15, 30, 45 (quarter-hour increments keep it simple while covering your use case)
