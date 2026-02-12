@@ -97,6 +97,11 @@ async function queryBigQuery(query: string, accessToken: string): Promise<any[]>
   });
 }
 
+// Manual overrides for dates where BigQuery sync is lagging
+const MANUAL_OVERRIDES: Record<string, { spend: number; installs: number; cpi: number }> = {
+  "2026-02-11": { spend: 1412.20, installs: 172, cpi: 8.21 },
+};
+
 // google_Final schema:
 // account_name, ad_group_name, ad_group_type, average_cpm, campaign, campaign_type,
 // clicks, conversions, cpc, ctr, datasource, date, source, spend
@@ -314,6 +319,25 @@ serve(async (req) => {
     };
 
     const prevTotals = prevTotalsData[0] || {};
+
+    // Apply manual overrides for dates missing from BigQuery
+    for (const [overrideDate, override] of Object.entries(MANUAL_OVERRIDES)) {
+      if (overrideDate >= startDate && overrideDate <= endDate) {
+        const existingDay = dailyData.find((d: any) => d.date === overrideDate);
+        if (!existingDay || existingDay.spend === 0) {
+          // Remove zero-spend placeholder if present
+          const idx = dailyData.findIndex((d: any) => d.date === overrideDate);
+          if (idx >= 0) dailyData.splice(idx, 1);
+          // Inject override row
+          dailyData.push({ date: overrideDate, spend: override.spend, impressions: 0, clicks: 0, installs: override.installs });
+          dailyData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+          // Augment totals
+          totals.spend += override.spend;
+          totals.installs += override.installs;
+          totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
+        }
+      }
+    }
 
     return new Response(
       JSON.stringify({
