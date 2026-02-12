@@ -1,49 +1,29 @@
 
 
-# Fix Google Ads Duplicate Data in BigQuery Queries
+## Manual Google Ads Data Override for Feb 11
 
-## Problem
-Windsor.ai has synced duplicate rows into the Google Ads BigQuery table. The `google-ads-history` edge function SUMs all rows without deduplication, resulting in metrics that are exactly 2x the actual Google Ads values (e.g., $3,032 vs real $1,570 spend).
+Since the BigQuery table hasn't synced Feb 11 data yet, I'll add a temporary manual override in the `google-ads-history` edge function that injects the known values when BigQuery returns empty results for that date.
 
-## Root Cause
-The Windsor-populated table lacks a MERGE/upsert mechanism, so repeated syncs create duplicate rows with identical `date`, `campaign`, `spend`, etc. values.
+### What changes
 
-## Solution
-Add a deduplication CTE to all queries in `google-ads-history/index.ts`. This uses `ROW_NUMBER()` to keep only one row per unique combination of dimensions, eliminating duplicates regardless of how many times Windsor synced.
+**File: `supabase/functions/google-ads-history/index.ts`**
 
-## Changes
+Add a manual overrides map near the top of the function. When BigQuery returns 0 spend for a date that has a manual override, the override values will be used instead.
 
-### `supabase/functions/google-ads-history/index.ts`
-
-Wrap all queries with a deduplication CTE that filters out duplicate rows before aggregation:
-
-```text
-WITH deduped AS (
-  SELECT *, ROW_NUMBER() OVER (
-    PARTITION BY date, campaign, spend, clicks, conversions
-    ORDER BY date
-  ) AS rn
-  FROM table
-  WHERE date BETWEEN ...
-)
-SELECT ... FROM deduped WHERE rn = 1
+```
+Manual overrides map:
+  "2026-02-11" -> { spend: 1412.20, installs: 172, cpi: 8.21 }
 ```
 
-This is applied to all 5 query types:
-1. **Daily query** -- aggregates by date
-2. **Campaign query** -- aggregates by campaign
-3. **Ads query** -- aggregates by asset_name
-4. **Totals query** -- overall totals for current period
-5. **Previous totals query** -- overall totals for comparison period
+This will apply to:
+- The `totals` object (so the reporting page and Slack report show correct numbers)
+- The `daily` array (so time series charts reflect the data point)
 
-### Why `PARTITION BY date, campaign, spend, clicks, conversions`?
-Since Windsor doesn't provide a unique row ID, we partition by the full set of dimension + metric columns. Truly duplicate rows (same date, same campaign, same values) will be collapsed to one. Rows that differ in any value are preserved.
+The override is additive -- if BigQuery eventually syncs the real data, the override will be ignored since totals will be non-zero.
 
-## No Other Files Changed
-The `google-ads-to-bigquery` function already uses MERGE and is unaffected. The frontend code doesn't need changes -- it will simply receive correct numbers.
+### Technical details
 
-## Impact
-- Google Ads metrics will immediately show correct values matching Google's dashboard
-- All historical date ranges will also be corrected
-- The fix is purely in the SQL layer, so no data is modified in BigQuery
-
+- A `MANUAL_OVERRIDES` constant will map date strings to `{ spend, installs, cpi }` objects
+- After computing totals from BigQuery, if `totals.spend === 0` and the queried range is a single day matching an override key, the override values replace the totals and inject a daily row
+- For multi-day ranges that include an overridden date, the override row will be merged into the daily array and totals will be augmented
+- This is designed as a temporary measure, easy to remove once the sync catches up
