@@ -100,6 +100,7 @@ async function queryBigQuery(query: string, accessToken: string): Promise<any[]>
 // Manual overrides for dates where BigQuery sync is lagging
 const MANUAL_OVERRIDES: Record<string, { spend: number; installs: number; cpi: number }> = {
   "2026-02-11": { spend: 1412.20, installs: 172, cpi: 8.21 },
+  "2026-02-12": { spend: 444.00, installs: 49, cpi: 9.06 },
 };
 
 // google_Final schema:
