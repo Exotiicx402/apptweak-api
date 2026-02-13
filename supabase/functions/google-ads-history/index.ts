@@ -320,23 +320,36 @@ serve(async (req) => {
     };
 
     const prevTotals = prevTotalsData[0] || {};
+    const previousTotalsResult = {
+      spend: parseFloat(prevTotals.total_spend) || 0,
+      impressions: parseInt(prevTotals.total_impressions) || 0,
+      clicks: parseInt(prevTotals.total_clicks) || 0,
+      installs: parseFloat(prevTotals.total_installs) || 0,
+      cpi: parseFloat(prevTotals.cpi) || 0,
+      ctr: parseFloat(prevTotals.ctr) || 0,
+    };
 
     // Apply manual overrides for dates missing from BigQuery
     for (const [overrideDate, override] of Object.entries(MANUAL_OVERRIDES)) {
+      // Apply to current period
       if (overrideDate >= startDate && overrideDate <= endDate) {
         const existingDay = dailyData.find((d: any) => d.date === overrideDate);
         if (!existingDay || existingDay.spend === 0) {
-          // Remove zero-spend placeholder if present
           const idx = dailyData.findIndex((d: any) => d.date === overrideDate);
           if (idx >= 0) dailyData.splice(idx, 1);
-          // Inject override row
           dailyData.push({ date: overrideDate, spend: override.spend, impressions: 0, clicks: 0, installs: override.installs });
           dailyData.sort((a: any, b: any) => a.date.localeCompare(b.date));
-          // Augment totals
           totals.spend += override.spend;
           totals.installs += override.installs;
           totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
         }
+      }
+      // Apply to previous period
+      if (overrideDate >= prevStartStr && overrideDate <= prevEndStr) {
+        // Check if BQ already had data for this date (non-zero spend in prevTotals is ambiguous for single overrides, so always augment if override date falls in range)
+        previousTotalsResult.spend += override.spend;
+        previousTotalsResult.installs += override.installs;
+        previousTotalsResult.cpi = previousTotalsResult.installs > 0 ? previousTotalsResult.spend / previousTotalsResult.installs : 0;
       }
     }
 
@@ -348,14 +361,7 @@ serve(async (req) => {
           campaigns: campaignData,
           ads: adsData,
           totals,
-          previousTotals: {
-            spend: parseFloat(prevTotals.total_spend) || 0,
-            impressions: parseInt(prevTotals.total_impressions) || 0,
-            clicks: parseInt(prevTotals.total_clicks) || 0,
-            installs: parseFloat(prevTotals.total_installs) || 0,
-            cpi: parseFloat(prevTotals.cpi) || 0,
-            ctr: parseFloat(prevTotals.ctr) || 0,
-          },
+          previousTotals: previousTotalsResult,
           dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
         },
