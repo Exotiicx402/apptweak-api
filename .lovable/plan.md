@@ -1,110 +1,63 @@
 
-# Competitor Search — Find Pages by Name, Not ID
+## Add Cursor-Based Pagination to the Competitor Ad Library
 
-## The Problem
+### The Problem
 
-Currently, adding a competitor requires knowing their exact Facebook Page ID (a long numeric string), which is not user-friendly. The user wants to search by brand name (e.g. "Kalshi") and just click to add — no manual ID lookup.
+The `competitor-ad-library` edge function currently makes a single API call per strategy and stops after the first page of results (up to 50 ads). Meta's Ad Library API returns a `paging.cursors.after` token in every response, which you must pass back as `after=<cursor>` to get the next page. We're ignoring this entirely, which is why Kalshi shows 1 ad despite running many campaigns.
 
-## How It Works
+### The Fix
 
-Meta's Graph API has a **Page Search endpoint** that accepts a text query and returns matching Facebook Pages including their IDs, names, categories, and follower counts. We proxy this through a backend function so the `META_ACCESS_TOKEN` stays server-side.
+Implement a `fetchAllPages` helper inside the edge function that follows the pagination cursor until:
+- Meta returns no `paging.next` link (end of results), OR
+- A safety cap is hit (e.g. 500 ads per query) to prevent infinite loops / timeout
 
-**The flow:**
-1. User types a competitor name in the search field
-2. Results appear as a dropdown (page name, category, follower count)
-3. User clicks a result — it's added to the watchlist
-4. The Page ID is stored in the database automatically (invisible to the user)
+### Technical Details
 
----
-
-## What Changes
-
-### New Edge Function: `facebook-page-search`
-
-A lightweight backend function that calls:
-
+**Current behavior:**
 ```
-GET https://graph.facebook.com/v19.0/pages/search
-  ?q=kalshi
-  &fields=id,name,category,fan_count,verification_status,picture
-  &access_token=<META_ACCESS_TOKEN>
-  &limit=8
+Request → Page 1 (50 ads) → Stop
 ```
 
-Returns a ranked list of matching pages. Uses the existing `META_ACCESS_TOKEN` secret — no new credentials needed.
+**After fix:**
+```
+Request → Page 1 (50 ads) → cursor → Page 2 (50 ads) → cursor → Page 3 ... → Stop when no next
+```
 
-**Response shape:**
+Meta's response shape includes:
 ```json
 {
-  "results": [
-    {
-      "id": "123456789",
-      "name": "Kalshi",
-      "category": "Finance",
-      "fanCount": 12400,
-      "verified": true,
-      "pictureUrl": "https://..."
-    }
-  ]
+  "data": [...],
+  "paging": {
+    "cursors": {
+      "before": "...",
+      "after": "WzI1..."
+    },
+    "next": "https://graph.facebook.com/..."
+  }
 }
 ```
 
-Added to `supabase/config.toml` with `verify_jwt = false`.
+We follow `paging.next` directly (it already includes all params + the cursor).
 
----
+### Files to Modify
 
-### Updated `AddCompetitorModal` — Replaced with a Search UI
+**`supabase/functions/competitor-ad-library/index.ts`**
 
-The current modal (two text inputs: Name + Page ID) is replaced with a **search-first experience**:
+- Add a `fetchAllPages(initialUrl, maxAds)` async helper that:
+  - Fetches the initial URL
+  - Collects all `data` items
+  - If `paging.next` exists and total < `maxAds`, fetches the next URL
+  - Repeats until exhausted or cap hit
+- Replace the two single `fetch()` calls (Strategy 1 and Strategy 2) with calls to `fetchAllPages()`
+- Set a generous cap of `500` ads per query to avoid Supabase edge function timeouts (30s limit)
+- Add logging of how many pages were fetched per query
 
-**New modal flow:**
-1. A single search input: "Search for a competitor..."
-2. As the user types (debounced ~400ms), results appear as a list below
-3. Each result shows: page name, category, follower count, verified badge
-4. User clicks a result — it pre-fills the form fields and shows a confirmation step
-5. Optional "Notes" field still available
-6. "Add Competitor" button saves to the database
+### Safety Considerations
 
-**Edge cases handled:**
-- No results found → "No pages found. Try a different name."
-- API error → graceful fallback with manual Page ID entry still available as a small "Enter ID manually" toggle
-- Loading state → skeleton rows while searching
-- Debounce prevents excessive API calls while typing
+- Edge functions time out after 30 seconds — each page fetch takes ~300-500ms, so 500 ads / 50 per page = 10 pages max = ~5 seconds. Well within limits.
+- We keep the deduplication logic untouched — it handles overlapping results from both strategies correctly.
+- No schema changes, no new secrets, no UI changes needed.
 
----
+### Expected Outcome
 
-### New Hook: `useFacebookPageSearch`
-
-A React hook that:
-- Accepts a query string
-- Calls the `facebook-page-search` edge function (debounced, 400ms)
-- Returns `{ results, isSearching, error }`
-- Only fires when query length >= 2 characters
-
----
-
-## Files to Create / Modify
-
-| File | Action |
-|------|--------|
-| `supabase/functions/facebook-page-search/index.ts` | New edge function — proxies Meta Page Search API |
-| `supabase/config.toml` | Add `verify_jwt = false` for new function |
-| `src/hooks/useFacebookPageSearch.ts` | New hook — debounced page search |
-| `src/components/competitors/AddCompetitorModal.tsx` | Redesigned — search-first UI replacing manual ID input |
-
----
-
-## What Stays Unchanged
-
-- `competitor_watchlist` database table — same schema, same RLS
-- `useCompetitorWatchlist` hook — same CRUD logic
-- `competitor-ad-library` edge function — still uses Page IDs internally
-- `CompetitorAdFeed`, `CompetitorAdCard`, `CompetitorWatchlist` page — no changes needed
-
----
-
-## Technical Note on the Meta Page Search API
-
-The `/pages/search` endpoint is part of the standard Meta Graph API and works with the same User Access Token already in use. It returns pages that are publicly discoverable. For well-known brands it consistently returns the correct verified page as the top result.
-
-One limitation: Meta may return fewer results for very small or niche pages. The "Enter ID manually" fallback ensures the user is never blocked.
+For a competitor like Kalshi that runs many ads, you should see a jump from 1-2 ads to potentially 50-200+ ads depending on what Meta has indexed for their page ID.
