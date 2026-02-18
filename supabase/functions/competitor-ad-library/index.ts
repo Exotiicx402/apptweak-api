@@ -72,6 +72,35 @@ function mapAds(rawAds: any[]): CompetitorAd[] {
   });
 }
 
+async function fetchAllPages(initialUrl: string, maxAds = 500): Promise<any[]> {
+  const allItems: any[] = [];
+  let nextUrl: string | null = initialUrl;
+  let pageCount = 0;
+
+  while (nextUrl && allItems.length < maxAds) {
+    const res = await fetch(nextUrl);
+    const data = await res.json();
+
+    if (data.error) {
+      console.error('fetchAllPages error:', data.error.message);
+      break;
+    }
+
+    if (data.data && data.data.length > 0) {
+      allItems.push(...data.data);
+    }
+
+    pageCount++;
+    nextUrl = data.paging?.next ?? null;
+
+    // Stop if we've hit the cap
+    if (allItems.length >= maxAds) break;
+  }
+
+  console.log(`fetchAllPages: ${pageCount} pages fetched, ${allItems.length} total items`);
+  return allItems;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -121,16 +150,11 @@ serve(async (req) => {
           ad_active_status: adActiveStatus,
           fields,
           access_token: accessToken,
-          limit: String(Math.min(limit, 50)),
+          limit: '50',
         });
-        const res = await fetch(`https://graph.facebook.com/v19.0/ads_archive?${params}`);
-        const data = await res.json();
-        if (!data.error && data.data) {
-          console.log(`search_page_ids (${adType}): ${data.data.length} ads`);
-          allAds.push(...mapAds(data.data));
-        } else if (data.error) {
-          console.error(`search_page_ids error (${adType}):`, data.error.message);
-        }
+        const items = await fetchAllPages(`https://graph.facebook.com/v19.0/ads_archive?${params}`, 500);
+        console.log(`search_page_ids (${adType}): ${items.length} ads`);
+        allAds.push(...mapAds(items));
       }
     }
 
@@ -157,14 +181,11 @@ serve(async (req) => {
         access_token: accessToken,
         limit: '50',
       });
-      const res = await fetch(`https://graph.facebook.com/v19.0/ads_archive?${params}`);
-      const data = await res.json();
-      if (!data.error && data.data) {
-        // Only keep ads that belong to this specific page
-        const pageAds = (data.data as any[]).filter((ad: any) => ad.page_id === pageId);
-        console.log(`keyword "${keyword}" for page ${pageId}: ${pageAds.length}/${data.data.length} ads matched`);
-        allAds.push(...mapAds(pageAds));
-      }
+      const items = await fetchAllPages(`https://graph.facebook.com/v19.0/ads_archive?${params}`, 500);
+      // Only keep ads that belong to this specific page
+      const pageAds = items.filter((ad: any) => ad.page_id === pageId);
+      console.log(`keyword "${keyword}" for page ${pageId}: ${pageAds.length}/${items.length} ads matched`);
+      allAds.push(...mapAds(pageAds));
     }
 
     // Deduplicate by ad id
