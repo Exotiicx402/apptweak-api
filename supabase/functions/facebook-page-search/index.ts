@@ -27,19 +27,21 @@ serve(async (req) => {
       });
     }
 
+    // Use Ad Library's advertiser/page search — works with the same token as ads_archive
     const params = new URLSearchParams({
+      search_type: 'PAGES',
       q: query.trim(),
-      fields: 'id,name,category,fan_count,verification_status,picture',
+      fields: 'id,name,page_categories,page_like_count,verification_status,page_profile_picture_url',
       access_token: accessToken,
       limit: '8',
     });
 
-    const url = `https://graph.facebook.com/v19.0/pages/search?${params}`;
+    const url = `https://graph.facebook.com/v19.0/ads_archive?${params}`;
     const response = await fetch(url);
     const data = await response.json();
 
     if (data.error) {
-      console.error('Meta API error:', data.error);
+      console.error('Meta Ad Library search error:', data.error);
       return new Response(JSON.stringify({ error: data.error.message, results: [] }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -49,10 +51,10 @@ serve(async (req) => {
     const results = (data.data || []).map((page: any) => ({
       id: page.id,
       name: page.name,
-      category: page.category || null,
-      fanCount: page.fan_count || 0,
+      category: page.page_categories ? Object.values(page.page_categories)[0] : null,
+      fanCount: page.page_like_count || 0,
       verified: page.verification_status === 'blue_verified' || page.verification_status === 'gray_verified',
-      pictureUrl: page.picture?.data?.url || null,
+      pictureUrl: page.page_profile_picture_url || null,
     }));
 
     return new Response(JSON.stringify({ results }), {
