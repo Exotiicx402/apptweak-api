@@ -139,53 +139,61 @@ serve(async (req) => {
     const allAds: CompetitorAd[] = [];
 
     // Strategy 1: search_page_ids — catches ads Meta classifies as special category (financial, political, etc.)
+    // Try multiple country sets to maximize coverage (financial advertisers like Kalshi may target differently)
     const BATCH_SIZE = 10;
+    const countrySets = ['["US","GB","CA","AU"]', '["US"]'];
     for (let i = 0; i < pageIds.length; i += BATCH_SIZE) {
       const batch = pageIds.slice(i, i + BATCH_SIZE);
       for (const adType of ['ALL', 'FINANCIAL_PRODUCTS_AND_SERVICES_ADS']) {
-        const params = new URLSearchParams({
-          search_page_ids: batch.join(','),
-          ad_type: adType,
-          ad_reached_countries: '["US"]',
-          ad_active_status: adActiveStatus,
-          fields,
-          access_token: accessToken,
-          limit: '50',
-        });
-        const items = await fetchAllPages(`https://graph.facebook.com/v19.0/ads_archive?${params}`, 500);
-        console.log(`search_page_ids (${adType}): ${items.length} ads`);
-        allAds.push(...mapAds(items));
+        for (const countries of countrySets) {
+          const params = new URLSearchParams({
+            search_page_ids: batch.join(','),
+            ad_type: adType,
+            ad_reached_countries: countries,
+            ad_active_status: adActiveStatus,
+            fields,
+            access_token: accessToken,
+            limit: '50',
+          });
+          const items = await fetchAllPages(`https://graph.facebook.com/v19.0/ads_archive?${params}`, 500);
+          console.log(`search_page_ids (${adType}, ${countries}): ${items.length} ads`);
+          allAds.push(...mapAds(items));
+        }
       }
     }
 
     // Strategy 2: keyword search by page name — catches regular (non-special-category) ads
-    // Collect page names from strategy 1 results or use a fallback keyword search per page
-    const pageIdSet = new Set(pageIds);
     // Build page name map from what we got so far
+    const pageIdSet = new Set(pageIds);
     const pageNameMap = new Map<string, string>();
     allAds.forEach((ad) => { if (ad.pageName && pageIdSet.has(ad.pageId)) pageNameMap.set(ad.pageId, ad.pageName); });
 
-    // For pages we found names for, do a keyword search to find non-special-category ads
+    // For pages we found names for, do multiple keyword searches to maximize coverage
     for (const [pageId, pageName] of pageNameMap.entries()) {
-      // Use first meaningful word (skip generic words)
-      const words = pageName.split(/\s+/).filter(w => w.length > 3);
-      const keyword = words[0] || pageName.split(' ')[0];
-      if (!keyword) continue;
+      // Extract multiple meaningful keywords from the page name
+      const stopWords = new Set(['the', 'and', 'for', 'with', 'from', 'trade']);
+      const words = pageName.split(/[\s\-–]+/).filter(w => w.length > 3 && !stopWords.has(w.toLowerCase()));
+      // Use up to 2 distinct keywords
+      const keywords = [...new Set(words.slice(0, 2))];
+      if (keywords.length === 0) keywords.push(pageName.split(' ')[0]);
 
-      const params = new URLSearchParams({
-        search_terms: keyword,
-        search_type: 'KEYWORD_UNORDERED',
-        ad_reached_countries: '["US"]',
-        ad_active_status: adActiveStatus,
-        fields,
-        access_token: accessToken,
-        limit: '50',
-      });
-      const items = await fetchAllPages(`https://graph.facebook.com/v19.0/ads_archive?${params}`, 500);
-      // Only keep ads that belong to this specific page
-      const pageAds = items.filter((ad: any) => ad.page_id === pageId);
-      console.log(`keyword "${keyword}" for page ${pageId}: ${pageAds.length}/${items.length} ads matched`);
-      allAds.push(...mapAds(pageAds));
+      for (const keyword of keywords) {
+        for (const countries of countrySets) {
+          const params = new URLSearchParams({
+            search_terms: keyword,
+            search_type: 'KEYWORD_UNORDERED',
+            ad_reached_countries: countries,
+            ad_active_status: adActiveStatus,
+            fields,
+            access_token: accessToken,
+            limit: '50',
+          });
+          const items = await fetchAllPages(`https://graph.facebook.com/v19.0/ads_archive?${params}`, 500);
+          const pageAds = items.filter((ad: any) => ad.page_id === pageId);
+          console.log(`keyword "${keyword}" (${countries}) for page ${pageId}: ${pageAds.length}/${items.length} ads matched`);
+          allAds.push(...mapAds(pageAds));
+        }
+      }
     }
 
     // Deduplicate by ad id
