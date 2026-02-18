@@ -27,11 +27,13 @@ serve(async (req) => {
       });
     }
 
-    // Search ads by keyword, extract unique pages from results
-    // (Meta Ad Library doesn't support PAGES search_type — only KEYWORD_UNORDERED / KEYWORD_EXACT_PHRASE)
+    // The Ad Library API uses `search_terms` (not `q`) and only supports
+    // KEYWORD_UNORDERED / KEYWORD_EXACT_PHRASE for search_type.
+    // We search ads by the brand name as a keyword, then deduplicate by page_id
+    // to surface a list of matching advertiser pages.
     const params = new URLSearchParams({
+      search_terms: query.trim(),
       search_type: 'KEYWORD_UNORDERED',
-      q: query.trim(),
       ad_reached_countries: '["US"]',
       ad_active_status: 'ALL',
       fields: 'page_id,page_name',
@@ -40,11 +42,13 @@ serve(async (req) => {
     });
 
     const url = `https://graph.facebook.com/v19.0/ads_archive?${params}`;
+    console.log('Calling Meta Ad Library:', url.replace(accessToken, '[REDACTED]'));
+
     const response = await fetch(url);
     const data = await response.json();
 
     if (data.error) {
-      console.error('Meta Ad Library search error:', data.error);
+      console.error('Meta Ad Library error:', JSON.stringify(data.error));
       return new Response(JSON.stringify({ error: data.error.message, results: [] }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -68,6 +72,8 @@ serve(async (req) => {
         verified: false,
         pictureUrl: null,
       }));
+
+    console.log(`Found ${results.length} unique pages for query: "${query}"`);
 
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
