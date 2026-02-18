@@ -27,13 +27,16 @@ serve(async (req) => {
       });
     }
 
-    // Use Ad Library's advertiser/page search — works with the same token as ads_archive
+    // Search ads by keyword, extract unique pages from results
+    // (Meta Ad Library doesn't support PAGES search_type — only KEYWORD_UNORDERED / KEYWORD_EXACT_PHRASE)
     const params = new URLSearchParams({
-      search_type: 'PAGES',
+      search_type: 'KEYWORD_UNORDERED',
       q: query.trim(),
-      fields: 'id,name,page_categories,page_like_count,verification_status,page_profile_picture_url',
+      ad_reached_countries: '["US"]',
+      ad_active_status: 'ALL',
+      fields: 'page_id,page_name',
       access_token: accessToken,
-      limit: '8',
+      limit: '50',
     });
 
     const url = `https://graph.facebook.com/v19.0/ads_archive?${params}`;
@@ -48,14 +51,23 @@ serve(async (req) => {
       });
     }
 
-    const results = (data.data || []).map((page: any) => ({
-      id: page.id,
-      name: page.name,
-      category: page.page_categories ? Object.values(page.page_categories)[0] : null,
-      fanCount: page.page_like_count || 0,
-      verified: page.verification_status === 'blue_verified' || page.verification_status === 'gray_verified',
-      pictureUrl: page.page_profile_picture_url || null,
-    }));
+    // Deduplicate pages by page_id, keep first occurrence
+    const seen = new Set<string>();
+    const results = (data.data || [])
+      .filter((ad: any) => {
+        if (!ad.page_id || seen.has(ad.page_id)) return false;
+        seen.add(ad.page_id);
+        return true;
+      })
+      .slice(0, 8)
+      .map((ad: any) => ({
+        id: ad.page_id,
+        name: ad.page_name,
+        category: null,
+        fanCount: 0,
+        verified: false,
+        pictureUrl: null,
+      }));
 
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
