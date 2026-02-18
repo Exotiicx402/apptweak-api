@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, RefreshCw, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CompetitorAdCard } from "./CompetitorAdCard";
@@ -111,6 +111,17 @@ export function CompetitorAdFeed({ groups, isLoading, isFetching, error, onRefre
           <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
           Refresh
         </Button>
+      </div>
+
+      {/* Meta API limitation notice */}
+      <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-muted/40 border border-border text-xs text-muted-foreground">
+        <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+        <span>
+          Meta's Ad Library API returns a limited sample of ads per advertiser. For the full picture, view directly in the{" "}
+          <a href="https://www.facebook.com/ads/library/" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
+            Meta Ad Library
+          </a>.
+        </span>
       </div>
 
       {error && (
