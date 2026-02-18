@@ -1,5 +1,8 @@
 project_id = "agususzieosizftucxxq"
 
+[functions.facebook-page-search]
+verify_jwt = false
+
 [functions.competitor-ad-library]
 verify_jwt = false
 
