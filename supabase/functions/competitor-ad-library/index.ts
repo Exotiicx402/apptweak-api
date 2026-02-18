@@ -83,7 +83,7 @@ serve(async (req) => {
     for (const batch of batches) {
       const fields = [
         'id',
-        'ad_creative_body',
+        'ad_creative_bodies',
         'ad_snapshot_url',
         'page_id',
         'page_name',
@@ -96,7 +96,7 @@ serve(async (req) => {
       const params = new URLSearchParams({
         search_page_ids: batch.join(','),
         ad_type: 'ALL',
-        ad_reached_countries: "['US']",
+        ad_reached_countries: '["US"]',
         ad_active_status: adActiveStatus,
         fields,
         access_token: accessToken,
@@ -104,8 +104,10 @@ serve(async (req) => {
       });
 
       const url = `https://graph.facebook.com/v19.0/ads_archive?${params.toString()}`;
+      console.log(`Fetching ads for page IDs: ${batch.join(',')}`);
       const response = await fetch(url);
       const data = await response.json();
+      console.log(`API response: ${data.data?.length ?? 0} ads, error: ${data.error ? JSON.stringify(data.error) : 'none'}`);
 
       if (data.error) {
         console.error('Meta API error:', data.error);
@@ -113,23 +115,29 @@ serve(async (req) => {
         continue;
       }
 
-      const ads: CompetitorAd[] = (data.data || []).map((ad: Record<string, unknown>) => ({
-        id: ad.id as string,
-        pageId: ad.page_id as string,
-        pageName: (ad.page_name as string) || '',
-        body: ((ad.ad_creative_body as string) || '').slice(0, 300),
-        snapshotUrl: (ad.ad_snapshot_url as string) || '',
-        platforms: (ad.publisher_platforms as string[]) || [],
-        startDate: (ad.ad_delivery_date_start as string) || null,
-        stopDate: (ad.ad_delivery_date_stop as string) || null,
-        daysRunning: calcDaysRunning(
-          (ad.ad_delivery_date_start as string) || null,
-          (ad.ad_delivery_date_stop as string) || null
-        ),
-        impressionsRange: formatImpressionsRange(
-          ad.impressions as { lower_bound?: string; upper_bound?: string } | null
-        ),
-      }));
+      const ads: CompetitorAd[] = (data.data || []).map((ad: Record<string, unknown>) => {
+        // ad_creative_bodies is an array in newer API versions
+        const bodies = ad.ad_creative_bodies as string[] | null;
+        const body = Array.isArray(bodies) ? bodies[0] || '' : '';
+
+        return {
+          id: ad.id as string,
+          pageId: ad.page_id as string,
+          pageName: (ad.page_name as string) || '',
+          body: body.slice(0, 300),
+          snapshotUrl: (ad.ad_snapshot_url as string) || '',
+          platforms: (ad.publisher_platforms as string[]) || [],
+          startDate: (ad.ad_delivery_date_start as string) || null,
+          stopDate: (ad.ad_delivery_date_stop as string) || null,
+          daysRunning: calcDaysRunning(
+            (ad.ad_delivery_date_start as string) || null,
+            (ad.ad_delivery_date_stop as string) || null
+          ),
+          impressionsRange: formatImpressionsRange(
+            ad.impressions as { lower_bound?: string; upper_bound?: string } | null
+          ),
+        };
+      });
 
       allAds.push(...ads);
     }
