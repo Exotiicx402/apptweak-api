@@ -104,6 +104,36 @@ export type Database = {
         }
         Relationships: []
       }
+      competitor_watchlist: {
+        Row: {
+          active: boolean
+          created_at: string
+          facebook_page_id: string
+          facebook_page_name: string | null
+          id: string
+          name: string
+          notes: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          facebook_page_id: string
+          facebook_page_name?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          facebook_page_id?: string
+          facebook_page_name?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
       creative_assets: {
         Row: {
           asset_type: string | null

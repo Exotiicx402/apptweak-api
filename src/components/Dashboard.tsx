@@ -1,4 +1,4 @@
-import { RefreshCw, AlertCircle, Database, BarChart3, Apple, FileText } from "lucide-react";
+import { RefreshCw, AlertCircle, Database, BarChart3, Apple, FileText, Eye } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAppTweakRanking } from "@/hooks/useAppTweakRanking";
@@ -47,6 +47,13 @@ export const Dashboard = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              to="/competitor-watchlist"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+              Competitors
+            </Link>
             <Link
               to="/reporting"
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors"

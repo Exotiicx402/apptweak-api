@@ -1,5 +1,9 @@
 project_id = "agususzieosizftucxxq"
 
+[functions.competitor-ad-library]
+verify_jwt = false
+
+
  [functions.creative-insights]
  verify_jwt = false
  
