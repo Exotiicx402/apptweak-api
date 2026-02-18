@@ -12,6 +12,7 @@ import MetaSync from "./pages/MetaSync";
 import GoogleAdsSync from "./pages/GoogleAdsSync";
 import Schedules from "./pages/Schedules";
 import Reporting from "./pages/Reporting";
+import CompetitorWatchlist from "./pages/CompetitorWatchlist";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/google-ads-sync" element={<GoogleAdsSync />} />
           <Route path="/schedules" element={<Schedules />} />
           <Route path="/reporting" element={<Reporting />} />
+          <Route path="/competitor-watchlist" element={<CompetitorWatchlist />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
