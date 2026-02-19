@@ -1,42 +1,29 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface PlatformResult {
-  platform: string;
-  spend: number;
-  installs: number;
-  cpi: number;
-  previousSpend: number;
-  previousInstalls: number;
-  previousCpi: number;
-  error?: string;
-}
-
 function getDateEST(daysAgo: number): string {
   const now = new Date();
   const target = new Date(now);
   target.setDate(target.getDate() - daysAgo);
-  
-  const estFormatter = new Intl.DateTimeFormat('en-CA', {
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  });
-  
-  return estFormatter.format(target);
+  }).format(target);
 }
 
-function formatCurrency(value: number): string {
+function formatCurrency(value: number, decimals = 0): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   }).format(value);
 }
 
@@ -44,274 +31,199 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
-function formatCPI(spend: number, installs: number): string {
-  if (installs === 0) return '-';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(spend / installs);
-}
-
-function calculatePercentChange(current: number, previous: number): string {
-  if (previous === 0) return '-';
+function pct(current: number, previous: number): string {
+  if (previous === 0) return '  -  ';
   const change = ((current - previous) / previous) * 100;
   const sign = change >= 0 ? '+' : '';
   return `${sign}${change.toFixed(1)}%`;
+}
+
+function formatDateForDisplay(dateStr: string): string {
+  const date = new Date(dateStr + 'T12:00:00');
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+interface FTDTotals {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ftd_count: number;
+  cost_per_ftd: number;
+  ctr: number;
+}
+
+async function fetchFTDTotals(
+  supabase: ReturnType<typeof createClient>,
+  date: string
+): Promise<FTDTotals> {
+  const { data, error } = await supabase
+    .from('ftd_performance')
+    .select('spend, impressions, clicks, ftd_count')
+    .eq('date', date);
+
+  if (error) {
+    console.error(`FTD fetch error for ${date}:`, error.message);
+    return { spend: 0, impressions: 0, clicks: 0, ftd_count: 0, cost_per_ftd: 0, ctr: 0 };
+  }
+
+  const rows = data || [];
+  const spend = rows.reduce((s, r) => s + (Number(r.spend) || 0), 0);
+  const impressions = rows.reduce((s, r) => s + (Number(r.impressions) || 0), 0);
+  const clicks = rows.reduce((s, r) => s + (Number(r.clicks) || 0), 0);
+  const ftd_count = rows.reduce((s, r) => s + (Number(r.ftd_count) || 0), 0);
+
+  return {
+    spend,
+    impressions,
+    clicks,
+    ftd_count,
+    cost_per_ftd: ftd_count > 0 ? spend / ftd_count : 0,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+  };
+}
+
+async function fetchTopAdsets(
+  supabase: ReturnType<typeof createClient>,
+  date: string,
+  limit = 5
+): Promise<{ adset_name: string; spend: number; ftd_count: number; cost_per_ftd: number }[]> {
+  const { data, error } = await supabase
+    .from('ftd_performance')
+    .select('adset_name, spend, ftd_count')
+    .eq('date', date)
+    .order('spend', { ascending: false });
+
+  if (error || !data) return [];
+
+  // Aggregate by adset_name
+  const map = new Map<string, { spend: number; ftd_count: number }>();
+  for (const r of data) {
+    const key = r.adset_name || 'Unknown';
+    const existing = map.get(key) || { spend: 0, ftd_count: 0 };
+    map.set(key, {
+      spend: existing.spend + (Number(r.spend) || 0),
+      ftd_count: existing.ftd_count + (Number(r.ftd_count) || 0),
+    });
+  }
+
+  return Array.from(map.entries())
+    .map(([adset_name, v]) => ({
+      adset_name,
+      ...v,
+      cost_per_ftd: v.ftd_count > 0 ? v.spend / v.ftd_count : 0,
+    }))
+    .sort((a, b) => b.spend - a.spend)
+    .slice(0, limit);
 }
 
 async function fetchRankingForDate(
   supabaseUrl: string,
   anonKey: string,
   date: string
-): Promise<{ rank: number | null; categoryName: string; error?: string }> {
+): Promise<{ rank: number | null; error?: string }> {
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/apptweak-ranking-history`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`,
-      },
-      body: JSON.stringify({ 
-        appId: '6648798962', 
-        country: 'us', 
-        device: 'iphone',
-        startDate: date,
-        endDate: date,
-      }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+      body: JSON.stringify({ appId: '6648798962', country: 'us', device: 'iphone', startDate: date, endDate: date }),
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const rankings = data?.result?.['6648798962']?.rankings || [];
-    
-    // Find Sports category (6004) with "free" chart type
     for (const ranking of rankings) {
       for (const value of ranking.value || []) {
         if (value.category === '6004' && value.chart_type === 'free') {
-          return {
-            rank: value.rank,
-            categoryName: value.category_name || 'Sports',
-          };
+          return { rank: value.rank };
         }
       }
     }
-    
-    return { rank: null, categoryName: 'Sports' };
+    return { rank: null };
   } catch (error) {
-    console.error(`Error fetching ranking for ${date}:`, error);
-    return {
-      rank: null,
-      categoryName: 'Sports',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
+    return { rank: null, error: error instanceof Error ? error.message : 'Unknown' };
   }
 }
 
-async function fetchPlatformDataForDate(
-  platform: string,
-  endpoint: string,
-  supabaseUrl: string,
-  anonKey: string,
-  date: string
-): Promise<{ spend: number; installs: number; cpi: number; error?: string }> {
-  try {
-    const response = await fetch(`${supabaseUrl}/functions/v1/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`,
+function buildSlackMessage(
+  date: string,
+  current: FTDTotals,
+  previous: FTDTotals,
+  adsets: { adset_name: string; spend: number; ftd_count: number; cost_per_ftd: number }[],
+  ranking: { rank: number | null; error?: string }
+): object {
+  const displayDate = formatDateForDisplay(date);
+
+  const rankingText = ranking.rank !== null
+    ? `🏆 *Polymarket App Store:* #${ranking.rank} in Sports (Free)`
+    : `🏆 *Polymarket App Store:* No data`;
+
+  // Main metrics table
+  const metricsLines = [
+    `Metric            Today          vs. Yesterday`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `Spend      ${formatCurrency(current.spend).padStart(14)}   ${pct(current.spend, previous.spend).padStart(12)}`,
+    `FTDs       ${formatNumber(current.ftd_count).padStart(14)}   ${pct(current.ftd_count, previous.ftd_count).padStart(12)}`,
+    `Cost/FTD   ${formatCurrency(current.cost_per_ftd, 2).padStart(14)}   ${pct(current.cost_per_ftd, previous.cost_per_ftd).padStart(12)}`,
+    `Impressions${formatNumber(current.impressions).padStart(14)}   ${pct(current.impressions, previous.impressions).padStart(12)}`,
+    `Clicks     ${formatNumber(current.clicks).padStart(14)}   ${pct(current.clicks, previous.clicks).padStart(12)}`,
+    `CTR        ${(current.ctr.toFixed(2) + '%').padStart(14)}   ${pct(current.ctr, previous.ctr).padStart(12)}`,
+  ].join('\n');
+
+  const blocks: object[] = [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: `💰 FTD Campaign Report - ${displayDate}`,
+        emoji: true,
       },
-      body: JSON.stringify({ startDate: date, endDate: date }),
+    },
+    {
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `*Campaign:* HOURS · PROSPECTING · INTERNATIONAL · TIER ONE · WEB · FTD  |  Meta Ads` }],
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: rankingText },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: '```' + metricsLines + '```' },
+    },
+  ];
+
+  // Add ad set breakdown if there's data
+  if (adsets.length > 0) {
+    const adsetHeader = `Ad Set                        Spend       FTDs   Cost/FTD`;
+    const adsetSep =   `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+    const adsetRows = adsets.map(a => {
+      const name = a.adset_name.substring(0, 28).padEnd(28);
+      const spend = formatCurrency(a.spend).padStart(10);
+      const ftds = formatNumber(a.ftd_count).padStart(7);
+      const cpFtd = a.ftd_count > 0 ? formatCurrency(a.cost_per_ftd, 2).padStart(10) : '  -  '.padStart(10);
+      return `${name}  ${spend}  ${ftds}  ${cpFtd}`;
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const responseData = await response.json();
-    
-    let spend = 0;
-    let installs = 0;
-
-    if (responseData.success && responseData.data?.totals) {
-      spend = responseData.data.totals.spend || 0;
-      installs = responseData.data.totals.installs || 0;
-    } else if (responseData.totals) {
-      spend = responseData.totals.spend || 0;
-      installs = responseData.totals.installs || 0;
-    } else if (responseData.rows && Array.isArray(responseData.rows)) {
-      for (const row of responseData.rows) {
-        spend += row.spend || 0;
-        installs += row.installs || 0;
-      }
-    }
-
-    return {
-      spend,
-      installs,
-      cpi: installs > 0 ? spend / installs : 0,
-    };
-  } catch (error) {
-    console.error(`Error fetching ${platform} for ${date}:`, error);
-    return {
-      spend: 0,
-      installs: 0,
-      cpi: 0,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-async function fetchPlatformData(
-  platform: string,
-  endpoint: string,
-  supabaseUrl: string,
-  anonKey: string,
-  currentDate: string,
-  previousDate: string
-): Promise<PlatformResult> {
-  const [current, previous] = await Promise.all([
-    fetchPlatformDataForDate(platform, endpoint, supabaseUrl, anonKey, currentDate),
-    fetchPlatformDataForDate(platform, endpoint, supabaseUrl, anonKey, previousDate),
-  ]);
-
-  return {
-    platform,
-    spend: current.spend,
-    installs: current.installs,
-    cpi: current.cpi,
-    previousSpend: previous.spend,
-    previousInstalls: previous.installs,
-    previousCpi: previous.cpi,
-    error: current.error,
-  };
-}
-
-function formatDateForDisplay(dateStr: string): string {
-  const date = new Date(dateStr + 'T12:00:00');
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-interface FormatOptions {
-  showPercentChanges: boolean;
-  showPlatformSpacing: boolean;
-}
-
-interface RankingData {
-  rank: number | null;
-  categoryName: string;
-  error?: string;
-}
-
-function buildSlackMessage(results: PlatformResult[], date: string, options: FormatOptions, ranking: RankingData): object {
-  const displayDate = formatDateForDisplay(date);
-  
-  // Calculate totals for current and previous period
-  const totals = results.reduce(
-    (acc, r) => ({
-      spend: acc.spend + r.spend,
-      installs: acc.installs + r.installs,
-      previousSpend: acc.previousSpend + r.previousSpend,
-      previousInstalls: acc.previousInstalls + r.previousInstalls,
-    }),
-    { spend: 0, installs: 0, previousSpend: 0, previousInstalls: 0 }
-  );
-
-  const totalCpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
-  const previousTotalCpi = totals.previousInstalls > 0 ? totals.previousSpend / totals.previousInstalls : 0;
-
-  // Build the table rows
-  const platformOrder = ['Meta', 'Snapchat', 'Google Ads', 'TikTok'];
-  const sortedResults = platformOrder.map(
-    p => results.find(r => r.platform === p) || { 
-      platform: p, spend: 0, installs: 0, cpi: 0, 
-      previousSpend: 0, previousInstalls: 0, previousCpi: 0, 
-      error: 'No data' 
-    }
-  );
-
-  // Format table with fixed-width columns
-  const header = 'Platform         Spend        Installs      CPI';
-  const separator = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
-  
-  const rows: string[] = [];
-  
-  for (const r of sortedResults) {
-    const platform = r.platform.padEnd(16);
-    const spend = r.error ? 'Error'.padStart(12) : formatCurrency(r.spend).padStart(12);
-    const installs = r.error ? '-'.padStart(12) : formatNumber(r.installs).padStart(12);
-    const cpi = r.error ? '-'.padStart(10) : formatCPI(r.spend, r.installs).padStart(10);
-    rows.push(`${platform}${spend}${installs}${cpi}`);
-    
-    // Add percentage change row if enabled
-    if (options.showPercentChanges && !r.error) {
-      const spendChange = calculatePercentChange(r.spend, r.previousSpend).padStart(12);
-      const installsChange = calculatePercentChange(r.installs, r.previousInstalls).padStart(12);
-      const cpiChange = calculatePercentChange(r.cpi, r.previousCpi).padStart(10);
-      rows.push(`${''.padEnd(16)}${spendChange}${installsChange}${cpiChange}`);
-    }
-    
-    // Add blank line for spacing between platforms if enabled
-    if (options.showPlatformSpacing) {
-      rows.push('');
-    }
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Ad Set Breakdown (top ${adsets.length})*\n` + '```' + [adsetHeader, adsetSep, ...adsetRows].join('\n') + '```',
+      },
+    });
   }
 
-  // Total row
-  const totalRow = `${'TOTAL'.padEnd(16)}${formatCurrency(totals.spend).padStart(12)}${formatNumber(totals.installs).padStart(12)}${formatCPI(totals.spend, totals.installs).padStart(10)}`;
-  
-  // Total change row if enabled
-  const totalRows = [totalRow];
-  if (options.showPercentChanges) {
-    const totalChangeRow = `${''.padEnd(16)}${calculatePercentChange(totals.spend, totals.previousSpend).padStart(12)}${calculatePercentChange(totals.installs, totals.previousInstalls).padStart(12)}${calculatePercentChange(totalCpi, previousTotalCpi).padStart(10)}`;
-    totalRows.push(totalChangeRow);
+  // No data warning
+  if (current.spend === 0 && current.ftd_count === 0) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `⚠️ _No FTD data found for ${displayDate}. The daily sync may not have run yet — check the FTD dashboard and sync manually if needed._`,
+      },
+    });
   }
 
-  const tableContent = [header, separator, ...rows, separator, ...totalRows].join('\n');
-
-  // Build ranking text
-  const rankingText = ranking.rank !== null 
-    ? `🏆 *App Store Ranking:* #${ranking.rank} in ${ranking.categoryName} (Free)`
-    : ranking.error 
-      ? `🏆 *App Store Ranking:* Unable to fetch`
-      : `🏆 *App Store Ranking:* No data available`;
-
-  return {
-    channel: 'C0AED2ECQSZ',
-    blocks: [
-      {
-        type: 'header',
-        text: {
-          type: 'plain_text',
-          text: `📊 Daily Performance Report - ${displayDate}`,
-          emoji: true,
-        },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: rankingText,
-        },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: '```' + tableContent + '```',
-        },
-      },
-    ],
-  };
+  return { channel: 'C0AED2ECQSZ', blocks };
 }
 
 serve(async (req) => {
@@ -321,71 +233,41 @@ serve(async (req) => {
 
   try {
     const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-    if (!slackWebhookUrl) {
-      throw new Error('SLACK_WEBHOOK_URL not configured');
-    }
+    if (!slackWebhookUrl) throw new Error('SLACK_WEBHOOK_URL not configured');
 
-    if (!supabaseUrl || !anonKey) {
-      throw new Error('Supabase credentials not configured');
-    }
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Parse request body for custom options
     let customDate: string | null = null;
-    let formatOptions: FormatOptions = {
-      showPercentChanges: true,
-      showPlatformSpacing: true,
-    };
-
     if (req.method === 'POST') {
       try {
         const body = await req.json();
-        if (body.date) {
-          customDate = body.date;
-        }
-        if (typeof body.showPercentChanges === 'boolean') {
-          formatOptions.showPercentChanges = body.showPercentChanges;
-        }
-        if (typeof body.showPlatformSpacing === 'boolean') {
-          formatOptions.showPlatformSpacing = body.showPlatformSpacing;
-        }
-      } catch {
-        // No body or invalid JSON, use defaults
-      }
+        if (body.date) customDate = body.date;
+      } catch { /* no body */ }
     }
 
-    // Use custom date or default to yesterday
     const reportDate = customDate || getDateEST(1);
-    const previousDate = customDate 
+    const previousDate = customDate
       ? new Date(new Date(customDate + 'T12:00:00').getTime() - 86400000).toISOString().split('T')[0]
       : getDateEST(2);
-    
-    console.log(`Generating report for: ${reportDate} (comparing to ${previousDate})`);
-    console.log(`Format options:`, formatOptions);
 
-    // Fetch all platform data and ranking in parallel
-    const platforms = [
-      { name: 'Meta', endpoint: 'meta-history' },
-      { name: 'Snapchat', endpoint: 'snapchat-history' },
-      { name: 'Google Ads', endpoint: 'google-ads-history' },
-      { name: 'TikTok', endpoint: 'tiktok-history' },
-    ];
+    console.log(`FTD report for: ${reportDate} vs ${previousDate}`);
 
-    const [platformResults, rankingData] = await Promise.all([
-      Promise.all(
-        platforms.map(p => fetchPlatformData(p.name, p.endpoint, supabaseUrl, anonKey, reportDate, previousDate))
-      ),
+    const [current, previous, adsets, ranking] = await Promise.all([
+      fetchFTDTotals(supabase, reportDate),
+      fetchFTDTotals(supabase, previousDate),
+      fetchTopAdsets(supabase, reportDate, 5),
       fetchRankingForDate(supabaseUrl, anonKey, reportDate),
     ]);
 
-    console.log('Platform results:', JSON.stringify(platformResults, null, 2));
-    console.log('Ranking data:', JSON.stringify(rankingData, null, 2));
+    console.log('Current totals:', current);
+    console.log('Previous totals:', previous);
 
-    // Build and send Slack message
-    const slackMessage = buildSlackMessage(platformResults, reportDate, formatOptions, rankingData);
-    
+    const slackMessage = buildSlackMessage(reportDate, current, previous, adsets, ranking);
+
     const slackResponse = await fetch(slackWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -397,10 +279,10 @@ serve(async (req) => {
       throw new Error(`Slack API error: ${slackResponse.status} - ${errorText}`);
     }
 
-    console.log('Slack message sent successfully');
+    console.log('Slack FTD report sent successfully');
 
     return new Response(
-      JSON.stringify({ success: true, date: reportDate, formatOptions, results: platformResults, ranking: rankingData }),
+      JSON.stringify({ success: true, date: reportDate, current, previous }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
