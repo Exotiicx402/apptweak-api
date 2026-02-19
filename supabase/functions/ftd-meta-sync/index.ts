@@ -16,24 +16,36 @@ const FTD_ACTION_TYPE_ALT = "offsite_conversion.fb_pixel_custom.FirstTimeDeposit
 
 function extractFTDCount(actions: any[]): number {
   if (!actions || !Array.isArray(actions)) return 0;
-  const action = actions.find(
+
+  // Try specific FirstTimeDeposit action types first
+  const specific = actions.find(
     (a: any) =>
       a.action_type === FTD_ACTION_TYPE ||
       a.action_type === FTD_ACTION_TYPE_ALT ||
-      (typeof a.action_type === "string" && a.action_type.includes("FirstTimeDeposit"))
+      (typeof a.action_type === "string" && a.action_type.toLowerCase().includes("firsttimedeposit"))
   );
-  return action ? parseInt(action.value) || 0 : 0;
+  if (specific) return parseInt(specific.value) || 0;
+
+  // Fallback: at campaign level Meta aggregates all custom pixel events under offsite_conversion.fb_pixel_custom
+  // Since this is the FTD campaign, this IS the FTD count
+  const custom = actions.find((a: any) => a.action_type === "offsite_conversion.fb_pixel_custom");
+  return custom ? parseInt(custom.value) || 0 : 0;
 }
 
 function extractFTDValue(actionValues: any[]): number {
   if (!actionValues || !Array.isArray(actionValues)) return 0;
-  const action = actionValues.find(
+
+  const specific = actionValues.find(
     (a: any) =>
       a.action_type === FTD_ACTION_TYPE ||
       a.action_type === FTD_ACTION_TYPE_ALT ||
-      (typeof a.action_type === "string" && a.action_type.includes("FirstTimeDeposit"))
+      (typeof a.action_type === "string" && a.action_type.toLowerCase().includes("firsttimedeposit"))
   );
-  return action ? parseFloat(action.value) || 0 : 0;
+  if (specific) return parseFloat(specific.value) || 0;
+
+  // Fallback: same as above for values
+  const custom = actionValues.find((a: any) => a.action_type === "offsite_conversion.fb_pixel_custom");
+  return custom ? parseFloat(custom.value) || 0 : 0;
 }
 
 async function fetchMetaFTDInsights(
