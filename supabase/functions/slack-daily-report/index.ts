@@ -43,7 +43,7 @@ function formatDateForDisplay(dateStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-interface FTDTotals {
+export interface FTDTotals {
   spend: number;
   ftd_count: number;
   cost_per_ftd: number;
@@ -81,77 +81,13 @@ async function fetchFTDTotals(
   };
 }
 
-async function fetchTopAdsets(
-  supabase: ReturnType<typeof createClient>,
-  date: string,
-  limit = 5
-): Promise<{ adset_name: string; spend: number; ftd_count: number; cost_per_ftd: number }[]> {
-  const { data, error } = await supabase
-    .from('ftd_performance')
-    .select('adset_name, spend, ftd_count')
-    .eq('date', date)
-    .order('spend', { ascending: false });
-
-  if (error || !data) return [];
-
-  // Aggregate by adset_name
-  const map = new Map<string, { spend: number; ftd_count: number }>();
-  for (const r of data) {
-    const key = r.adset_name || 'Unknown';
-    const existing = map.get(key) || { spend: 0, ftd_count: 0 };
-    map.set(key, {
-      spend: existing.spend + (Number(r.spend) || 0),
-      ftd_count: existing.ftd_count + (Number(r.ftd_count) || 0),
-    });
-  }
-
-  return Array.from(map.entries())
-    .map(([adset_name, v]) => ({
-      adset_name,
-      ...v,
-      cost_per_ftd: v.ftd_count > 0 ? v.spend / v.ftd_count : 0,
-    }))
-    .sort((a, b) => b.spend - a.spend)
-    .slice(0, limit);
-}
-
-async function fetchRankingForDate(
-  supabaseUrl: string,
-  anonKey: string,
-  date: string
-): Promise<{ rank: number | null; error?: string }> {
-  try {
-    const response = await fetch(`${supabaseUrl}/functions/v1/apptweak-ranking-history`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-      body: JSON.stringify({ appId: '6648798962', country: 'us', device: 'iphone', startDate: date, endDate: date }),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    const rankings = data?.result?.['6648798962']?.rankings || [];
-    for (const ranking of rankings) {
-      for (const value of ranking.value || []) {
-        if (value.category === '6004' && value.chart_type === 'free') {
-          return { rank: value.rank };
-        }
-      }
-    }
-    return { rank: null };
-  } catch (error) {
-    return { rank: null, error: error instanceof Error ? error.message : 'Unknown' };
-  }
-}
-
 function buildSlackMessage(
   date: string,
   current: FTDTotals,
   previous: FTDTotals,
-  _adsets: unknown[],
-  _ranking: { rank: number | null; error?: string }
 ): object {
   const displayDate = formatDateForDisplay(date);
 
-  // Row 1: metric labels
   const header =    `${'Metric'.padEnd(18)}${'Today'.padStart(12)}${'vs Yesterday'.padStart(14)}`;
   const separator = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
@@ -160,7 +96,6 @@ function buildSlackMessage(
   }
 
   const roasVal = current.roas > 0 ? `${current.roas.toFixed(2)}x` : '-';
-  const roasPrev = previous.roas > 0 ? `${previous.roas.toFixed(2)}x` : '-';
   const roasChg = previous.roas > 0 ? pct(current.roas, previous.roas) : '-';
 
   const lines = [
@@ -199,41 +134,58 @@ serve(async (req) => {
   }
 
   try {
-    const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-
-    if (!slackWebhookUrl) throw new Error('SLACK_WEBHOOK_URL not configured');
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     let customDate: string | null = null;
+    let previewOnly = false;
+
     if (req.method === 'POST') {
       try {
         const body = await req.json();
         if (body.date) customDate = body.date;
+        if (body.preview === true) previewOnly = true;
       } catch { /* no body */ }
     }
 
+    // Always report on yesterday (previous day) unless a custom date is provided
     const reportDate = customDate || getDateEST(1);
     const previousDate = customDate
       ? new Date(new Date(customDate + 'T12:00:00').getTime() - 86400000).toISOString().split('T')[0]
       : getDateEST(2);
 
-    console.log(`FTD report for: ${reportDate} vs ${previousDate}`);
+    console.log(`FTD report for: ${reportDate} vs ${previousDate} (preview: ${previewOnly})`);
 
-    const [current, previous, adsets, ranking] = await Promise.all([
+    const [current, previous] = await Promise.all([
       fetchFTDTotals(supabase, reportDate),
       fetchFTDTotals(supabase, previousDate),
-      fetchTopAdsets(supabase, reportDate, 5),
-      fetchRankingForDate(supabaseUrl, anonKey, reportDate),
     ]);
 
     console.log('Current totals:', current);
     console.log('Previous totals:', previous);
 
-    const slackMessage = buildSlackMessage(reportDate, current, previous, adsets, ranking);
+    // If preview mode, return the data without sending to Slack
+    if (previewOnly) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          preview: true,
+          date: reportDate,
+          previousDate,
+          current,
+          previous,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Send to Slack
+    const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
+    if (!slackWebhookUrl) throw new Error('SLACK_WEBHOOK_URL not configured');
+
+    const slackMessage = buildSlackMessage(reportDate, current, previous);
 
     const slackResponse = await fetch(slackWebhookUrl, {
       method: 'POST',
