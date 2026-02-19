@@ -41,6 +41,11 @@ async function fetchMetaFTDInsights(
     adAccountId = `act_${adAccountId}`;
   }
 
+  // Validate dates
+  if (startDate > endDate) {
+    throw new Error(`Invalid date range: startDate (${startDate}) must be <= endDate (${endDate})`);
+  }
+
   const fields = [
     "campaign_id",
     "campaign_name",
@@ -57,27 +62,20 @@ async function fetchMetaFTDInsights(
     "actions",
   ].join(",");
 
-  const timeRange = JSON.stringify({ since: startDate, until: endDate });
+  // Build params manually to avoid encoding issues with time_range JSON
+  const params = new URLSearchParams();
+  params.set("fields", fields);
+  params.set("time_range", `{"since":"${startDate}","until":"${endDate}"}`);
+  params.set("level", "ad");
+  params.set("time_increment", "1");
+  params.set("action_attribution_windows", '["7d_click","1d_view"]');
+  params.set("access_token", accessToken);
+  params.set("limit", "500");
 
-  const url = new URL(`https://graph.facebook.com/v19.0/${adAccountId}/insights`);
-  url.searchParams.set("fields", fields);
-  url.searchParams.set("time_range", timeRange);
-  url.searchParams.set("level", "ad");
-  url.searchParams.set("time_increment", "1"); // daily breakdown
-  url.searchParams.set("action_attribution_windows", '["7d_click","1d_view"]');
-  url.searchParams.set("filtering", JSON.stringify([
-    {
-      field: "campaign.name",
-      operator: "CONTAIN",
-      value: FTD_CAMPAIGN_FRAGMENT,
-    },
-  ]));
-  url.searchParams.set("access_token", accessToken);
-  url.searchParams.set("limit", "500");
-
+  const baseUrl = `https://graph.facebook.com/v19.0/${adAccountId}/insights`;
   console.log(`Fetching Meta FTD ad-level data: ${startDate} to ${endDate}`);
 
-  const response = await fetch(url.toString());
+  const response = await fetch(`${baseUrl}?${params.toString()}`);
   if (!response.ok) {
     const errorText = await response.text();
     console.error("Meta API error:", errorText);
@@ -85,7 +83,7 @@ async function fetchMetaFTDInsights(
   }
 
   const data = await response.json();
-  let allRows = data.data || [];
+  let allRows: any[] = data.data || [];
 
   // Follow pagination cursors
   let nextUrl = data.paging?.next;
@@ -99,8 +97,16 @@ async function fetchMetaFTDInsights(
     nextUrl = nextData.paging?.next;
   }
 
-  console.log(`Total FTD rows fetched: ${allRows.length} across ${pageCount} pages`);
-  return allRows;
+  console.log(`Total rows before FTD filter: ${allRows.length} across ${pageCount} pages`);
+
+  // Filter client-side to only FTD campaign rows
+  const ftdRows = allRows.filter((row: any) =>
+    typeof row.campaign_name === "string" &&
+    row.campaign_name.toUpperCase().includes(FTD_CAMPAIGN_FRAGMENT.toUpperCase())
+  );
+
+  console.log(`FTD rows after filtering: ${ftdRows.length}`);
+  return ftdRows;
 }
 
 serve(async (req) => {
