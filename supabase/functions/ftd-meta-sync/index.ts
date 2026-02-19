@@ -109,8 +109,11 @@ async function fetchMetaFTDInsights(
   }
 
   console.log(`Total rows before FTD filter: ${allRows.length} across ${pageCount} pages`);
+  if (allRows.length > 0) {
+    console.log(`Sample campaign names: ${[...new Set(allRows.slice(0, 5).map((r: any) => r.campaign_name))].join(" | ")}`);
+  }
 
-  // Filter client-side to only FTD campaign rows
+  // Filter client-side to only FTD campaign rows (case-insensitive, matches "FTD" anywhere in name)
   const ftdRows = allRows.filter((row: any) =>
     typeof row.campaign_name === "string" &&
     row.campaign_name.toUpperCase().includes(FTD_CAMPAIGN_FRAGMENT.toUpperCase())
@@ -189,15 +192,25 @@ serve(async (req) => {
     console.log("Action types seen:", [...actionTypes].join(", "));
 
     // Upsert into ftd_performance table
-    const { error, count } = await supabase
+    // Use delete+insert pattern to avoid conflict issues with nullable ad_id
+    const dates = [...new Set(rows.map((r: any) => r.date))];
+    console.log(`Deleting existing rows for dates: ${dates.join(", ")}`);
+    const { error: deleteError } = await supabase
       .from("ftd_performance")
-      .upsert(rows, {
-        onConflict: "date,ad_id",
-        ignoreDuplicates: false,
-      });
+      .delete()
+      .in("date", dates);
+
+    if (deleteError) {
+      console.error("Delete error:", deleteError);
+      throw deleteError;
+    }
+
+    const { error } = await supabase
+      .from("ftd_performance")
+      .insert(rows);
 
     if (error) {
-      console.error("Supabase upsert error:", error);
+      console.error("Supabase insert error:", error);
       throw error;
     }
 
