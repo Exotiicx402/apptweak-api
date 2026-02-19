@@ -147,83 +147,43 @@ function buildSlackMessage(
   date: string,
   current: FTDTotals,
   previous: FTDTotals,
-  adsets: { adset_name: string; spend: number; ftd_count: number; cost_per_ftd: number }[],
-  ranking: { rank: number | null; error?: string }
+  _adsets: unknown[],
+  _ranking: { rank: number | null; error?: string }
 ): object {
   const displayDate = formatDateForDisplay(date);
 
-  const rankingText = ranking.rank !== null
-    ? `🏆 *Polymarket App Store:* #${ranking.rank} in Sports (Free)`
-    : `🏆 *Polymarket App Store:* No data`;
+  const header = 'Channel          Spend        FTD Count    Cost/FTD';
+  const separator = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
 
-  // Main metrics table
-  const metricsLines = [
-    `Metric            Today          vs. Yesterday`,
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `Spend      ${formatCurrency(current.spend).padStart(14)}   ${pct(current.spend, previous.spend).padStart(12)}`,
-    `FTDs       ${formatNumber(current.ftd_count).padStart(14)}   ${pct(current.ftd_count, previous.ftd_count).padStart(12)}`,
-    `Cost/FTD   ${formatCurrency(current.cost_per_ftd, 2).padStart(14)}   ${pct(current.cost_per_ftd, previous.cost_per_ftd).padStart(12)}`,
-    `Impressions${formatNumber(current.impressions).padStart(14)}   ${pct(current.impressions, previous.impressions).padStart(12)}`,
-    `Clicks     ${formatNumber(current.clicks).padStart(14)}   ${pct(current.clicks, previous.clicks).padStart(12)}`,
-    `CTR        ${(current.ctr.toFixed(2) + '%').padStart(14)}   ${pct(current.ctr, previous.ctr).padStart(12)}`,
-  ].join('\n');
+  const spend = formatCurrency(current.spend).padStart(12);
+  const ftds = formatNumber(current.ftd_count).padStart(12);
+  const cpFtd = current.ftd_count > 0 ? formatCurrency(current.cost_per_ftd, 2).padStart(10) : '-'.padStart(10);
+  const dataRow = `${'Meta'.padEnd(16)}${spend}${ftds}${cpFtd}`;
 
-  const blocks: object[] = [
-    {
-      type: 'header',
-      text: {
-        type: 'plain_text',
-        text: `💰 FTD Campaign Report - ${displayDate}`,
-        emoji: true,
+  const spendChg = pct(current.spend, previous.spend).padStart(12);
+  const ftdsChg = pct(current.ftd_count, previous.ftd_count).padStart(12);
+  const cpFtdChg = pct(current.cost_per_ftd, previous.cost_per_ftd).padStart(10);
+  const changeRow = `${''.padEnd(16)}${spendChg}${ftdsChg}${cpFtdChg}`;
+
+  const tableContent = [header, separator, dataRow, changeRow].join('\n');
+
+  return {
+    channel: 'C0AED2ECQSZ',
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: `📊 Daily Performance Report - ${displayDate}`,
+          emoji: true,
+        },
       },
-    },
-    {
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: `*Campaign:* HOURS · PROSPECTING · INTERNATIONAL · TIER ONE · WEB · FTD  |  Meta Ads` }],
-    },
-    {
-      type: 'section',
-      text: { type: 'mrkdwn', text: rankingText },
-    },
-    {
-      type: 'section',
-      text: { type: 'mrkdwn', text: '```' + metricsLines + '```' },
-    },
-  ];
-
-  // Add ad set breakdown if there's data
-  if (adsets.length > 0) {
-    const adsetHeader = `Ad Set                        Spend       FTDs   Cost/FTD`;
-    const adsetSep =   `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-    const adsetRows = adsets.map(a => {
-      const name = a.adset_name.substring(0, 28).padEnd(28);
-      const spend = formatCurrency(a.spend).padStart(10);
-      const ftds = formatNumber(a.ftd_count).padStart(7);
-      const cpFtd = a.ftd_count > 0 ? formatCurrency(a.cost_per_ftd, 2).padStart(10) : '  -  '.padStart(10);
-      return `${name}  ${spend}  ${ftds}  ${cpFtd}`;
-    });
-
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*Ad Set Breakdown (top ${adsets.length})*\n` + '```' + [adsetHeader, adsetSep, ...adsetRows].join('\n') + '```',
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: '```' + tableContent + '```' },
       },
-    });
-  }
-
-  // No data warning
-  if (current.spend === 0 && current.ftd_count === 0) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `⚠️ _No FTD data found for ${displayDate}. The daily sync may not have run yet — check the FTD dashboard and sync manually if needed._`,
-      },
-    });
-  }
-
-  return { channel: 'C0AED2ECQSZ', blocks };
+    ],
+  };
 }
 
 serve(async (req) => {
