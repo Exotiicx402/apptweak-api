@@ -87,7 +87,7 @@ async function fetchMetaFTDInsights(
   params.set("time_range", `{"since":"${startDate}","until":"${endDate}"}`);
   params.set("level", "campaign");
   params.set("time_increment", "1");
-  params.set("action_attribution_windows", '["1d_click","1d_view"]');
+  params.set("action_attribution_windows", '["1d_click"]');
   params.set("access_token", accessToken);
   params.set("limit", "500");
 
