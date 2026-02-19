@@ -59,10 +59,6 @@ async function fetchMetaFTDInsights(
   const fields = [
     "campaign_id",
     "campaign_name",
-    "adset_id",
-    "adset_name",
-    "ad_id",
-    "ad_name",
     "spend",
     "impressions",
     "clicks",
@@ -77,7 +73,7 @@ async function fetchMetaFTDInsights(
   const params = new URLSearchParams();
   params.set("fields", fields);
   params.set("time_range", `{"since":"${startDate}","until":"${endDate}"}`);
-  params.set("level", "ad");
+  params.set("level", "campaign");
   params.set("time_increment", "1");
   params.set("action_attribution_windows", '["7d_click","1d_view"]');
   params.set("access_token", accessToken);
@@ -156,7 +152,7 @@ serve(async (req) => {
       );
     }
 
-    // Transform rows
+    // Transform rows (campaign-level)
     const rows = rawRows.map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
       const ftdCount = extractFTDCount(row.actions);
@@ -166,10 +162,10 @@ serve(async (req) => {
         date: row.date_start,
         campaign_id: row.campaign_id || null,
         campaign_name: row.campaign_name || null,
-        adset_id: row.adset_id || null,
-        adset_name: row.adset_name || null,
-        ad_id: row.ad_id || null,
-        ad_name: row.ad_name || null,
+        adset_id: null,
+        adset_name: null,
+        ad_id: null,
+        ad_name: null,
         spend,
         impressions: parseInt(row.impressions) || 0,
         clicks: parseInt(row.clicks) || 0,
