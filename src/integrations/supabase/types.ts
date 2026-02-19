@@ -209,6 +209,8 @@ export type Database = {
           ftd_count: number | null
           id: string
           impressions: number | null
+          results_value: number | null
+          roas: number | null
           spend: number | null
           synced_at: string | null
         }
@@ -229,6 +231,8 @@ export type Database = {
           ftd_count?: number | null
           id?: string
           impressions?: number | null
+          results_value?: number | null
+          roas?: number | null
           spend?: number | null
           synced_at?: string | null
         }
@@ -249,6 +253,8 @@ export type Database = {
           ftd_count?: number | null
           id?: string
           impressions?: number | null
+          results_value?: number | null
+          roas?: number | null
           spend?: number | null
           synced_at?: string | null
         }

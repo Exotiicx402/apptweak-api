@@ -45,11 +45,11 @@ function formatDateForDisplay(dateStr: string): string {
 
 interface FTDTotals {
   spend: number;
-  impressions: number;
-  clicks: number;
   ftd_count: number;
   cost_per_ftd: number;
-  ctr: number;
+  results_value: number;
+  roas: number;
+  avg_ftd_value: number;
 }
 
 async function fetchFTDTotals(
@@ -58,27 +58,26 @@ async function fetchFTDTotals(
 ): Promise<FTDTotals> {
   const { data, error } = await supabase
     .from('ftd_performance')
-    .select('spend, impressions, clicks, ftd_count')
+    .select('spend, ftd_count, results_value')
     .eq('date', date);
 
   if (error) {
     console.error(`FTD fetch error for ${date}:`, error.message);
-    return { spend: 0, impressions: 0, clicks: 0, ftd_count: 0, cost_per_ftd: 0, ctr: 0 };
+    return { spend: 0, ftd_count: 0, cost_per_ftd: 0, results_value: 0, roas: 0, avg_ftd_value: 0 };
   }
 
   const rows = data || [];
   const spend = rows.reduce((s, r) => s + (Number(r.spend) || 0), 0);
-  const impressions = rows.reduce((s, r) => s + (Number(r.impressions) || 0), 0);
-  const clicks = rows.reduce((s, r) => s + (Number(r.clicks) || 0), 0);
   const ftd_count = rows.reduce((s, r) => s + (Number(r.ftd_count) || 0), 0);
+  const results_value = rows.reduce((s, r) => s + (Number(r.results_value) || 0), 0);
 
   return {
     spend,
-    impressions,
-    clicks,
     ftd_count,
     cost_per_ftd: ftd_count > 0 ? spend / ftd_count : 0,
-    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+    results_value,
+    roas: spend > 0 ? results_value / spend : 0,
+    avg_ftd_value: ftd_count > 0 ? results_value / ftd_count : 0,
   };
 }
 
@@ -152,20 +151,28 @@ function buildSlackMessage(
 ): object {
   const displayDate = formatDateForDisplay(date);
 
-  const header = 'Channel          Spend        FTD Count    Cost/FTD';
-  const separator = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+  // Row 1: metric labels
+  const header =    `${'Metric'.padEnd(18)}${'Today'.padStart(12)}${'vs Yesterday'.padStart(14)}`;
+  const separator = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-  const spend = formatCurrency(current.spend).padStart(12);
-  const ftds = formatNumber(current.ftd_count).padStart(12);
-  const cpFtd = current.ftd_count > 0 ? formatCurrency(current.cost_per_ftd, 2).padStart(10) : '-'.padStart(10);
-  const dataRow = `${'Meta'.padEnd(16)}${spend}${ftds}${cpFtd}`;
+  function row(label: string, value: string, change: string) {
+    return `${label.padEnd(18)}${value.padStart(12)}${change.padStart(14)}`;
+  }
 
-  const spendChg = pct(current.spend, previous.spend).padStart(12);
-  const ftdsChg = pct(current.ftd_count, previous.ftd_count).padStart(12);
-  const cpFtdChg = pct(current.cost_per_ftd, previous.cost_per_ftd).padStart(10);
-  const changeRow = `${''.padEnd(16)}${spendChg}${ftdsChg}${cpFtdChg}`;
+  const roasVal = current.roas > 0 ? `${current.roas.toFixed(2)}x` : '-';
+  const roasPrev = previous.roas > 0 ? `${previous.roas.toFixed(2)}x` : '-';
+  const roasChg = previous.roas > 0 ? pct(current.roas, previous.roas) : '-';
 
-  const tableContent = [header, separator, dataRow, changeRow].join('\n');
+  const lines = [
+    header,
+    separator,
+    row('Amount Spent',    formatCurrency(current.spend),                             pct(current.spend, previous.spend)),
+    row('Results (FTDs)',  formatNumber(current.ftd_count),                           pct(current.ftd_count, previous.ftd_count)),
+    row('Cost per Result', current.ftd_count > 0 ? formatCurrency(current.cost_per_ftd, 2) : '-', pct(current.cost_per_ftd, previous.cost_per_ftd)),
+    row('Results Value',   current.results_value > 0 ? formatCurrency(current.results_value) : '-', pct(current.results_value, previous.results_value)),
+    row('Results ROAS',    roasVal,                                                   roasChg),
+    row('Avg. FTD Value',  current.avg_ftd_value > 0 ? formatCurrency(current.avg_ftd_value, 2) : '-', pct(current.avg_ftd_value, previous.avg_ftd_value)),
+  ].join('\n');
 
   return {
     channel: 'C0AED2ECQSZ',
@@ -180,7 +187,7 @@ function buildSlackMessage(
       },
       {
         type: 'section',
-        text: { type: 'mrkdwn', text: '```' + tableContent + '```' },
+        text: { type: 'mrkdwn', text: '```' + lines + '```' },
       },
     ],
   };

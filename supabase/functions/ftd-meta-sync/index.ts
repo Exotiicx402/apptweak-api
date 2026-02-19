@@ -20,10 +20,20 @@ function extractFTDCount(actions: any[]): number {
     (a: any) =>
       a.action_type === FTD_ACTION_TYPE ||
       a.action_type === FTD_ACTION_TYPE_ALT ||
-      // Also check for any action_type containing "FirstTimeDeposit"
       (typeof a.action_type === "string" && a.action_type.includes("FirstTimeDeposit"))
   );
   return action ? parseInt(action.value) || 0 : 0;
+}
+
+function extractFTDValue(actionValues: any[]): number {
+  if (!actionValues || !Array.isArray(actionValues)) return 0;
+  const action = actionValues.find(
+    (a: any) =>
+      a.action_type === FTD_ACTION_TYPE ||
+      a.action_type === FTD_ACTION_TYPE_ALT ||
+      (typeof a.action_type === "string" && a.action_type.includes("FirstTimeDeposit"))
+  );
+  return action ? parseFloat(action.value) || 0 : 0;
 }
 
 async function fetchMetaFTDInsights(
@@ -60,6 +70,7 @@ async function fetchMetaFTDInsights(
     "cpc",
     "ctr",
     "actions",
+    "action_values",
   ].join(",");
 
   // Build params manually to avoid encoding issues with time_range JSON
@@ -146,6 +157,8 @@ serve(async (req) => {
     const rows = rawRows.map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
       const ftdCount = extractFTDCount(row.actions);
+      const resultsValue = extractFTDValue(row.action_values);
+      const roas = spend > 0 ? resultsValue / spend : 0;
       return {
         date: row.date_start,
         campaign_id: row.campaign_id || null,
@@ -159,6 +172,8 @@ serve(async (req) => {
         clicks: parseInt(row.clicks) || 0,
         ftd_count: ftdCount,
         cost_per_ftd: ftdCount > 0 ? spend / ftdCount : 0,
+        results_value: resultsValue,
+        roas,
         cpm: parseFloat(row.cpm) || 0,
         cpc: parseFloat(row.cpc) || 0,
         ctr: parseFloat(row.ctr) || 0,
