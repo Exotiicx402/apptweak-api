@@ -120,16 +120,26 @@ function ReportPreview({ data }: { data: PreviewData }) {
     },
   ];
 
-  const formatDisplayDate = (d: string) => {
-    const dt = new Date(d + 'T12:00:00');
-    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
+  const formatShortDate = (d: string) =>
+    new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const formatDisplayDate = (d: string) =>
+    new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const reportLabel = formatShortDate(date);
+  const prevLabel = formatShortDate(previousDate);
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
       <div className="bg-primary/10 border-b border-border px-4 py-3">
         <p className="text-sm font-semibold text-foreground">📊 Daily Performance Report — {formatDisplayDate(date)}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">vs {formatDisplayDate(previousDate)}</p>
+      </div>
+      {/* Column headers */}
+      <div className="flex items-center px-4 py-2 bg-muted/50 border-b border-border">
+        <span className="text-xs font-medium text-muted-foreground w-36">Metric</span>
+        <span className="text-xs font-medium text-muted-foreground flex-1 text-right">{reportLabel}</span>
+        <span className="text-xs font-medium text-muted-foreground w-20 text-right">{prevLabel}</span>
+        <span className="text-xs font-medium text-muted-foreground w-20 text-right">Change</span>
       </div>
       <div className="divide-y divide-border">
         {metrics.map((m) => {
@@ -148,9 +158,6 @@ function ReportPreview({ data }: { data: PreviewData }) {
             </div>
           );
         })}
-      </div>
-      <div className="px-4 py-2 bg-muted/20 border-t border-border">
-        <p className="text-xs text-muted-foreground">Preview only — columns: Metric / Today / Prev Day / % Change</p>
       </div>
     </div>
   );

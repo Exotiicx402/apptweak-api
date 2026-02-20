@@ -88,11 +88,17 @@ function buildSlackMessage(
 ): object {
   const displayDate = formatDateForDisplay(date);
 
-  const header =    `${'Metric'.padEnd(18)}${'Today'.padStart(12)}${'vs Yesterday'.padStart(14)}`;
-  const separator = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+  const reportDateShort = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const prevDateShort = (() => {
+    const prev = new Date(new Date(date + 'T12:00:00').getTime() - 86400000);
+    return prev.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  })();
+
+  const header =    `${'Metric'.padEnd(18)}${reportDateShort.padStart(12)}${('vs ' + prevDateShort).padStart(16)}`;
+  const separator = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
   function row(label: string, value: string, change: string) {
-    return `${label.padEnd(18)}${value.padStart(12)}${change.padStart(14)}`;
+    return `${label.padEnd(18)}${value.padStart(12)}${change.padStart(16)}`;
   }
 
   const roasVal = current.roas > 0 ? `${current.roas.toFixed(2)}x` : '-';
