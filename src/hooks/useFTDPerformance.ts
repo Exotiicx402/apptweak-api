@@ -24,6 +24,19 @@ export interface FTDAdsetRow {
   ctr: number;
 }
 
+export interface FTDCampaignRow {
+  campaign_id: string;
+  campaign_name: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ftd_count: number;
+  cost_per_ftd: number;
+  results_value: number;
+  roas: number;
+  ctr: number;
+}
+
 export interface FTDAdRow {
   ad_id: string;
   ad_name: string;
@@ -50,6 +63,7 @@ export interface FTDTotals {
 export interface FTDData {
   totals: FTDTotals;
   daily: FTDDailyRow[];
+  campaigns: FTDCampaignRow[];
   adsets: FTDAdsetRow[];
   ads: FTDAdRow[];
 }
@@ -121,6 +135,35 @@ export function useFTDPerformance() {
         ctr: d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0,
       }));
 
+      // Campaign aggregation
+      const campaignMap = new Map<string, FTDCampaignRow>();
+      allRows.forEach((r) => {
+        const key = r.campaign_id || r.campaign_name || "unknown";
+        if (!campaignMap.has(key)) {
+          campaignMap.set(key, {
+            campaign_id: r.campaign_id || "",
+            campaign_name: r.campaign_name || "Unknown Campaign",
+            spend: 0, impressions: 0, clicks: 0, ftd_count: 0,
+            cost_per_ftd: 0, results_value: 0, roas: 0, ctr: 0,
+          });
+        }
+        const c = campaignMap.get(key)!;
+        c.spend += Number(r.spend) || 0;
+        c.impressions += Number(r.impressions) || 0;
+        c.clicks += Number(r.clicks) || 0;
+        c.ftd_count += Number(r.ftd_count) || 0;
+        c.results_value += Number(r.results_value) || 0;
+      });
+
+      const campaigns = Array.from(campaignMap.values())
+        .map((c) => ({
+          ...c,
+          cost_per_ftd: c.ftd_count > 0 ? c.spend / c.ftd_count : 0,
+          roas: c.spend > 0 ? c.results_value / c.spend : 0,
+          ctr: c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0,
+        }))
+        .sort((a, b) => b.spend - a.spend);
+
       // Ad set aggregation
       const adsetMap = new Map<string, FTDAdsetRow>();
       allRows.forEach((r) => {
@@ -129,12 +172,8 @@ export function useFTDPerformance() {
           adsetMap.set(key, {
             adset_id: r.adset_id || "",
             adset_name: r.adset_name || "Unknown Ad Set",
-            spend: 0,
-            impressions: 0,
-            clicks: 0,
-            ftd_count: 0,
-            cost_per_ftd: 0,
-            ctr: 0,
+            spend: 0, impressions: 0, clicks: 0, ftd_count: 0,
+            cost_per_ftd: 0, ctr: 0,
           });
         }
         const as = adsetMap.get(key)!;
@@ -161,12 +200,8 @@ export function useFTDPerformance() {
             ad_id: r.ad_id || "",
             ad_name: r.ad_name || "Unknown Ad",
             adset_name: r.adset_name || "",
-            spend: 0,
-            impressions: 0,
-            clicks: 0,
-            ftd_count: 0,
-            cost_per_ftd: 0,
-            ctr: 0,
+            spend: 0, impressions: 0, clicks: 0, ftd_count: 0,
+            cost_per_ftd: 0, ctr: 0,
           });
         }
         const ad = adMap.get(key)!;
@@ -191,10 +226,7 @@ export function useFTDPerformance() {
           impressions: acc.impressions + (Number(r.impressions) || 0),
           clicks: acc.clicks + (Number(r.clicks) || 0),
           ftd_count: acc.ftd_count + (Number(r.ftd_count) || 0),
-          cost_per_ftd: 0,
-          cpm: 0,
-          cpc: 0,
-          ctr: 0,
+          cost_per_ftd: 0, cpm: 0, cpc: 0, ctr: 0,
         }),
         { ...emptyTotals }
       );
@@ -204,7 +236,7 @@ export function useFTDPerformance() {
       totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
       totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
 
-      setData({ totals, daily, adsets, ads });
+      setData({ totals, daily, campaigns, adsets, ads });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch FTD data");
     } finally {
