@@ -26,10 +26,7 @@ function extractFTDCount(actions: any[]): number {
   );
   if (specific) return parseInt(specific.value) || 0;
 
-  // Fallback: at campaign level Meta aggregates all custom pixel events under offsite_conversion.fb_pixel_custom
-  // Since this is the FTD campaign, this IS the FTD count
-  const custom = actions.find((a: any) => a.action_type === "offsite_conversion.fb_pixel_custom");
-  return custom ? parseInt(custom.value) || 0 : 0;
+  return 0;
 }
 
 function extractFTDValue(actionValues: any[]): number {
@@ -43,9 +40,7 @@ function extractFTDValue(actionValues: any[]): number {
   );
   if (specific) return parseFloat(specific.value) || 0;
 
-  // Fallback: same as above for values
-  const custom = actionValues.find((a: any) => a.action_type === "offsite_conversion.fb_pixel_custom");
-  return custom ? parseFloat(custom.value) || 0 : 0;
+  return 0;
 }
 
 async function fetchMetaFTDInsights(
@@ -79,6 +74,8 @@ async function fetchMetaFTDInsights(
     "ctr",
     "actions",
     "action_values",
+    "conversions",
+    "conversion_values",
   ].join(",");
 
   // Build params manually to avoid encoding issues with time_range JSON
@@ -88,10 +85,11 @@ async function fetchMetaFTDInsights(
   params.set("level", "campaign");
   params.set("time_increment", "1");
   params.set("action_attribution_windows", '["1d_click"]');
+  // Removed action_breakdowns - not needed at campaign level
   params.set("access_token", accessToken);
   params.set("limit", "500");
 
-  const baseUrl = `https://graph.facebook.com/v19.0/${adAccountId}/insights`;
+  const baseUrl = `https://graph.facebook.com/v22.0/${adAccountId}/insights`;
   console.log(`Fetching Meta FTD ad-level data: ${startDate} to ${endDate}`);
 
   const response = await fetch(`${baseUrl}?${params.toString()}`);
@@ -164,11 +162,20 @@ serve(async (req) => {
       );
     }
 
+    // Log FTD extraction for verification
+    rawRows.forEach((row: any) => {
+      const ftdConv = (row.conversions || []).find((a: any) => 
+        typeof a.action_type === "string" && a.action_type.toLowerCase().includes("firsttimedeposit")
+      );
+      console.log(`Campaign: ${row.campaign_name} | Date: ${row.date_start} | FTD conversions: ${JSON.stringify(ftdConv || 'none')}`);
+    });
+
     // Transform rows (campaign-level)
     const rows = rawRows.map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
-      const ftdCount = extractFTDCount(row.actions);
-      const resultsValue = extractFTDValue(row.action_values);
+      // Use conversions field which provides granular custom event breakdown
+      const ftdCount = extractFTDCount(row.conversions || row.actions);
+      const resultsValue = extractFTDValue(row.conversion_values || row.action_values);
       const roas = spend > 0 ? resultsValue / spend : 0;
       return {
         date: row.date_start,
