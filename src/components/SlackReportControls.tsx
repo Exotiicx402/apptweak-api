@@ -70,55 +70,63 @@ interface FTDTotals {
   avg_ftd_value: number;
 }
 
+interface CampaignTotals extends FTDTotals {
+  campaign_name: string;
+}
+
 interface PreviewData {
   date: string;
   previousDate: string;
   current: FTDTotals;
   previous: FTDTotals;
+  campaigns?: CampaignTotals[];
+  previousCampaigns?: CampaignTotals[];
+}
+
+function campaignLabel(name: string): string {
+  const parts = name.split('|').map(s => s.trim());
+  const intlIdx = parts.findIndex(p => p.toUpperCase() === 'INTERNATIONAL');
+  const webIdx = parts.findIndex(p => p.toUpperCase() === 'WEB');
+  if (intlIdx >= 0 && webIdx > intlIdx) {
+    return parts.slice(intlIdx + 1, webIdx).join(' ');
+  }
+  return name.length > 20 ? name.substring(0, 20) + '…' : name;
+}
+
+function MetricsRows({ current, previous }: { current: FTDTotals; previous: FTDTotals }) {
+  const metrics = [
+    { label: 'Amount Spent', current: formatCurrency(current.spend), prev: formatCurrency(previous.spend), change: pct(current.spend, previous.spend) },
+    { label: 'Results (FTDs)', current: formatNumber(current.ftd_count), prev: formatNumber(previous.ftd_count), change: pct(current.ftd_count, previous.ftd_count) },
+    { label: 'Cost per Result', current: current.ftd_count > 0 ? formatCurrency(current.cost_per_ftd, 2) : '—', prev: previous.ftd_count > 0 ? formatCurrency(previous.cost_per_ftd, 2) : '—', change: pct(current.cost_per_ftd, previous.cost_per_ftd), lowerIsBetter: true },
+    { label: 'Results Value', current: current.results_value > 0 ? formatCurrency(current.results_value) : '—', prev: previous.results_value > 0 ? formatCurrency(previous.results_value) : '—', change: pct(current.results_value, previous.results_value) },
+    { label: 'Results ROAS', current: current.roas > 0 ? `${current.roas.toFixed(2)}x` : '—', prev: previous.roas > 0 ? `${previous.roas.toFixed(2)}x` : '—', change: pct(current.roas, previous.roas) },
+    { label: 'Avg. FTD Value', current: current.avg_ftd_value > 0 ? formatCurrency(current.avg_ftd_value, 2) : '—', prev: previous.avg_ftd_value > 0 ? formatCurrency(previous.avg_ftd_value, 2) : '—', change: pct(current.avg_ftd_value, previous.avg_ftd_value) },
+  ];
+
+  return (
+    <>
+      {metrics.map((m) => {
+        const isPositive = m.lowerIsBetter ? !m.change.positive : m.change.positive;
+        return (
+          <div key={m.label} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
+            <span className="text-sm text-muted-foreground w-36">{m.label}</span>
+            <span className="text-sm font-semibold text-foreground flex-1 text-right">{m.current}</span>
+            <span className="text-xs text-muted-foreground w-20 text-right">{m.prev}</span>
+            <span className={cn(
+              "text-xs font-medium w-20 text-right",
+              m.change.neutral ? "text-muted-foreground" : isPositive ? "text-green-500" : "text-destructive"
+            )}>
+              {m.change.value}
+            </span>
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 function ReportPreview({ data }: { data: PreviewData }) {
-  const { current, previous, date, previousDate } = data;
-
-  const metrics = [
-    {
-      label: 'Amount Spent',
-      current: formatCurrency(current.spend),
-      prev: formatCurrency(previous.spend),
-      change: pct(current.spend, previous.spend),
-    },
-    {
-      label: 'Results (FTDs)',
-      current: formatNumber(current.ftd_count),
-      prev: formatNumber(previous.ftd_count),
-      change: pct(current.ftd_count, previous.ftd_count),
-    },
-    {
-      label: 'Cost per Result',
-      current: current.ftd_count > 0 ? formatCurrency(current.cost_per_ftd, 2) : '—',
-      prev: previous.ftd_count > 0 ? formatCurrency(previous.cost_per_ftd, 2) : '—',
-      change: pct(current.cost_per_ftd, previous.cost_per_ftd),
-      lowerIsBetter: true,
-    },
-    {
-      label: 'Results Value',
-      current: current.results_value > 0 ? formatCurrency(current.results_value) : '—',
-      prev: previous.results_value > 0 ? formatCurrency(previous.results_value) : '—',
-      change: pct(current.results_value, previous.results_value),
-    },
-    {
-      label: 'Results ROAS',
-      current: current.roas > 0 ? `${current.roas.toFixed(2)}x` : '—',
-      prev: previous.roas > 0 ? `${previous.roas.toFixed(2)}x` : '—',
-      change: pct(current.roas, previous.roas),
-    },
-    {
-      label: 'Avg. FTD Value',
-      current: current.avg_ftd_value > 0 ? formatCurrency(current.avg_ftd_value, 2) : '—',
-      prev: previous.avg_ftd_value > 0 ? formatCurrency(previous.avg_ftd_value, 2) : '—',
-      change: pct(current.avg_ftd_value, previous.avg_ftd_value),
-    },
-  ];
+  const { current, previous, date, previousDate, campaigns, previousCampaigns } = data;
 
   const formatShortDate = (d: string) =>
     new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -141,23 +149,29 @@ function ReportPreview({ data }: { data: PreviewData }) {
         <span className="text-xs font-medium text-muted-foreground w-20 text-right">{prevLabel}</span>
         <span className="text-xs font-medium text-muted-foreground w-20 text-right">Change</span>
       </div>
-      <div className="divide-y divide-border">
-        {metrics.map((m) => {
-          const isPositive = m.lowerIsBetter ? !m.change.positive : m.change.positive;
-          return (
-            <div key={m.label} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-              <span className="text-sm text-muted-foreground w-36">{m.label}</span>
-              <span className="text-sm font-semibold text-foreground flex-1 text-right">{m.current}</span>
-              <span className="text-xs text-muted-foreground w-20 text-right">{m.prev}</span>
-              <span className={cn(
-                "text-xs font-medium w-20 text-right",
-                m.change.neutral ? "text-muted-foreground" : isPositive ? "text-green-500" : "text-destructive"
-              )}>
-                {m.change.value}
-              </span>
+
+      {/* Per-campaign sections */}
+      {(campaigns || []).map((camp) => {
+        const prevCamp = (previousCampaigns || []).find(p => p.campaign_name === camp.campaign_name)
+          || { spend: 0, ftd_count: 0, cost_per_ftd: 0, results_value: 0, roas: 0, avg_ftd_value: 0 };
+        return (
+          <div key={camp.campaign_name}>
+            <div className="px-4 py-2 bg-muted/40 border-y border-border">
+              <span className="text-xs font-semibold text-foreground">📌 {campaignLabel(camp.campaign_name)}</span>
             </div>
-          );
-        })}
+            <div className="divide-y divide-border">
+              <MetricsRows current={camp} previous={prevCamp as FTDTotals} />
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Totals section */}
+      <div className="px-4 py-2 bg-primary/10 border-y border-border">
+        <span className="text-xs font-semibold text-foreground">📊 TOTAL</span>
+      </div>
+      <div className="divide-y divide-border">
+        <MetricsRows current={current} previous={previous} />
       </div>
     </div>
   );
