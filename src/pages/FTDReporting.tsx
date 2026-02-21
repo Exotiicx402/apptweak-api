@@ -61,9 +61,9 @@ export default function FTDReporting() {
             <div className="flex items-center gap-3">
               <img src={metaLogo} alt="Meta" className="w-6 h-6 object-contain" />
               <div>
-                <h1 className="text-2xl font-bold text-foreground">FTD Campaign</h1>
+                <h1 className="text-2xl font-bold text-foreground">FTD Campaigns</h1>
                 <p className="text-xs text-muted-foreground font-mono">
-                  HOURS · PROSPECTING · INTERNATIONAL · TIER ONE · WEB · FTD
+                  HOURS · PROSPECTING · INTERNATIONAL · WEB · FTD
                 </p>
               </div>
             </div>
@@ -192,7 +192,57 @@ export default function FTDReporting() {
               />
             </div>
 
-            {/* Time Series Charts */}
+            {/* Campaign Breakdown */}
+            {(data?.campaigns ?? []).length > 0 && (
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    Campaign Breakdown
+                    <Badge variant="secondary">{data!.campaigns.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Campaign</TableHead>
+                        <TableHead className="text-right">Spend</TableHead>
+                        <TableHead className="text-right">FTDs</TableHead>
+                        <TableHead className="text-right">Cost / FTD</TableHead>
+                        <TableHead className="text-right">Revenue</TableHead>
+                        <TableHead className="text-right">ROAS</TableHead>
+                        <TableHead className="text-right">Impressions</TableHead>
+                        <TableHead className="text-right">Clicks</TableHead>
+                        <TableHead className="text-right">CTR</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data!.campaigns.map((c) => (
+                        <TableRow key={c.campaign_id || c.campaign_name}>
+                          <TableCell className="font-medium text-sm max-w-xs truncate" title={c.campaign_name}>
+                            {c.campaign_name}
+                          </TableCell>
+                          <TableCell className="text-right">{fmt(c.spend, "currency")}</TableCell>
+                          <TableCell className="text-right">{fmt(c.ftd_count)}</TableCell>
+                          <TableCell className="text-right">
+                            {c.ftd_count > 0 ? fmt(c.cost_per_ftd, "currency") : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">{fmt(c.results_value, "currency")}</TableCell>
+                          <TableCell className="text-right">
+                            {c.roas > 0 ? `${c.roas.toFixed(2)}x` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">{fmt(c.impressions)}</TableCell>
+                          <TableCell className="text-right">{fmt(c.clicks)}</TableCell>
+                          <TableCell className="text-right">{fmt(c.ctr, "percent")}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
+
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
               <TimeSeriesChart
                 title="Spend Over Time"
