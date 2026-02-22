@@ -236,6 +236,24 @@ serve(async (req) => {
 
     console.log(`FTD report for: ${reportDate} vs ${previousDate} (preview: ${previewOnly})`);
 
+    // Auto-sync from Meta before generating report
+    try {
+      const syncUrl = `${supabaseUrl}/functions/v1/ftd-meta-sync`;
+      console.log(`Auto-syncing FTD data for ${previousDate} to ${reportDate}...`);
+      const syncResp = await fetch(syncUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ startDate: previousDate, endDate: reportDate }),
+      });
+      const syncResult = await syncResp.json();
+      console.log('Auto-sync result:', JSON.stringify(syncResult));
+    } catch (syncErr) {
+      console.error('Auto-sync failed (continuing with existing data):', syncErr);
+    }
+
     const [currentData, previousData] = await Promise.all([
       fetchFTDData(supabase, reportDate),
       fetchFTDData(supabase, previousDate),
