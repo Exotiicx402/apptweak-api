@@ -1,63 +1,57 @@
 
-## Add Cursor-Based Pagination to the Competitor Ad Library
+# Add Cumulative Performance Report to Slack
 
-### The Problem
+## Overview
+Create a second Slack report that sends cumulative totals from the campaign launch date (Feb 18, 2026) through yesterday. The existing daily report stays untouched. The new report will be schedulable with a customizable time (default 12:16 PM PST / 3:16 PM EST).
 
-The `competitor-ad-library` edge function currently makes a single API call per strategy and stops after the first page of results (up to 50 ads). Meta's Ad Library API returns a `paging.cursors.after` token in every response, which you must pass back as `after=<cursor>` to get the next page. We're ignoring this entirely, which is why Kalshi shows 1 ad despite running many campaigns.
+## What stays the same
+- The existing daily report edge function, schedule, and UI controls -- no changes at all.
 
-### The Fix
+## New Edge Function: `slack-cumulative-report`
 
-Implement a `fetchAllPages` helper inside the edge function that follows the pagination cursor until:
-- Meta returns no `paging.next` link (end of results), OR
-- A safety cap is hit (e.g. 500 ads per query) to prevent infinite loops / timeout
+A new edge function that:
+1. Auto-syncs FTD data from Meta (same pattern as daily report) for the full date range (Feb 18 to yesterday).
+2. Queries `ftd_performance` for ALL rows from `2026-02-18` through yesterday (using `gte`/`lte` filters instead of `eq`).
+3. Aggregates totals per campaign and overall across the entire date range.
+4. Builds a Slack message with the same formatting style as the daily report but:
+   - Header: "Cumulative Performance Report - Feb 18 to {yesterday}"
+   - Column headers: "Metric" and "Total" (no comparison column since this is lifetime cumulative)
+   - Per-campaign sections (WORLD, TIER ONE) and TOTAL section
+   - Same 6 metrics: Spend, FTDs, Cost/FTD, Results Value, ROAS, Avg FTD Value
+5. Supports `preview: true` mode for the dashboard preview.
+6. Sends to the same Slack channel (`C0AED2ECQSZ`).
 
-### Technical Details
+## New Cron Schedule
 
-**Current behavior:**
-```
-Request → Page 1 (50 ads) → Stop
-```
+Create a cron job for `slack-cumulative-report` defaulting to 12:16 PM PST (= 3:16 PM EST = 20:16 UTC), so cron: `16 20 * * *`.
 
-**After fix:**
-```
-Request → Page 1 (50 ads) → cursor → Page 2 (50 ads) → cursor → Page 3 ... → Stop when no next
-```
+## UI Updates: `SlackReportControls.tsx`
 
-Meta's response shape includes:
-```json
-{
-  "data": [...],
-  "paging": {
-    "cursors": {
-      "before": "...",
-      "after": "WzI1..."
-    },
-    "next": "https://graph.facebook.com/..."
-  }
-}
-```
+Add a second card/section below the existing daily report controls:
+- Title: "Slack Cumulative Report"
+- Description: "Cumulative performance since campaign launch (Feb 18)"
+- Same time picker UI (Hour / Minute / AM|PM) mapped to the cumulative report's cron schedule
+- Active/Paused toggle
+- Manual Preview and Send buttons (calling `slack-cumulative-report`)
+- Preview display using a simplified version of `ReportPreview` (no comparison column)
 
-We follow `paging.next` directly (it already includes all params + the cursor).
+## Technical Details
 
-### Files to Modify
+### New file: `supabase/functions/slack-cumulative-report/index.ts`
+- Reuses helper functions (formatCurrency, formatNumber, campaignLabel, etc.)
+- New `fetchFTDDataRange(supabase, startDate, endDate)` function that queries with `.gte('date', startDate).lte('date', endDate)` and aggregates across all dates
+- `buildCumulativeSlackMessage()` with two-column layout (Metric | Total) instead of three columns
+- Auto-syncs Meta data for recent dates before querying
+- Campaign launch date `2026-02-18` hardcoded as a constant
 
-**`supabase/functions/competitor-ad-library/index.ts`**
+### Config: `supabase/config.toml`
+- Add `[functions.slack-cumulative-report]` with `verify_jwt = false`
 
-- Add a `fetchAllPages(initialUrl, maxAds)` async helper that:
-  - Fetches the initial URL
-  - Collects all `data` items
-  - If `paging.next` exists and total < `maxAds`, fetches the next URL
-  - Repeats until exhausted or cap hit
-- Replace the two single `fetch()` calls (Strategy 1 and Strategy 2) with calls to `fetchAllPages()`
-- Set a generous cap of `500` ads per query to avoid Supabase edge function timeouts (30s limit)
-- Add logging of how many pages were fetched per query
+### Cron job
+- SQL insert via pg_cron for the cumulative report schedule
 
-### Safety Considerations
-
-- Edge functions time out after 30 seconds — each page fetch takes ~300-500ms, so 500 ads / 50 per page = 10 pages max = ~5 seconds. Well within limits.
-- We keep the deduplication logic untouched — it handles overlapping results from both strategies correctly.
-- No schema changes, no new secrets, no UI changes needed.
-
-### Expected Outcome
-
-For a competitor like Kalshi that runs many ads, you should see a jump from 1-2 ads to potentially 50-200+ ads depending on what Meta has indexed for their page ID.
+### `SlackReportControls.tsx`
+- Add a second schedule lookup for the cumulative report cron job
+- Duplicate the time picker and toggle controls for the second schedule
+- Add preview/send buttons that invoke `slack-cumulative-report`
+- Simplified preview component without comparison columns for cumulative data
