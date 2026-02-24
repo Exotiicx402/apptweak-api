@@ -331,8 +331,8 @@ const SlackReportControls = () => {
   );
 
   const cumulativeSchedule = schedules?.find(s =>
-    s.name.toLowerCase().includes('cumulative') ||
-    s.name.toLowerCase().includes('slack-cumulative')
+    s.name === 'Slack Cumulative Report' ||
+    s.name.toLowerCase().includes('cumulative')
   );
 
   useEffect(() => {

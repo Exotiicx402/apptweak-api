@@ -25,6 +25,7 @@ function getJobName(command: string): string {
   if (command.includes("meta-to-bigquery")) return "Meta";
   if (command.includes("apptweak-rank-to-sheets")) return "AppTweak Rankings";
   if (command.includes("slack-daily-report")) return "Slack Daily Report";
+  if (command.includes("slack-cumulative-report")) return "Slack Cumulative Report";
   return "Unknown";
 }
 
