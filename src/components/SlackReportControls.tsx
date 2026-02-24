@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { format, subDays } from "date-fns";
-import { CalendarIcon, Send, Loader2, Clock, Eye } from "lucide-react";
+import { CalendarIcon, Send, Loader2, Clock, Eye, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
@@ -83,6 +83,13 @@ interface PreviewData {
   previousCampaigns?: CampaignTotals[];
 }
 
+interface CumulativePreviewData {
+  startDate: string;
+  endDate: string;
+  totals: FTDTotals;
+  campaigns?: CampaignTotals[];
+}
+
 function campaignLabel(name: string): string {
   const parts = name.split('|').map(s => s.trim());
   const intlIdx = parts.findIndex(p => p.toUpperCase() === 'INTERNATIONAL');
@@ -92,6 +99,8 @@ function campaignLabel(name: string): string {
   }
   return name.length > 20 ? name.substring(0, 20) + '…' : name;
 }
+
+/* ─── Shared metric row helpers ─── */
 
 function MetricsRows({ current, previous }: { current: FTDTotals; previous: FTDTotals }) {
   const metrics = [
@@ -125,6 +134,30 @@ function MetricsRows({ current, previous }: { current: FTDTotals; previous: FTDT
   );
 }
 
+function CumulativeMetricsRows({ totals }: { totals: FTDTotals }) {
+  const metrics = [
+    { label: 'Amount Spent', value: formatCurrency(totals.spend) },
+    { label: 'Results (FTDs)', value: formatNumber(totals.ftd_count) },
+    { label: 'Cost per Result', value: totals.ftd_count > 0 ? formatCurrency(totals.cost_per_ftd, 2) : '—' },
+    { label: 'Results Value', value: totals.results_value > 0 ? formatCurrency(totals.results_value) : '—' },
+    { label: 'Results ROAS', value: totals.roas > 0 ? `${totals.roas.toFixed(2)}x` : '—' },
+    { label: 'Avg. FTD Value', value: totals.avg_ftd_value > 0 ? formatCurrency(totals.avg_ftd_value, 2) : '—' },
+  ];
+
+  return (
+    <>
+      {metrics.map((m) => (
+        <div key={m.label} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
+          <span className="text-sm text-muted-foreground w-36">{m.label}</span>
+          <span className="text-sm font-semibold text-foreground flex-1 text-right">{m.value}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/* ─── Preview components ─── */
+
 function ReportPreview({ data }: { data: PreviewData }) {
   const { current, previous, date, previousDate, campaigns, previousCampaigns } = data;
 
@@ -142,7 +175,6 @@ function ReportPreview({ data }: { data: PreviewData }) {
       <div className="bg-primary/10 border-b border-border px-4 py-3">
         <p className="text-sm font-semibold text-foreground">📊 Daily Performance Report — {formatDisplayDate(date)}</p>
       </div>
-      {/* Column headers */}
       <div className="flex items-center px-4 py-2 bg-muted/50 border-b border-border">
         <span className="text-xs font-medium text-muted-foreground w-36">Metric</span>
         <span className="text-xs font-medium text-muted-foreground flex-1 text-right">{reportLabel}</span>
@@ -150,7 +182,6 @@ function ReportPreview({ data }: { data: PreviewData }) {
         <span className="text-xs font-medium text-muted-foreground w-20 text-right">Change</span>
       </div>
 
-      {/* Per-campaign sections */}
       {(campaigns || []).map((camp) => {
         const prevCamp = (previousCampaigns || []).find(p => p.campaign_name === camp.campaign_name)
           || { spend: 0, ftd_count: 0, cost_per_ftd: 0, results_value: 0, roas: 0, avg_ftd_value: 0 };
@@ -166,7 +197,6 @@ function ReportPreview({ data }: { data: PreviewData }) {
         );
       })}
 
-      {/* Totals section */}
       <div className="px-4 py-2 bg-primary/10 border-y border-border">
         <span className="text-xs font-semibold text-foreground">📊 TOTAL</span>
       </div>
@@ -176,6 +206,101 @@ function ReportPreview({ data }: { data: PreviewData }) {
     </div>
   );
 }
+
+function CumulativeReportPreview({ data }: { data: CumulativePreviewData }) {
+  const { totals, startDate, endDate, campaigns } = data;
+
+  const formatShortDate = (d: string) =>
+    new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const formatDisplayDate = (d: string) =>
+    new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
+      <div className="bg-primary/10 border-b border-border px-4 py-3">
+        <p className="text-sm font-semibold text-foreground">📊 Cumulative Performance — {formatShortDate(startDate)} to {formatDisplayDate(endDate)}</p>
+      </div>
+      <div className="flex items-center px-4 py-2 bg-muted/50 border-b border-border">
+        <span className="text-xs font-medium text-muted-foreground w-36">Metric</span>
+        <span className="text-xs font-medium text-muted-foreground flex-1 text-right">Total</span>
+      </div>
+
+      {(campaigns || []).map((camp) => (
+        <div key={camp.campaign_name}>
+          <div className="px-4 py-2 bg-muted/40 border-y border-border">
+            <span className="text-xs font-semibold text-foreground">📌 {campaignLabel(camp.campaign_name)}</span>
+          </div>
+          <div className="divide-y divide-border">
+            <CumulativeMetricsRows totals={camp} />
+          </div>
+        </div>
+      ))}
+
+      <div className="px-4 py-2 bg-primary/10 border-y border-border">
+        <span className="text-xs font-semibold text-foreground">📊 TOTAL</span>
+      </div>
+      <div className="divide-y divide-border">
+        <CumulativeMetricsRows totals={totals} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── Schedule time picker ─── */
+
+function ScheduleTimePicker({
+  schedule,
+  selectedHour,
+  selectedMinute,
+  selectedPeriod,
+  onHourChange,
+  onMinuteChange,
+  onPeriodChange,
+  onToggle,
+}: {
+  schedule: { id: number; active: boolean; schedule: string; name: string };
+  selectedHour: number;
+  selectedMinute: string;
+  selectedPeriod: "AM" | "PM";
+  onHourChange: (h: number) => void;
+  onMinuteChange: (m: string) => void;
+  onPeriodChange: (p: "AM" | "PM") => void;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Select value={String(selectedHour)} onValueChange={(v) => onHourChange(parseInt(v))}>
+        <SelectTrigger className="w-[70px]"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {HOURS.map((h) => <SelectItem key={h} value={String(h)}>{h}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <span className="text-muted-foreground font-medium">:</span>
+      <Select value={selectedMinute} onValueChange={onMinuteChange}>
+        <SelectTrigger className="w-[70px]"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {MINUTES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <Select value={selectedPeriod} onValueChange={(v: "AM" | "PM") => onPeriodChange(v)}>
+        <SelectTrigger className="w-[72px]"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="AM">AM</SelectItem>
+          <SelectItem value="PM">PM</SelectItem>
+        </SelectContent>
+      </Select>
+      <div className="flex items-center gap-2 ml-auto">
+        <Badge variant={schedule.active ? "default" : "secondary"}>
+          {schedule.active ? "Active" : "Paused"}
+        </Badge>
+        <Switch checked={schedule.active} onCheckedChange={onToggle} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main component ─── */
 
 const SlackReportControls = () => {
   const [date, setDate] = useState<Date>(subDays(new Date(), 1));
@@ -188,14 +313,26 @@ const SlackReportControls = () => {
   const [selectedMinute, setSelectedMinute] = useState<string>("00");
   const [selectedPeriod, setSelectedPeriod] = useState<"AM" | "PM">("AM");
 
+  // Cumulative report state
+  const [cumIsSending, setCumIsSending] = useState(false);
+  const [cumIsPreviewing, setCumIsPreviewing] = useState(false);
+  const [cumPreviewData, setCumPreviewData] = useState<CumulativePreviewData | null>(null);
+  const [cumSelectedHour, setCumSelectedHour] = useState<number>(3);
+  const [cumSelectedMinute, setCumSelectedMinute] = useState<string>("15");
+  const [cumSelectedPeriod, setCumSelectedPeriod] = useState<"AM" | "PM">("PM");
+
   const { data: schedules, isLoading: schedulesLoading } = useSchedules();
   const toggleSchedule = useToggleSchedule();
   const updateSchedule = useUpdateSchedule();
 
   const slackSchedule = schedules?.find(s =>
     s.name === 'Slack Daily Report' ||
-    s.name.toLowerCase().includes('slack') ||
-    s.name.toLowerCase().includes('daily report')
+    s.name.toLowerCase().includes('slack') && s.name.toLowerCase().includes('daily')
+  );
+
+  const cumulativeSchedule = schedules?.find(s =>
+    s.name.toLowerCase().includes('cumulative') ||
+    s.name.toLowerCase().includes('slack-cumulative')
   );
 
   useEffect(() => {
@@ -208,10 +345,17 @@ const SlackReportControls = () => {
     }
   }, [slackSchedule?.schedule]);
 
-  // Clear preview when date changes
   useEffect(() => {
-    setPreviewData(null);
-  }, [date]);
+    if (!cumulativeSchedule) return;
+    const parsed = cronToEst(cumulativeSchedule.schedule);
+    if (parsed) {
+      setCumSelectedHour(parsed.hour);
+      setCumSelectedMinute(parsed.minute);
+      setCumSelectedPeriod(parsed.period);
+    }
+  }, [cumulativeSchedule?.schedule]);
+
+  useEffect(() => { setPreviewData(null); }, [date]);
 
   const handlePreviewReport = async () => {
     setIsPreviewing(true);
@@ -220,13 +364,9 @@ const SlackReportControls = () => {
       const { data, error } = await supabase.functions.invoke('slack-daily-report', {
         body: { date: dateStr, preview: true }
       });
-
       if (error) throw error;
-      if (data?.success) {
-        setPreviewData(data as PreviewData);
-      } else {
-        throw new Error(data?.error || 'Failed to load preview');
-      }
+      if (data?.success) setPreviewData(data as PreviewData);
+      else throw new Error(data?.error || 'Failed to load preview');
     } catch (err) {
       console.error("Preview error:", err);
       toast.error(err instanceof Error ? err.message : "Failed to load preview");
@@ -242,13 +382,9 @@ const SlackReportControls = () => {
       const { data, error } = await supabase.functions.invoke('slack-daily-report', {
         body: { date: dateStr, showPercentChanges, showPlatformSpacing: true }
       });
-
       if (error) throw error;
-      if (data?.success) {
-        toast.success(`Report for ${format(date, "MMM d, yyyy")} sent to Slack!`);
-      } else {
-        throw new Error(data?.error || 'Failed to send report');
-      }
+      if (data?.success) toast.success(`Report for ${format(date, "MMM d, yyyy")} sent to Slack!`);
+      else throw new Error(data?.error || 'Failed to send report');
     } catch (err) {
       console.error("Slack report error:", err);
       toast.error(err instanceof Error ? err.message : "Failed to send report");
@@ -257,199 +393,230 @@ const SlackReportControls = () => {
     }
   };
 
-  const handleToggleSchedule = async () => {
-    if (!slackSchedule) return;
+  const handleToggleSchedule = async (schedule: typeof slackSchedule) => {
+    if (!schedule) return;
     try {
-      await toggleSchedule.mutateAsync(slackSchedule.id);
-      toast.success(slackSchedule.active ? "Schedule paused" : "Schedule activated");
+      await toggleSchedule.mutateAsync(schedule.id);
+      toast.success(schedule.active ? "Schedule paused" : "Schedule activated");
     } catch {
       toast.error("Failed to toggle schedule");
     }
   };
 
-  const handleTimeChange = useCallback(async (hour: number, minute: string, period: "AM" | "PM") => {
-    if (!slackSchedule) return;
+  const handleTimeChange = useCallback(async (hour: number, minute: string, period: "AM" | "PM", schedule: typeof slackSchedule) => {
+    if (!schedule) return;
     const newCron = estToCron(hour, minute, period);
     try {
-      await updateSchedule.mutateAsync({ jobId: slackSchedule.id, schedule: newCron });
+      await updateSchedule.mutateAsync({ jobId: schedule.id, schedule: newCron });
       toast.success(`Schedule updated to ${formatTimeLabel(hour, minute, period)}`);
     } catch {
       toast.error("Failed to update schedule");
     }
-  }, [slackSchedule, updateSchedule]);
+  }, [updateSchedule]);
+
+  // Cumulative report handlers
+  const handleCumPreview = async () => {
+    setCumIsPreviewing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('slack-cumulative-report', {
+        body: { preview: true }
+      });
+      if (error) throw error;
+      if (data?.success) setCumPreviewData(data as CumulativePreviewData);
+      else throw new Error(data?.error || 'Failed to load preview');
+    } catch (err) {
+      console.error("Cumulative preview error:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to load preview");
+    } finally {
+      setCumIsPreviewing(false);
+    }
+  };
+
+  const handleCumSend = async () => {
+    setCumIsSending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('slack-cumulative-report', {});
+      if (error) throw error;
+      if (data?.success) toast.success("Cumulative report sent to Slack!");
+      else throw new Error(data?.error || 'Failed to send report');
+    } catch (err) {
+      console.error("Cumulative report error:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to send report");
+    } finally {
+      setCumIsSending(false);
+    }
+  };
 
   return (
-    <Card className="border-primary/30">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Send className="w-5 h-5 text-primary" />
-          Slack Daily Report
-        </CardTitle>
-        <CardDescription>
-          Send a performance report to Slack — always reports on previous day's data
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Schedule Section */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-muted-foreground" />
-            <Label className="text-sm font-medium">Automated Schedule</Label>
-          </div>
+    <div className="space-y-6">
+      {/* ─── Daily Report Card (unchanged) ─── */}
+      <Card className="border-primary/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Send className="w-5 h-5 text-primary" />
+            Slack Daily Report
+          </CardTitle>
+          <CardDescription>
+            Send a performance report to Slack — always reports on previous day's data
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <Label className="text-sm font-medium">Automated Schedule</Label>
+            </div>
 
-          {schedulesLoading ? (
-            <Skeleton className="h-10 w-full" />
-          ) : slackSchedule ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Select
-                  value={String(selectedHour)}
-                  onValueChange={(v) => { const h = parseInt(v); setSelectedHour(h); handleTimeChange(h, selectedMinute, selectedPeriod); }}
-                >
-                  <SelectTrigger className="w-[70px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {HOURS.map((h) => (
-                      <SelectItem key={h} value={String(h)}>{h}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span className="text-muted-foreground font-medium">:</span>
-                <Select
-                  value={selectedMinute}
-                  onValueChange={(v) => { setSelectedMinute(v); handleTimeChange(selectedHour, v, selectedPeriod); }}
-                >
-                  <SelectTrigger className="w-[70px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MINUTES.map((m) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={selectedPeriod}
-                  onValueChange={(v: "AM" | "PM") => { setSelectedPeriod(v); handleTimeChange(selectedHour, selectedMinute, v); }}
-                >
-                  <SelectTrigger className="w-[72px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AM">AM</SelectItem>
-                    <SelectItem value="PM">PM</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="flex items-center gap-2 ml-auto">
-                  <Badge variant={slackSchedule.active ? "default" : "secondary"}>
-                    {slackSchedule.active ? "Active" : "Paused"}
-                  </Badge>
-                  <Switch
-                    checked={slackSchedule.active}
-                    onCheckedChange={handleToggleSchedule}
-                  />
+            {schedulesLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : slackSchedule ? (
+              <div className="space-y-3">
+                <ScheduleTimePicker
+                  schedule={slackSchedule}
+                  selectedHour={selectedHour}
+                  selectedMinute={selectedMinute}
+                  selectedPeriod={selectedPeriod}
+                  onHourChange={(h) => { setSelectedHour(h); handleTimeChange(h, selectedMinute, selectedPeriod, slackSchedule); }}
+                  onMinuteChange={(m) => { setSelectedMinute(m); handleTimeChange(selectedHour, m, selectedPeriod, slackSchedule); }}
+                  onPeriodChange={(p) => { setSelectedPeriod(p); handleTimeChange(selectedHour, selectedMinute, p, slackSchedule); }}
+                  onToggle={() => handleToggleSchedule(slackSchedule)}
+                />
+                <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3 space-y-1">
+                  <p><span className="font-medium text-foreground">Report Date:</span> Previous day's data (auto)</p>
+                  <p><span className="font-medium text-foreground">Comparison:</span> Day-over-day % change</p>
+                  <p><span className="font-medium text-foreground">Platform:</span> Meta FTD Campaign</p>
                 </div>
               </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No schedule found. Set up a cron job for <code>slack-daily-report</code>.
+              </p>
+            )}
+          </div>
 
-              <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3 space-y-1">
-                <p><span className="font-medium text-foreground">Report Date:</span> Previous day's data (auto)</p>
-                <p><span className="font-medium text-foreground">Comparison:</span> Day-over-day % change</p>
-                <p><span className="font-medium text-foreground">Platform:</span> Meta FTD Campaign</p>
+          <Separator />
+
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Manual Report</Label>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Report Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {date ? format(date, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={date}
+                    onSelect={(d) => d && setDate(d)}
+                    disabled={(d) => d > subDays(new Date(), 1)}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="show-percent" className="font-normal cursor-pointer text-sm">
+                  Show percentage changes
+                </Label>
+                <Switch id="show-percent" checked={showPercentChanges} onCheckedChange={setShowPercentChanges} />
               </div>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No schedule found. Set up a cron job for <code>slack-daily-report</code>.
-            </p>
-          )}
-        </div>
 
-        <Separator />
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={handlePreviewReport} disabled={isPreviewing || isSending} className="flex-1">
+                {isPreviewing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Loading...</> : <><Eye className="w-4 h-4 mr-2" />Preview</>}
+              </Button>
+              <Button onClick={handleSendReport} disabled={isSending || isPreviewing} className="flex-1">
+                {isSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending...</> : <><Send className="w-4 h-4 mr-2" />Send to Slack</>}
+              </Button>
+            </div>
 
-        {/* Manual Send Section */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Manual Report</Label>
+            {previewData && (
+              <div className="pt-2">
+                <ReportPreview data={previewData} />
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-          {/* Date Picker */}
-          <div className="space-y-2">
-            <Label className="text-sm text-muted-foreground">Report Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !date && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, "PPP") : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={(d) => d && setDate(d)}
-                  disabled={(d) => d > subDays(new Date(), 1)}
-                  initialFocus
-                  className="p-3 pointer-events-auto"
+      {/* ─── Cumulative Report Card ─── */}
+      <Card className="border-primary/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            Slack Cumulative Report
+          </CardTitle>
+          <CardDescription>
+            Cumulative performance since campaign launch (Feb 18)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <Label className="text-sm font-medium">Automated Schedule</Label>
+            </div>
+
+            {schedulesLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : cumulativeSchedule ? (
+              <div className="space-y-3">
+                <ScheduleTimePicker
+                  schedule={cumulativeSchedule}
+                  selectedHour={cumSelectedHour}
+                  selectedMinute={cumSelectedMinute}
+                  selectedPeriod={cumSelectedPeriod}
+                  onHourChange={(h) => { setCumSelectedHour(h); handleTimeChange(h, cumSelectedMinute, cumSelectedPeriod, cumulativeSchedule); }}
+                  onMinuteChange={(m) => { setCumSelectedMinute(m); handleTimeChange(cumSelectedHour, m, cumSelectedPeriod, cumulativeSchedule); }}
+                  onPeriodChange={(p) => { setCumSelectedPeriod(p); handleTimeChange(cumSelectedHour, cumSelectedMinute, p, cumulativeSchedule); }}
+                  onToggle={() => handleToggleSchedule(cumulativeSchedule)}
                 />
-              </PopoverContent>
-            </Popover>
+                <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3 space-y-1">
+                  <p><span className="font-medium text-foreground">Date Range:</span> Feb 18, 2026 → Yesterday</p>
+                  <p><span className="font-medium text-foreground">Format:</span> Cumulative totals (no comparison)</p>
+                  <p><span className="font-medium text-foreground">Platform:</span> Meta FTD Campaign</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No schedule found. Set up a cron job for <code>slack-cumulative-report</code>.
+              </p>
+            )}
           </div>
 
-          {/* Format Options */}
-          <div className="space-y-3 pt-1">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="show-percent" className="font-normal cursor-pointer text-sm">
-                Show percentage changes
-              </Label>
-              <Switch
-                id="show-percent"
-                checked={showPercentChanges}
-                onCheckedChange={setShowPercentChanges}
-              />
+          <Separator />
+
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Manual Report</Label>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={handleCumPreview} disabled={cumIsPreviewing || cumIsSending} className="flex-1">
+                {cumIsPreviewing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Loading...</> : <><Eye className="w-4 h-4 mr-2" />Preview</>}
+              </Button>
+              <Button onClick={handleCumSend} disabled={cumIsSending || cumIsPreviewing} className="flex-1">
+                {cumIsSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending...</> : <><Send className="w-4 h-4 mr-2" />Send to Slack</>}
+              </Button>
             </div>
-          </div>
 
-          {/* Preview + Send Buttons */}
-          <div className="flex gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={handlePreviewReport}
-              disabled={isPreviewing || isSending}
-              className="flex-1"
-            >
-              {isPreviewing ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Loading...</>
-              ) : (
-                <><Eye className="w-4 h-4 mr-2" />Preview</>
-              )}
-            </Button>
-            <Button
-              onClick={handleSendReport}
-              disabled={isSending || isPreviewing}
-              className="flex-1"
-            >
-              {isSending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending...</>
-              ) : (
-                <><Send className="w-4 h-4 mr-2" />Send to Slack</>
-              )}
-            </Button>
+            {cumPreviewData && (
+              <div className="pt-2">
+                <CumulativeReportPreview data={cumPreviewData} />
+              </div>
+            )}
           </div>
-
-          {/* Report Preview */}
-          {previewData && (
-            <div className="pt-2">
-              <ReportPreview data={previewData} />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
