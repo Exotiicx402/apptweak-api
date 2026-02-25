@@ -8,16 +8,16 @@ const corsHeaders = {
 
 const CAMPAIGN_LAUNCH_DATE = '2026-02-18';
 
-function getYesterdayEST(): string {
+function getLastFullDayEST(): string {
   const now = new Date();
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const twoDaysAgo = new Date(now);
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(yesterday);
+  }).format(twoDaysAgo);
 }
 
 function formatCurrency(value: number, decimals = 0): string {
@@ -211,7 +211,7 @@ serve(async (req) => {
       } catch { /* no body */ }
     }
 
-    const endDate = getYesterdayEST();
+    const endDate = getLastFullDayEST();
     const startDate = CAMPAIGN_LAUNCH_DATE;
 
     console.log(`Cumulative report: ${startDate} to ${endDate} (preview: ${previewOnly})`);
