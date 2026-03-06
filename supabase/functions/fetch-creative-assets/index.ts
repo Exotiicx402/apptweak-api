@@ -102,6 +102,7 @@ interface MetaCreativeData {
   platformCreativeId: string;
   assetType: 'image' | 'video';
   imageUrl: string | null;
+  imageHash: string | null;
   videoId: string | null;
   videoSourceUrl: string | null;
   videoPosterUrl: string | null;
@@ -148,7 +149,7 @@ async function fetchMetaCreatives(): Promise<MetaCreativeData[]> {
     console.log(`Mapped ${adNameMap.size} ad names`);
     
     // Step 2: Fetch all creatives from the /adcreatives endpoint with pagination
-    let creativesUrl: string | null = `https://graph.facebook.com/v19.0/${adAccountId}/adcreatives?fields=id,name,object_type,image_url,video_id,object_story_spec&limit=500&access_token=${accessToken}`;
+    let creativesUrl: string | null = `https://graph.facebook.com/v19.0/${adAccountId}/adcreatives?fields=id,name,object_type,image_url,image_hash,video_id,object_story_spec&limit=500&access_token=${accessToken}`;
     
     console.log("Fetching creatives from /adcreatives endpoint...");
     let totalFetched = 0;
@@ -187,6 +188,7 @@ async function fetchMetaCreatives(): Promise<MetaCreativeData[]> {
           platformCreativeId: creative.id,
           assetType: isVideo ? 'video' : 'image',
           imageUrl: null,
+          imageHash: creative.image_hash || null,
           videoId: null,
           videoSourceUrl: null,
           videoPosterUrl: null,
@@ -280,6 +282,56 @@ async function fetchMetaCreatives(): Promise<MetaCreativeData[]> {
       }
       
       console.log(`Video sources: ${videosWithSource} found, ${videosMissingSource} missing`);
+    }
+    
+    // Step 4: Batch resolve image hashes to full-res URLs via Ad Images API
+    const imageCreativesWithHash = creatives.filter(c => c.assetType === 'image' && c.imageHash);
+    if (imageCreativesWithHash.length > 0) {
+      console.log(`Resolving ${imageCreativesWithHash.length} image hashes via Ad Images API...`);
+      
+      // Collect unique hashes
+      const hashToIndices = new Map<string, number[]>();
+      creatives.forEach((c, idx) => {
+        if (c.assetType === 'image' && c.imageHash) {
+          const existing = hashToIndices.get(c.imageHash) || [];
+          existing.push(idx);
+          hashToIndices.set(c.imageHash, existing);
+        }
+      });
+      
+      const uniqueHashes = Array.from(hashToIndices.keys());
+      let resolved = 0;
+      
+      // Batch in groups of 50
+      for (let i = 0; i < uniqueHashes.length; i += 50) {
+        const batch = uniqueHashes.slice(i, i + 50);
+        const hashParam = batch.map(h => `'${h}'`).join(',');
+        const adImagesUrl = `https://graph.facebook.com/v19.0/${adAccountId}/adimages?hashes=[${hashParam}]&fields=hash,url,name&access_token=${accessToken}`;
+        
+        try {
+          const response = await fetch(adImagesUrl);
+          if (response.ok) {
+            const data = await response.json();
+            for (const img of data.data || []) {
+              if (img.hash && img.url) {
+                const indices = hashToIndices.get(img.hash) || [];
+                for (const idx of indices) {
+                  // Override imageUrl with full-res URL from Ad Images API
+                  creatives[idx].imageUrl = img.url;
+                  resolved++;
+                }
+              }
+            }
+          } else {
+            const errorText = await response.text();
+            console.warn(`Ad Images API error: ${errorText.substring(0, 200)}`);
+          }
+        } catch (e) {
+          console.warn(`Ad Images API fetch error: ${e}`);
+        }
+      }
+      
+      console.log(`Resolved ${resolved} image hashes to full-res URLs`);
     }
     
     console.log(`Total Meta creatives extracted: ${creatives.length}`);
