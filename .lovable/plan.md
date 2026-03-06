@@ -1,34 +1,29 @@
 
 
-# Add Download Functionality to Hours Creatives Page
+# Fix Blurry/Missing Images on Hours Creatives Page
 
-## Problem
-The team needs to download image assets from the Hours Creatives page to iterate on top-performing creatives. Currently the page shows thumbnails and metrics but has no download capability.
+## Root Cause
 
-## Approach
+The hook (`useHoursCreatives.ts`) currently prioritizes the Meta API's `image_url` over the database's stored assets:
+```typescript
+assetUrl: apiImageUrl || dbThumbnail,  // API first = blurry 64x64 thumbnails
+```
 
-Since this page is images-only, we need the full-resolution image URL for each ad. The current flow already joins with the `creative_assets` table which stores `full_asset_url` — but many ads may not have entries there. We need to ensure reliable download URLs.
+The `creative_assets` table already contains **high-resolution images stored in Supabase Storage**, downloaded by the existing `fetch-creative-assets` function. These are the same assets used successfully on the main Reporting page. The edge function's attempts to resolve images via `effective_object_story_id` and CDN URL upscaling are unreliable — most ads are dark posts without page posts, and the CDN hack doesn't always work.
 
-Two changes:
+## Plan
 
-### 1. Add download button to each card and the preview dialog
-- Add a `Download` icon button on each card (bottom-right corner of the thumbnail area) that triggers a download of the full-resolution asset
-- Add a "Download" button in the `CreativePreviewDialog` when opened from this page
-- Use `fullAssetUrl` from creative_assets when available; fall back to `assetUrl` (thumbnail)
-- Downloads will use `fetch()` + blob approach to force browser download (avoiding navigation to external URLs)
+### 1. Simplify the edge function — remove image resolution logic
+Strip out `getCreativeDetails`, `getPostImages`, and `upscaleMetaCdnUrl` from `meta-hours-creatives/index.ts`. The function should only return **metrics** (spend, installs, CTR, CPI). Images will come from the `creative_assets` DB table, which is already populated.
 
-### 2. Add "Download All" bulk action
-- Add a "Download All" button in the header/filter bar area
-- Downloads all visible (filtered) creatives sequentially as individual files
-- Uses the creative's unique identifier or ad name as the filename
+### 2. Flip image priority in the hook
+In `useHoursCreatives.ts`, change the priority so **DB assets come first** (high-res Supabase Storage URLs), with API image as fallback:
+```typescript
+assetUrl: dbThumbnail || apiImageUrl,  // DB first = high-res stored images
+fullAssetUrl: dbFullAsset || apiImageUrl,
+```
 
-### File Changes
-
-- **`src/pages/HoursCreatives.tsx`** — Add per-card download button (icon overlay), bulk "Download All" button in header, download helper function
-- **`src/components/reporting/CreativePreviewDialog.tsx`** — Add a download button next to the asset type badge or in the metadata section (only when asset URL is available)
-
-### Technical Details
-- Download helper: `fetch(url) → blob → createObjectURL → click hidden anchor → revoke`
-- Stop event propagation on card download button so it doesn't open the preview dialog
-- File naming: use `parsed.uniqueIdentifier` or fall back to `adId`
+### Files Changed
+- **`supabase/functions/meta-hours-creatives/index.ts`** — Remove image resolution functions (~100 lines), simplify to metrics-only
+- **`src/hooks/useHoursCreatives.ts`** — Flip asset URL priority to prefer DB over API
 
