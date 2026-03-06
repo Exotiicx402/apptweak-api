@@ -37,6 +37,7 @@ export interface EnrichedCreative {
   assetType: string | null;
   fullAssetUrl: string | null;
   posterUrl: string | null;
+  originalUrl?: string | null;
 }
 
 interface PlatformData {

@@ -245,10 +245,10 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
   const showBreakdown = isBlended && platformBreakdown.length > 0;
 
   // For videos: use fullAssetUrl as the MP4, posterUrl for the poster
-  // For images: use fullAssetUrl or assetUrl for display
+  // For images: prefer originalUrl (high-res Meta CDN) > fullAssetUrl > assetUrl
   const videoUrl = isVideo ? creative.fullAssetUrl : null;
   const posterImage = creative.posterUrl || creative.assetUrl || null;
-  const displayUrl = isVideo ? posterImage : (creative.fullAssetUrl || creative.assetUrl);
+  const displayUrl = isVideo ? posterImage : (creative.originalUrl || creative.fullAssetUrl || creative.assetUrl);
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>
