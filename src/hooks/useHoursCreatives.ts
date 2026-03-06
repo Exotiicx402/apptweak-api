@@ -110,9 +110,9 @@ export function useHoursCreatives() {
         ctr: ad.ctr,
         cpi: ad.cpi,
         parsed: parseCreativeName(ad.ad_name),
-        assetUrl: originalUrl || dbThumbnail || apiImageUrl,
+        assetUrl: dbFullAsset || dbThumbnail || apiImageUrl,
         assetType: asset?.type || "image",
-        fullAssetUrl: originalUrl || dbFullAsset || apiImageUrl,
+        fullAssetUrl: dbFullAsset || dbThumbnail || apiImageUrl,
         posterUrl: asset?.posterUrl || null,
         originalUrl,
       };
