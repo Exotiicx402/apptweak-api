@@ -1,29 +1,31 @@
 
 
-# Fix Blurry/Missing Images on Hours Creatives Page
+# Fix Blurry Images — Use Original Meta URLs
 
-## Root Cause
+## Problem
+The Supabase Storage thumbnails are low-res (640px WebP). The full-resolution source images live in the `creative_assets.original_url` column, which stores the original Meta CDN URL. This field is currently unused by the Hours Creatives page.
 
-The hook (`useHoursCreatives.ts`) currently prioritizes the Meta API's `image_url` over the database's stored assets:
-```typescript
-assetUrl: apiImageUrl || dbThumbnail,  // API first = blurry 64x64 thumbnails
-```
+## Approach
+Instead of trying to make stored thumbnails look sharp, use the **`original_url`** field from `creative_assets` as the primary display and download source. This is the original high-res URL from Meta's CDN. For cards where no `original_url` exists, fall back to the stored thumbnail. For download, link directly to the original URL (opening in a new tab if blob download fails due to CORS).
 
-The `creative_assets` table already contains **high-resolution images stored in Supabase Storage**, downloaded by the existing `fetch-creative-assets` function. These are the same assets used successfully on the main Reporting page. The edge function's attempts to resolve images via `effective_object_story_id` and CDN URL upscaling are unreliable — most ads are dark posts without page posts, and the CDN hack doesn't always work.
+### Changes
 
-## Plan
+**`src/hooks/useHoursCreatives.ts`**
+- Add `original_url` to the `creative_assets` select query
+- Store it in the asset map and expose it on `HoursCreative` as `originalUrl`
+- Set `assetUrl` priority: `original_url` > `full_asset_url` > `thumbnail_url` > API `image_url`
 
-### 1. Simplify the edge function — remove image resolution logic
-Strip out `getCreativeDetails`, `getPostImages`, and `upscaleMetaCdnUrl` from `meta-hours-creatives/index.ts`. The function should only return **metrics** (spend, installs, CTR, CPI). Images will come from the `creative_assets` DB table, which is already populated.
+**`src/pages/HoursCreatives.tsx`**
+- Use `originalUrl` for card image display
+- Update download to prefer `originalUrl`; if blob fetch fails (CORS), open the URL in a new tab instead
 
-### 2. Flip image priority in the hook
-In `useHoursCreatives.ts`, change the priority so **DB assets come first** (high-res Supabase Storage URLs), with API image as fallback:
-```typescript
-assetUrl: dbThumbnail || apiImageUrl,  // DB first = high-res stored images
-fullAssetUrl: dbFullAsset || apiImageUrl,
-```
+**`src/lib/downloadAsset.ts`**
+- Update `getDownloadUrl` to check `originalUrl` first
+- Add CORS fallback: if `fetch()` fails, `window.open(url, '_blank')` so the user can right-click save or the browser handles it
 
-### Files Changed
-- **`supabase/functions/meta-hours-creatives/index.ts`** — Remove image resolution functions (~100 lines), simplify to metrics-only
-- **`src/hooks/useHoursCreatives.ts`** — Flip asset URL priority to prefer DB over API
+**`src/components/reporting/CreativePreviewDialog.tsx`**
+- Use `originalUrl` when available for the preview image and download button
+
+### Why This Works
+The `original_url` column already contains the full-resolution Meta CDN link (e.g. `scontent.xx.fbcdn.net` URLs). These are the source images Meta serves — no compression, no 640px resize. Even if CORS blocks a programmatic download, opening the link lets users save the full-res file directly.
 
