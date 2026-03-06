@@ -72,32 +72,39 @@ export function useHoursCreatives() {
   }, []);
 
   const data: HoursCreative[] = useMemo(() => {
-    return ads.map((ad) => {
-      const imageUrl = ad.image_url || null;
+    const seen = new Set<string>();
+    return ads
+      .filter((ad) => {
+        if (seen.has(ad.ad_id)) return false;
+        seen.add(ad.ad_id);
+        return true;
+      })
+      .map((ad) => {
+        const imageUrl = ad.image_url || null;
 
-      return {
-        adId: ad.ad_id,
-        adName: ad.ad_name,
-        campaignName: ad.campaign_name,
-        campaignType: ad.campaign_type || "install",
-        spend: ad.spend,
-        impressions: ad.impressions,
-        clicks: ad.clicks,
-        installs: ad.installs,
-        ctr: ad.ctr,
-        cpi: ad.cpi,
-        signUps: ad.sign_ups || 0,
-        costPerSignUp: ad.cost_per_sign_up || 0,
-        ftds: ad.ftds || 0,
-        costPerFtd: ad.cost_per_ftd || 0,
-        parsed: parseCreativeName(ad.ad_name),
-        assetUrl: imageUrl,
-        assetType: "image",
-        fullAssetUrl: imageUrl,
-        posterUrl: null,
-        originalUrl: imageUrl,
-      };
-    });
+        return {
+          adId: ad.ad_id,
+          adName: ad.ad_name,
+          campaignName: ad.campaign_name,
+          campaignType: ad.campaign_type || "install",
+          spend: ad.spend,
+          impressions: ad.impressions,
+          clicks: ad.clicks,
+          installs: ad.installs,
+          ctr: ad.ctr,
+          cpi: ad.cpi,
+          signUps: ad.sign_ups || 0,
+          costPerSignUp: ad.cost_per_sign_up || 0,
+          ftds: ad.ftds || 0,
+          costPerFtd: ad.cost_per_ftd || 0,
+          parsed: parseCreativeName(ad.ad_name),
+          assetUrl: imageUrl,
+          assetType: "image",
+          fullAssetUrl: imageUrl,
+          posterUrl: null,
+          originalUrl: imageUrl,
+        };
+      });
   }, [ads]);
 
   return { data, isLoading, error, fetchData };
