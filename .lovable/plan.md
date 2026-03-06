@@ -1,18 +1,25 @@
 
 
-# Fix Cumulative Report End Date: Use 2 Days Ago Instead of Yesterday
+# Add Asset Type Filter (Image / Video / Both) to Creative Performance Grid
 
-## The Problem
-The cumulative report uses "yesterday" as the end date, but Meta data for yesterday isn't fully collected yet. When the report runs (e.g., at 12:16 PM PST on the 25th), the 24th's data isn't complete. The last fully-collected day is the 23rd.
+## What Changes
+Add a toggle filter below the platform filter bar that lets you filter creatives by asset type: **All**, **Images**, or **Videos**. The filter parses the asset type from field 3 of the naming convention (e.g., "Video", "Static", "Carousel").
 
-## The Fix
-One simple change in `supabase/functions/slack-cumulative-report/index.ts`:
+## Implementation
 
-Change `getYesterdayEST()` to return **2 days ago** instead of 1 day ago. This ensures the cumulative report only includes fully-collected data (Feb 18 through 2 days ago).
+### 1. Add asset type filter state in `CreativePerformanceGrid.tsx`
+- New state: `assetTypeFilter` with values `"all" | "image" | "video"`
+- Filter the `data` array before rendering by checking `creative.parsed.assetType` — if it contains "VID" it's video, otherwise image
+- Place the filter toggle inline next to the platform filter bar (or right below it), using the existing `ToggleGroup` component with `ImageIcon`, `Film`, and a combined icon for "All"
 
-### Specific change:
-- Rename `getYesterdayEST()` to `getTwoDaysAgoEST()` (or similar) and change the date offset from `-1` to `-2`
-- The auto-sync call before the report should also sync up to 2 days ago (not yesterday), keeping it consistent
+### 2. Render the filter in `headerContent`
+- Add a small `ToggleGroup` after the `PlatformFilterBar` with three options: All, Images, Videos
+- Include counts for each type so the user sees how many match
 
-Everything else stays the same — the daily report is not touched at all.
+### 3. Apply filter to both card and table views
+- Filter `data` before passing to the card grid loop and `CreativePerformanceTable`
+- The filtered data flows through the same rendering path, no changes needed in child components
+
+### File changes
+- **`src/components/reporting/CreativePerformanceGrid.tsx`** — add state, filter logic, and toggle UI
 
