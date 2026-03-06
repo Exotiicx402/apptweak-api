@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Clock, ImageIcon, Film, LayoutGrid, Download, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,33 +40,16 @@ function getCampaignTypeBadge(type: CampaignType) {
 }
 
 function getConversionMetrics(creative: HoursCreative) {
-  switch (creative.campaignType) {
-    case "ftd":
-      return {
-        primaryLabel: "FTDs",
-        primaryValue: creative.ftds.toLocaleString(),
-        costLabel: "Cost/FTD",
-        costValue: formatCurrency(creative.costPerFtd),
-      };
-    case "waitlist":
-      return {
-        primaryLabel: "Sign Ups",
-        primaryValue: creative.signUps.toLocaleString(),
-        costLabel: "Cost/Sign Up",
-        costValue: formatCurrency(creative.costPerSignUp),
-      };
-    default:
-      return {
-        primaryLabel: "Installs",
-        primaryValue: creative.installs.toLocaleString(),
-        costLabel: "CPI",
-        costValue: formatCurrency(creative.cpi),
-      };
-  }
+  return {
+    primaryLabel: "Results",
+    primaryValue: creative.results.toLocaleString(),
+    costLabel: "Cost/Result",
+    costValue: formatCurrency(creative.costPerResult),
+  };
 }
 
 export default function HoursCreatives() {
-  const { data, isLoading, error, fetchData } = useHoursCreatives();
+  const { data, isLoading, error } = useHoursCreatives();
   const [assetFilter, setAssetFilter] = useState<AssetTypeFilter>("all");
   const [selectedCreative, setSelectedCreative] = useState<HoursCreative | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -106,12 +89,9 @@ export default function HoursCreatives() {
     toast.success(`Downloaded ${count} of ${downloadable.length} assets`);
   };
 
-  useEffect(() => {
-    fetchData("2025-10-01", new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }));
-  }, [fetchData]);
+  // Static data — no fetch needed
 
   const filtered = data.filter((c) => {
-    if (c.spend < 1000) return false;
     if (assetFilter === "all") return true;
     return assetFilter === "video" ? isVideo(c) : !isVideo(c);
   });
@@ -137,14 +117,14 @@ export default function HoursCreatives() {
             <h1 className="text-2xl font-bold text-foreground">Hours Campaign Creatives</h1>
           </div>
           <Badge variant="secondary" className="ml-auto text-sm">
-            Since Oct 1, 2025 · {data.length} ads
+            Top {data.length} Static Image Ads
           </Badge>
         </div>
 
         {/* Filter bar */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <p className="text-sm text-muted-foreground">
-            All ad creatives from Meta campaigns containing "hours" in the campaign name
+            Ranked by composite score (Cost Per Result efficiency + conversion volume)
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -258,9 +238,9 @@ export default function HoursCreatives() {
                     <p className="text-xs font-medium text-foreground truncate">
                       {creative.parsed.uniqueIdentifier || creative.adName}
                     </p>
-                    {/* Campaign name */}
+                    {/* Objective */}
                     <p className="text-[10px] text-muted-foreground truncate">
-                      {creative.campaignName}
+                      {creative.objective}
                     </p>
                     {/* Metrics - campaign-type aware */}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -273,8 +253,8 @@ export default function HoursCreatives() {
                         <p className="font-semibold text-foreground">{metrics.primaryValue}</p>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">CTR</span>
-                        <p className="font-semibold text-foreground">{(creative.ctr * 100).toFixed(2)}%</p>
+                        <span className="text-muted-foreground">CPM</span>
+                        <p className="font-semibold text-foreground">{creative.cpm != null ? formatCurrency(creative.cpm) : "—"}</p>
                       </div>
                       <div>
                         <span className="text-muted-foreground">{metrics.costLabel}</span>
