@@ -84,9 +84,9 @@ async function fetchAllAds(
   return allAds;
 }
 
-// Upgrade thumbnail URLs from 64x64 to 1080x1080
+// No URL modification - thumbnail_url is used as-is
 function upscaleThumbnailUrl(url: string): string {
-  return url.replace(/p64x64/g, "p1080x1080");
+  return url;
 }
 
 async function resolveHighResImages(
@@ -108,7 +108,7 @@ async function resolveHighResImages(
   for (let i = 0; i < adIds.length; i += BATCH) {
     const batch = adIds.slice(i, i + BATCH);
     const fields = "id,creative{id,thumbnail_url,image_url,image_hash}";
-    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=${encodeURIComponent(fields)}&access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=${encodeURIComponent(fields)}&thumbnail_width=600&thumbnail_height=600&access_token=${accessToken}`;
     try {
       const resp = await fetch(url);
       if (!resp.ok) { console.error(`Batch ${Math.floor(i/BATCH)+1} error: ${await resp.text()}`); continue; }

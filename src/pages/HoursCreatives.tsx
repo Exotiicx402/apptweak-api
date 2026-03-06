@@ -84,12 +84,9 @@ export default function HoursCreatives() {
   const imageCount = data.length - videoCount;
 
   const handleCreativeClick = (creative: HoursCreative) => {
-    const url = creative.assetUrl || creative.fullAssetUrl || creative.originalUrl;
-    if (url) {
-      window.open(url, "_blank", "noopener,noreferrer");
-    } else {
-      toast.error("No image URL available for this ad");
-    }
+    // Open the ad preview in Facebook
+    const previewUrl = `https://www.facebook.com/ads/archive/render_ad/?id=${creative.adId}`;
+    window.open(previewUrl, "_blank", "noopener,noreferrer");
   };
 
   return (
