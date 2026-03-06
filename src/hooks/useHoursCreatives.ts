@@ -106,9 +106,9 @@ export function useHoursCreatives() {
         ctr: ad.ctr,
         cpi: ad.cpi,
         parsed: parseCreativeName(ad.ad_name),
-        assetUrl: apiImageUrl || dbThumbnail,
+        assetUrl: dbThumbnail || apiImageUrl,
         assetType: asset?.type || "image",
-        fullAssetUrl: apiImageUrl || dbFullAsset,
+        fullAssetUrl: dbFullAsset || apiImageUrl,
         posterUrl: asset?.posterUrl || null,
       };
     });
