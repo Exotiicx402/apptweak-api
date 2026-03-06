@@ -109,7 +109,7 @@ serve(async (req) => {
 
     const query = `
       SELECT 
-        ad_id,
+        COALESCE(ad_id, '') as ad_id,
         ad_name,
         campaign_name,
         SUM(spend) as spend,
@@ -129,10 +129,9 @@ serve(async (req) => {
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${endDate}'
         AND UPPER(campaign_name) LIKE '%${campaignKeyword.toUpperCase()}%'
-        AND ad_id IS NOT NULL AND ad_id != ''
+        AND ad_name IS NOT NULL AND ad_name != ''
       GROUP BY ad_id, ad_name, campaign_name
       ORDER BY spend DESC
-      LIMIT 200
     `;
 
     const rows = await queryBigQuery(query, googleAccessToken);
