@@ -1,40 +1,43 @@
 
 
-# Fix Blurry Images — Root Cause Found, New Approach
+# Fix Blurry Images — Bypass Broken Asset Sync, Use Working Function
 
-## The Real Problem
+## Problem Summary
+The `fetch-creative-assets` function consistently returns 0 creatives (confirmed in logs: "Total Meta creatives extracted: 0", "Processed: 0"). Despite multiple fix attempts, the `/ads` + `/adcreatives` pipeline in that function keeps failing. Meanwhile, `meta-hours-creatives` works perfectly and returns 126 ads every time.
 
-Two compounding issues:
+## New Approach: Fetch High-Res URLs Directly in `meta-hours-creatives`
 
-1. **The `fetch-creative-assets` function crashes** before processing any creatives. The logs show:
-   ```
-   Meta creatives API error: {"error":{"code":1,"message":"Please reduce the amount of data you're asking for, then retry your request"}}
-   Total Meta creatives extracted: 0
-   ```
-   It requests `object_story_spec` at `limit=500`, which Meta rejects. So **zero creatives get processed** — no high-res images are ever downloaded.
+Instead of fixing the broken sync function, embed image resolution directly into the working `meta-hours-creatives` edge function. This function already successfully queries the Meta Insights API and returns ad performance data. We add two extra steps:
 
-2. **The `original_url` stored in the DB is the 64x64 thumbnail** (note `stp=...p64x64...` in the URLs). The hook prioritizes `originalUrl`, which is itself blurry.
+1. **Batch-query each ad's creative hash**: After getting insights (which returns `ad_id`), query `/?ids=ad_id1,ad_id2,...&fields=creative{image_hash}` in batches of 50 to get the `image_hash` for each ad.
 
-3. **`full_asset_url` is NULL** for most records because the function never successfully re-ran after the initial broken sync.
+2. **Resolve hashes to full-res URLs via Ad Images API**: Query `/act_{id}/adimages?hashes=[hash1,hash2,...]` to get the original uploaded image URL for each hash. These are full-resolution, not the 64x64 thumbnails.
 
-## Solution
-
-### 1. Fix the edge function so it actually works (`fetch-creative-assets/index.ts`)
-
-- **Remove `object_story_spec`** from the `/adcreatives` request fields. Only request lightweight fields: `id,name,object_type,image_url,image_hash,video_id`. This avoids the "reduce data" error.
-- **Reduce limit from 500 to 100** as extra safety margin.
-- The Ad Images API hash resolution (already coded) will then actually execute and return full-res URLs.
-- Those full-res URLs get downloaded to Supabase Storage and stored as `full_asset_url` and `thumbnail_url`.
-
-### 2. Update the hook to prefer Supabase Storage URLs (`useHoursCreatives.ts`)
-
-- Priority: `dbFullAsset` (Supabase Storage) > `dbThumbnail` (Supabase Storage) > `apiImageUrl` (Meta API fallback)
-- Remove `originalUrl` from priority since it currently contains 64x64 URLs. Keep it only for "open original" links.
+3. **Return `image_url` in the response**: Each ad object in the response will include the full-res `image_url`. The frontend displays it directly from Meta's CDN -- no Supabase Storage needed.
 
 ### Files to edit
-- **`supabase/functions/fetch-creative-assets/index.ts`** — Remove `object_story_spec` from fields, reduce limit to 100
-- **`src/hooks/useHoursCreatives.ts`** — Fix asset URL priority to prefer Storage URLs over `original_url`
 
-### After implementation
-User clicks "Refresh Assets" → function actually processes all creatives → downloads full-res images via Ad Images API → stores in Supabase Storage → page displays crisp images from Storage.
+**`supabase/functions/meta-hours-creatives/index.ts`**
+- After collecting all ads from insights, extract unique `ad_id`s
+- Batch-query `/?ids=...&fields=id,creative{image_hash}` (groups of 50)
+- Collect unique `image_hash` values
+- Batch-query `/act_{id}/adimages?hashes=[...]` (groups of 50) to get full-res `url`
+- Map full-res URLs back to ads via ad_id → hash → url
+- Include `image_url` in each ad's response object
+
+**`src/hooks/useHoursCreatives.ts`**
+- Simplify: prioritize `ad.image_url` (now full-res from the edge function) as the primary display URL
+- Remove dependency on `creative_assets` table for display (keep it as fallback only)
+- Remove the "Refresh Assets" button dependency since images come directly from the API response
+
+**`src/pages/HoursCreatives.tsx`**
+- Remove the "Refresh Assets" button (no longer needed since images come from the API directly)
+- Keep download button — use the full-res Meta CDN URL with CORS fallback (open in new tab)
+
+### Why This Will Work
+- `meta-hours-creatives` already works reliably (126 ads, every time)
+- The Meta Insights API returns `ad_id`, which we can use to look up creative hashes
+- The Ad Images API is the canonical way to get full-res source images
+- No dependency on the broken `fetch-creative-assets` function
+- Images served directly from Meta CDN -- no intermediate storage step that can fail
 
