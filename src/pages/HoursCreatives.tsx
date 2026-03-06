@@ -84,8 +84,12 @@ export default function HoursCreatives() {
   const imageCount = data.length - videoCount;
 
   const handleCreativeClick = (creative: HoursCreative) => {
-    setSelectedCreative(creative);
-    setPreviewOpen(true);
+    const url = creative.assetUrl || creative.fullAssetUrl || creative.originalUrl;
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      toast.error("No image URL available for this ad");
+    }
   };
 
   return (
