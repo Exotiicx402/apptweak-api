@@ -39,11 +39,12 @@ export interface HoursCreative {
   assetType: string | null;
   fullAssetUrl: string | null;
   posterUrl: string | null;
+  originalUrl: string | null;
 }
 
 export function useHoursCreatives() {
   const [ads, setAds] = useState<AdMetric[]>([]);
-  const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>>(new Map());
+  const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null; originalUrl: string | null }>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +57,7 @@ export function useHoursCreatives() {
         supabase.functions.invoke("meta-hours-creatives", {
           body: { startDate, endDate, campaignKeyword: "hours" },
         }),
-        supabase.from("creative_assets").select("creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at"),
+        supabase.from("creative_assets").select("creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at, original_url"),
       ]);
 
       if (edgeResult.error) throw new Error(edgeResult.error.message);
@@ -65,7 +66,7 @@ export function useHoursCreatives() {
       setAds(edgeResult.data.data.ads || []);
 
       // Build asset map
-      const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>();
+      const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null; originalUrl: string | null }>();
       for (const asset of (assetsResult.data as CreativeAsset[]) || []) {
         const cacheBust = asset.updated_at ? `?v=${new Date(asset.updated_at).getTime()}` : "";
         const thumbnailWithCache = asset.thumbnail_url ? asset.thumbnail_url + cacheBust : null;
@@ -76,6 +77,7 @@ export function useHoursCreatives() {
           type: asset.asset_type,
           fullAssetUrl: fullWithCache,
           posterUrl: posterWithCache || thumbnailWithCache,
+          originalUrl: (asset as any).original_url || null,
         });
       }
       setAssetMap(map);
@@ -95,6 +97,8 @@ export function useHoursCreatives() {
       const dbThumbnail = asset?.url || null;
       const dbFullAsset = asset?.fullAssetUrl || null;
       
+      const originalUrl = asset?.originalUrl || null;
+      
       return {
         adId: ad.ad_id,
         adName: ad.ad_name,
@@ -106,10 +110,11 @@ export function useHoursCreatives() {
         ctr: ad.ctr,
         cpi: ad.cpi,
         parsed: parseCreativeName(ad.ad_name),
-        assetUrl: dbThumbnail || apiImageUrl,
+        assetUrl: originalUrl || dbThumbnail || apiImageUrl,
         assetType: asset?.type || "image",
-        fullAssetUrl: dbFullAsset || apiImageUrl,
+        fullAssetUrl: originalUrl || dbFullAsset || apiImageUrl,
         posterUrl: asset?.posterUrl || null,
+        originalUrl,
       };
     });
   }, [ads, assetMap]);

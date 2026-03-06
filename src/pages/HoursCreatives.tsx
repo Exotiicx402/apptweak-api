@@ -273,6 +273,7 @@ export default function HoursCreatives() {
             assetType: selectedCreative.assetType,
             fullAssetUrl: selectedCreative.fullAssetUrl,
             posterUrl: selectedCreative.posterUrl,
+            originalUrl: selectedCreative.originalUrl,
           }}
         />
       )}
