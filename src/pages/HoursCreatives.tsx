@@ -111,6 +111,7 @@ export default function HoursCreatives() {
   }, [fetchData]);
 
   const filtered = data.filter((c) => {
+    if (c.spend < 1000) return false;
     if (assetFilter === "all") return true;
     return assetFilter === "video" ? isVideo(c) : !isVideo(c);
   });
