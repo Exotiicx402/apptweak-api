@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Clock, ImageIcon, Film, LayoutGrid, Download, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Clock, ImageIcon, Film, LayoutGrid, Download, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useHoursCreatives, HoursCreative } from "@/hooks/useHoursCreatives";
 import { CreativePreviewDialog } from "@/components/reporting/CreativePreviewDialog";
 import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
-import { useSyncCreativeAssets } from "@/hooks/useCreativeAssets";
 import { toast } from "sonner";
 
 type AssetTypeFilter = "all" | "image" | "video";
@@ -33,26 +32,10 @@ function formatCurrency(value: number): string {
 
 export default function HoursCreatives() {
   const { data, isLoading, error, fetchData } = useHoursCreatives();
-  const { syncAssets } = useSyncCreativeAssets();
   const [assetFilter, setAssetFilter] = useState<AssetTypeFilter>("all");
   const [selectedCreative, setSelectedCreative] = useState<HoursCreative | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const handleRefreshAssets = async () => {
-    setIsRefreshing(true);
-    toast.info("Refreshing assets with high-res images…");
-    try {
-      await syncAssets(['meta'], true);
-      toast.success("Assets refreshed! Reloading data…");
-      await fetchData("2025-10-01", new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }));
-    } catch {
-      toast.error("Failed to refresh assets");
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
 
   const handleDownload = async (creative: HoursCreative, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -128,20 +111,6 @@ export default function HoursCreatives() {
             All ad creatives from Meta campaigns containing "hours" in the campaign name
           </p>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefreshAssets}
-              disabled={isRefreshing}
-              className="gap-1.5"
-            >
-              {isRefreshing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              Refresh Assets
-            </Button>
             <Button
               variant="outline"
               size="sm"
