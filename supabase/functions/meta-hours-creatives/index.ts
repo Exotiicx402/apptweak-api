@@ -5,22 +5,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+type CampaignType = "install" | "waitlist" | "ftd";
+
 interface MetaAd {
   ad_id: string;
   ad_name: string;
   campaign_name: string;
+  campaign_type: CampaignType;
   spend: number;
   impressions: number;
   clicks: number;
   ctr: number;
   installs: number;
   cpi: number;
+  sign_ups: number;
+  cost_per_sign_up: number;
+  ftds: number;
+  cost_per_ftd: number;
   image_url: string | null;
 }
 
-function extractInstalls(actions: any[] | undefined): number {
+function classifyCampaign(campaignName: string): CampaignType {
+  const upper = campaignName.toUpperCase();
+  if (upper.includes("INTERNATIONAL")) return "ftd";
+  if (upper.includes("WAITLIST")) return "waitlist";
+  return "install";
+}
+
+function extractActionValue(actions: any[] | undefined, actionType: string): number {
   if (!actions) return 0;
-  const a = actions.find((a: any) => a.action_type === "mobile_app_install");
+  const a = actions.find((a: any) => a.action_type === actionType);
   return a ? parseInt(a.value) || 0 : 0;
 }
 
@@ -63,17 +77,28 @@ async function fetchAllAds(
       if (!upper.includes("IMAGE") && !upper.includes("IMG")) continue;
 
       const spend = parseFloat(row.spend) || 0;
-      const installs = extractInstalls(row.actions);
+      const campaignName = row.campaign_name || "";
+      const campaignType = classifyCampaign(campaignName);
+
+      const installs = extractActionValue(row.actions, "mobile_app_install");
+      const signUps = extractActionValue(row.actions, "complete_registration");
+      const ftds = extractActionValue(row.actions, "offsite_conversion.fb_pixel_custom.FirstTimeDeposit");
+
       allAds.push({
         ad_id: row.ad_id || "",
         ad_name: adName,
-        campaign_name: row.campaign_name || "",
+        campaign_name: campaignName,
+        campaign_type: campaignType,
         spend,
         impressions: parseInt(row.impressions) || 0,
         clicks: parseInt(row.clicks) || 0,
         ctr: parseFloat(row.ctr) || 0,
         installs,
         cpi: installs > 0 ? spend / installs : 0,
+        sign_ups: signUps,
+        cost_per_sign_up: signUps > 0 ? spend / signUps : 0,
+        ftds,
+        cost_per_ftd: ftds > 0 ? spend / ftds : 0,
         image_url: null,
       });
     }
@@ -84,7 +109,6 @@ async function fetchAllAds(
   return allAds;
 }
 
-// No URL modification - thumbnail_url is used as-is
 function upscaleThumbnailUrl(url: string): string {
   return url;
 }
@@ -103,7 +127,7 @@ async function resolveHighResImages(
   console.log(`Resolving images for ${adIds.length} unique ads in batches of ${BATCH}...`);
 
   const unresolvedHashes = new Map<string, string[]>();
-  const adIdToThumbnail = new Map<string, string>(); // fallback thumbnails
+  const adIdToThumbnail = new Map<string, string>();
 
   for (let i = 0; i < adIds.length; i += BATCH) {
     const batch = adIds.slice(i, i + BATCH);
@@ -118,18 +142,15 @@ async function resolveHighResImages(
         const creative = (adData as any)?.creative;
         if (!creative) continue;
 
-        // Save thumbnail as fallback (upscaled)
         if (creative.thumbnail_url) {
           adIdToThumbnail.set(adId, upscaleThumbnailUrl(creative.thumbnail_url));
         }
 
-        // Priority 1: image_hash → will resolve to full-res via /adimages
         if (creative.image_hash) {
           if (!unresolvedHashes.has(creative.image_hash)) unresolvedHashes.set(creative.image_hash, []);
           unresolvedHashes.get(creative.image_hash)!.push(adId);
           continue;
         }
-        // Priority 2: image_url (if available)
         if (creative.image_url) {
           adIdToUrl.set(adId, creative.image_url);
           continue;
@@ -140,7 +161,6 @@ async function resolveHighResImages(
 
   console.log(`Direct URLs: ${adIdToUrl.size}, hashes to resolve: ${unresolvedHashes.size}, thumbnails: ${adIdToThumbnail.size}`);
 
-  // Resolve remaining hashes via /adimages API
   if (unresolvedHashes.size > 0) {
     const uniqueHashes = [...unresolvedHashes.keys()];
     for (let i = 0; i < uniqueHashes.length; i += 50) {
@@ -161,7 +181,6 @@ async function resolveHighResImages(
     }
   }
 
-  // Map URLs back to ads: prefer full-res from /adimages, fall back to upscaled thumbnail
   for (const ad of ads) {
     ad.image_url = adIdToUrl.get(ad.ad_id) || adIdToThumbnail.get(ad.ad_id) || null;
   }
@@ -189,10 +208,7 @@ serve(async (req) => {
     console.log(`Querying Meta API for Hours IMAGE ads between ${startDate} and ${endDate}`);
 
     const ads = await fetchAllAds(adAccountId, accessToken, startDate, endDate);
-
-    // Resolve high-res image URLs
     await resolveHighResImages(ads, adAccountId, accessToken);
-
     ads.sort((a, b) => b.spend - a.spend);
 
     console.log(`Returning ${ads.length} ads`);

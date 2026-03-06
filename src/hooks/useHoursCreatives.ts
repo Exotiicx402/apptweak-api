@@ -2,16 +2,23 @@ import { useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { parseCreativeName, ParsedCreativeName } from "@/lib/creativeNamingParser";
 
+export type CampaignType = "install" | "waitlist" | "ftd";
+
 interface AdMetric {
   ad_id: string;
   ad_name: string;
   campaign_name: string;
+  campaign_type: CampaignType;
   spend: number;
   impressions: number;
   clicks: number;
   ctr: number;
   installs: number;
   cpi: number;
+  sign_ups: number;
+  cost_per_sign_up: number;
+  ftds: number;
+  cost_per_ftd: number;
   image_url: string | null;
 }
 
@@ -19,12 +26,17 @@ export interface HoursCreative {
   adId: string;
   adName: string;
   campaignName: string;
+  campaignType: CampaignType;
   spend: number;
   impressions: number;
   clicks: number;
   installs: number;
   ctr: number;
   cpi: number;
+  signUps: number;
+  costPerSignUp: number;
+  ftds: number;
+  costPerFtd: number;
   parsed: ParsedCreativeName;
   assetUrl: string | null;
   assetType: string | null;
@@ -67,12 +79,17 @@ export function useHoursCreatives() {
         adId: ad.ad_id,
         adName: ad.ad_name,
         campaignName: ad.campaign_name,
+        campaignType: ad.campaign_type || "install",
         spend: ad.spend,
         impressions: ad.impressions,
         clicks: ad.clicks,
         installs: ad.installs,
         ctr: ad.ctr,
         cpi: ad.cpi,
+        signUps: ad.sign_ups || 0,
+        costPerSignUp: ad.cost_per_sign_up || 0,
+        ftds: ad.ftds || 0,
+        costPerFtd: ad.cost_per_ftd || 0,
         parsed: parseCreativeName(ad.ad_name),
         assetUrl: imageUrl,
         assetType: "image",
