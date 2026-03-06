@@ -5,12 +5,15 @@
    DialogTitle,
  } from "@/components/ui/dialog";
  import { Badge } from "@/components/ui/badge";
+ import { Button } from "@/components/ui/button";
  import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
  import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play, Download } from "lucide-react";
 import { useMemo, useState, useRef } from "react";
+import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
+import { toast } from "sonner";
  
  interface CreativePreviewDialogProps {
    open: boolean;
@@ -279,6 +282,23 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
              <Badge className="absolute bottom-3 left-3 bg-black/70 text-white border-0 hover:bg-black/70">
                {getAssetTypeLabel(assetType)}
              </Badge>
+             {getDownloadUrl(creative) && (
+               <Button
+                 variant="ghost"
+                 size="icon"
+                 className="absolute bottom-2 right-3 h-8 w-8 bg-black/60 text-white hover:bg-black/80 hover:text-white"
+                 onClick={async () => {
+                   try {
+                     await downloadAsset(getDownloadUrl(creative)!, getDownloadFilename(creative));
+                   } catch {
+                     toast.error("Failed to download asset");
+                   }
+                 }}
+                 title="Download asset"
+               >
+                 <Download className="h-4 w-4" />
+               </Button>
+             )}
            </div>
  
            {/* Metadata & Metrics */}

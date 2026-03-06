@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Clock, ImageIcon, Film, LayoutGrid } from "lucide-react";
+import { ArrowLeft, Clock, ImageIcon, Film, LayoutGrid, Download, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useHoursCreatives, HoursCreative } from "@/hooks/useHoursCreatives";
 import { CreativePreviewDialog } from "@/components/reporting/CreativePreviewDialog";
+import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
+import { toast } from "sonner";
 
 type AssetTypeFilter = "all" | "image" | "video";
 
@@ -32,6 +35,41 @@ export default function HoursCreatives() {
   const [assetFilter, setAssetFilter] = useState<AssetTypeFilter>("all");
   const [selectedCreative, setSelectedCreative] = useState<HoursCreative | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+
+  const handleDownload = async (creative: HoursCreative, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const url = getDownloadUrl(creative);
+    if (!url) {
+      toast.error("No asset available to download");
+      return;
+    }
+    try {
+      await downloadAsset(url, getDownloadFilename(creative));
+    } catch {
+      toast.error("Failed to download asset");
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    const downloadable = filtered.filter((c) => getDownloadUrl(c));
+    if (downloadable.length === 0) {
+      toast.error("No downloadable assets");
+      return;
+    }
+    setIsDownloadingAll(true);
+    let count = 0;
+    for (const creative of downloadable) {
+      try {
+        await downloadAsset(getDownloadUrl(creative)!, getDownloadFilename(creative));
+        count++;
+      } catch {
+        // skip failures
+      }
+    }
+    setIsDownloadingAll(false);
+    toast.success(`Downloaded ${count} of ${downloadable.length} assets`);
+  };
 
   useEffect(() => {
     fetchData("2025-10-01", new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }));
@@ -68,29 +106,45 @@ export default function HoursCreatives() {
         </div>
 
         {/* Filter bar */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <p className="text-sm text-muted-foreground">
             All ad creatives from Meta campaigns containing "hours" in the campaign name
           </p>
-          <ToggleGroup
-            type="single"
-            value={assetFilter}
-            onValueChange={(v) => v && setAssetFilter(v as AssetTypeFilter)}
-            className="border rounded-md"
-          >
-            <ToggleGroupItem value="all" className="px-3 text-xs gap-1">
-              <LayoutGrid className="h-3.5 w-3.5" />
-              All ({data.length})
-            </ToggleGroupItem>
-            <ToggleGroupItem value="image" className="px-3 text-xs gap-1">
-              <ImageIcon className="h-3.5 w-3.5" />
-              Image ({imageCount})
-            </ToggleGroupItem>
-            <ToggleGroupItem value="video" className="px-3 text-xs gap-1">
-              <Film className="h-3.5 w-3.5" />
-              Video ({videoCount})
-            </ToggleGroupItem>
-          </ToggleGroup>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadAll}
+              disabled={isDownloadingAll || filtered.length === 0}
+              className="gap-1.5"
+            >
+              {isDownloadingAll ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              Download All ({filtered.filter((c) => getDownloadUrl(c)).length})
+            </Button>
+            <ToggleGroup
+              type="single"
+              value={assetFilter}
+              onValueChange={(v) => v && setAssetFilter(v as AssetTypeFilter)}
+              className="border rounded-md"
+            >
+              <ToggleGroupItem value="all" className="px-3 text-xs gap-1">
+                <LayoutGrid className="h-3.5 w-3.5" />
+                All ({data.length})
+              </ToggleGroupItem>
+              <ToggleGroupItem value="image" className="px-3 text-xs gap-1">
+                <ImageIcon className="h-3.5 w-3.5" />
+                Image ({imageCount})
+              </ToggleGroupItem>
+              <ToggleGroupItem value="video" className="px-3 text-xs gap-1">
+                <Film className="h-3.5 w-3.5" />
+                Video ({videoCount})
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
         </div>
 
         {/* Error */}
@@ -136,6 +190,16 @@ export default function HoursCreatives() {
                   >
                     {isVideo(creative) ? "Video" : "Image"}
                   </Badge>
+                  {/* Download button */}
+                  {getDownloadUrl(creative) && (
+                    <button
+                      onClick={(e) => handleDownload(creative, e)}
+                      className="absolute bottom-2 right-2 p-1.5 rounded-md bg-black/60 text-white hover:bg-black/80 transition-colors"
+                      title="Download asset"
+                    >
+                      <Download className="h-4 w-4" />
+                     </button>
+                  )}
                 </div>
                 <CardContent className="p-3 space-y-2">
                   {/* Parsed tags */}
