@@ -11,8 +11,14 @@ import { CreativePreviewDialog } from "@/components/reporting/CreativePreviewDia
 type AssetTypeFilter = "all" | "image" | "video";
 
 function isVideo(creative: HoursCreative): boolean {
+  // Primary: parse from ad name (more reliable than DB asset_type)
+  const contentType = creative.parsed.contentType?.toUpperCase() || "";
+  if (contentType) {
+    return contentType.includes("VID") || contentType === "VIDEO";
+  }
+  // Fallback: DB asset_type
   if (creative.assetType) return creative.assetType.toLowerCase() === "video";
-  return creative.parsed.contentType?.toUpperCase().includes("VID") || false;
+  return false;
 }
 
 function formatCurrency(value: number): string {
