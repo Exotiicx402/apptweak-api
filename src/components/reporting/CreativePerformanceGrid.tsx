@@ -16,6 +16,11 @@ type ViewMode = "cards" | "table";
 type AssetTypeFilter = "all" | "image" | "video";
 
 function isVideoCreative(creative: EnrichedCreative): boolean {
+  // Primary: use asset_type from creative_assets table ("image" or "video")
+  if (creative.assetType) {
+    return creative.assetType.toLowerCase() === "video";
+  }
+  // Fallback: parse from naming convention contentType field
   const contentType = creative.parsed.contentType?.toUpperCase() || "";
   return contentType.includes("VID");
 }
