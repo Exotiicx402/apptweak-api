@@ -149,7 +149,7 @@ async function fetchMetaCreatives(): Promise<MetaCreativeData[]> {
     console.log(`Mapped ${adNameMap.size} ad names`);
     
     // Step 2: Fetch all creatives from the /adcreatives endpoint with pagination
-    let creativesUrl: string | null = `https://graph.facebook.com/v19.0/${adAccountId}/adcreatives?fields=id,name,object_type,image_url,image_hash,video_id,object_story_spec&limit=500&access_token=${accessToken}`;
+    let creativesUrl: string | null = `https://graph.facebook.com/v19.0/${adAccountId}/adcreatives?fields=id,name,object_type,image_url,image_hash,video_id&limit=100&access_token=${accessToken}`;
     
     console.log("Fetching creatives from /adcreatives endpoint...");
     let totalFetched = 0;
@@ -176,49 +176,19 @@ async function fetchMetaCreatives(): Promise<MetaCreativeData[]> {
         const creativeName = adNameMap.get(creative.id) || creative.name || '';
         if (!creativeName) continue;
         
-        const spec = creative.object_story_spec;
-        
-        // Determine if video or image
-        const isVideo = creative.object_type === 'VIDEO' || 
-                        creative.video_id || 
-                        spec?.video_data?.video_id;
+        // Determine if video or image (no object_story_spec needed)
+        const isVideo = creative.object_type === 'VIDEO' || !!creative.video_id;
         
         const creativeData: MetaCreativeData = {
           creativeName,
           platformCreativeId: creative.id,
           assetType: isVideo ? 'video' : 'image',
-          imageUrl: null,
+          imageUrl: creative.image_url || null,
           imageHash: creative.image_hash || null,
-          videoId: null,
+          videoId: isVideo ? (creative.video_id || null) : null,
           videoSourceUrl: null,
           videoPosterUrl: null,
         };
-        
-        if (isVideo) {
-          const videoId = creative.video_id || spec?.video_data?.video_id;
-          if (videoId) {
-            creativeData.videoId = videoId;
-          }
-          // Get poster from story spec if available
-          if (spec?.video_data?.image_url) {
-            creativeData.videoPosterUrl = spec.video_data.image_url;
-          }
-        } else {
-          // Image creatives - get highest quality image URL
-          // Priority: photo_data.url > link_data.picture > image_url
-          if (spec?.photo_data?.url) {
-            creativeData.imageUrl = spec.photo_data.url;
-          } else if (spec?.link_data?.image_hash) {
-            // If we have image_hash, we can get full-res via image_url
-            creativeData.imageUrl = creative.image_url;
-          } else if (spec?.link_data?.picture) {
-            creativeData.imageUrl = spec.link_data.picture;
-          } else if (spec?.link_data?.child_attachments?.[0]?.picture) {
-            creativeData.imageUrl = spec.link_data.child_attachments[0].picture;
-          } else if (creative.image_url) {
-            creativeData.imageUrl = creative.image_url;
-          }
-        }
         
         creatives.push(creativeData);
       }
