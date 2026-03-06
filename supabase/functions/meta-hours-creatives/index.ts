@@ -93,83 +93,95 @@ async function resolveHighResImages(
 
   const adIds = [...new Set(ads.map((a) => a.ad_id))];
   const adIdToUrl = new Map<string, string>();
-  const unresolvedHashes = new Map<string, string[]>(); // hash -> [adIds]
+  const adIdToCreativeId = new Map<string, string>();
+  const unresolvedHashes = new Map<string, string[]>();
   const BATCH = 10;
 
-  console.log(`Resolving images for ${adIds.length} unique ads in batches of ${BATCH}...`);
+  console.log(`Step 1: Getting creative IDs for ${adIds.length} ads...`);
 
-  // Step 1: Batch-query ads for creative with object_story_spec
+  // Step 1: Get creative IDs from ad IDs
   for (let i = 0; i < adIds.length; i += BATCH) {
     const batch = adIds.slice(i, i + BATCH);
-    const idsParam = batch.join(",");
-    const fields = "id,creative{id,image_hash,image_url,object_story_spec{link_data{picture,image_hash},photo_data{url,image_hash}}}";
-    const url = `https://graph.facebook.com/v19.0/?ids=${idsParam}&fields=${encodeURIComponent(fields)}&access_token=${accessToken}`;
-
+    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=id,creative{id}&access_token=${accessToken}`;
     try {
       const resp = await fetch(url);
-      if (!resp.ok) {
-        console.error(`Batch ${Math.floor(i / BATCH) + 1} error: ${await resp.text()}`);
-        continue;
+      if (!resp.ok) { console.error(`Creative ID batch error: ${await resp.text()}`); continue; }
+      const data = await resp.json();
+      for (const [adId, adData] of Object.entries(data as Record<string, any>)) {
+        const cid = adData?.creative?.id;
+        if (cid) adIdToCreativeId.set(adId, cid);
       }
+    } catch (err) { console.error(`Creative ID batch failed:`, err); }
+  }
+
+  console.log(`Found ${adIdToCreativeId.size} creative IDs`);
+
+  // Step 2: Query creative IDs directly for object_story_spec + image_hash
+  const creativeIdToAdIds = new Map<string, string[]>();
+  for (const [adId, cid] of adIdToCreativeId) {
+    if (!creativeIdToAdIds.has(cid)) creativeIdToAdIds.set(cid, []);
+    creativeIdToAdIds.get(cid)!.push(adId);
+  }
+
+  const creativeIds = [...creativeIdToAdIds.keys()];
+  console.log(`Step 2: Querying ${creativeIds.length} unique creatives for image URLs...`);
+
+  for (let i = 0; i < creativeIds.length; i += BATCH) {
+    const batch = creativeIds.slice(i, i + BATCH);
+    const fields = "id,image_hash,image_url,object_story_spec";
+    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=${encodeURIComponent(fields)}&access_token=${accessToken}`;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) { console.error(`Creative detail batch ${Math.floor(i/BATCH)+1} error: ${await resp.text()}`); continue; }
       const data = await resp.json();
 
-      for (const [adId, adData] of Object.entries(data as Record<string, any>)) {
-        const creative = adData?.creative;
-        if (!creative) continue;
+      for (const [cid, creative] of Object.entries(data as Record<string, any>)) {
+        const adIdsForCreative = creativeIdToAdIds.get(cid) || [];
+        const oss = creative?.object_story_spec;
 
-        const oss = creative.object_story_spec;
         // Priority 1: link_data.picture
         const linkPic = oss?.link_data?.picture;
-        if (linkPic) { adIdToUrl.set(adId, linkPic); continue; }
-        // Priority 2: photo_data.url
+        if (linkPic) { for (const aid of adIdsForCreative) adIdToUrl.set(aid, linkPic); continue; }
+        // Priority 2: photo_data.url  
         const photoPic = oss?.photo_data?.url;
-        if (photoPic) { adIdToUrl.set(adId, photoPic); continue; }
-        // Priority 3: collect image_hash for batch resolution
-        const hash = creative.image_hash || oss?.link_data?.image_hash || oss?.photo_data?.image_hash;
+        if (photoPic) { for (const aid of adIdsForCreative) adIdToUrl.set(aid, photoPic); continue; }
+        // Priority 3: image_hash from any level
+        const hash = creative?.image_hash || oss?.link_data?.image_hash || oss?.photo_data?.image_hash;
         if (hash) {
           if (!unresolvedHashes.has(hash)) unresolvedHashes.set(hash, []);
-          unresolvedHashes.get(hash)!.push(adId);
+          for (const aid of adIdsForCreative) unresolvedHashes.get(hash)!.push(aid);
           continue;
         }
-        // Priority 4: creative.image_url as fallback
-        if (creative.image_url) { adIdToUrl.set(adId, creative.image_url); }
+        // Priority 4: creative.image_url fallback
+        if (creative?.image_url) { for (const aid of adIdsForCreative) adIdToUrl.set(aid, creative.image_url); }
       }
-    } catch (err) {
-      console.error(`Batch ${Math.floor(i / BATCH) + 1} failed:`, err);
-    }
+    } catch (err) { console.error(`Creative detail batch failed:`, err); }
   }
 
   console.log(`Direct URLs: ${adIdToUrl.size}, unresolved hashes: ${unresolvedHashes.size}`);
 
-  // Step 2: Resolve remaining hashes via /adimages API
+  // Step 3: Resolve remaining hashes via /adimages API
   if (unresolvedHashes.size > 0) {
     const uniqueHashes = [...unresolvedHashes.keys()];
-    const HASH_BATCH = 50;
-
-    for (let i = 0; i < uniqueHashes.length; i += HASH_BATCH) {
-      const batch = uniqueHashes.slice(i, i + HASH_BATCH);
-      const hashesParam = JSON.stringify(batch);
-      const url = `https://graph.facebook.com/v19.0/${adAccountId}/adimages?hashes=${encodeURIComponent(hashesParam)}&fields=hash,url&access_token=${accessToken}`;
-
+    for (let i = 0; i < uniqueHashes.length; i += 50) {
+      const batch = uniqueHashes.slice(i, i + 50);
+      const url = `https://graph.facebook.com/v19.0/${adAccountId}/adimages?hashes=${encodeURIComponent(JSON.stringify(batch))}&fields=hash,url&access_token=${accessToken}`;
       try {
         const resp = await fetch(url);
-        if (!resp.ok) { console.error(`Adimages batch error: ${await resp.text()}`); continue; }
+        if (!resp.ok) { console.error(`Adimages error: ${await resp.text()}`); continue; }
         const data = await resp.json();
         for (const img of data.data || []) {
           if (img.hash && img.url) {
-            const adIdsForHash = unresolvedHashes.get(img.hash) || [];
-            for (const adId of adIdsForHash) {
-              if (!adIdToUrl.has(adId)) adIdToUrl.set(adId, img.url);
+            for (const aid of (unresolvedHashes.get(img.hash) || [])) {
+              if (!adIdToUrl.has(aid)) adIdToUrl.set(aid, img.url);
             }
           }
         }
-      } catch (err) {
-        console.error(`Adimages batch failed:`, err);
-      }
+      } catch (err) { console.error(`Adimages failed:`, err); }
     }
   }
 
-  // Step 3: Map URLs back to ads
+  // Step 4: Map URLs back to ads
   for (const ad of ads) {
     ad.image_url = adIdToUrl.get(ad.ad_id) || null;
   }
