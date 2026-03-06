@@ -15,6 +15,7 @@ interface MetaAd {
   ctr: number;
   installs: number;
   cpi: number;
+  image_url: string | null;
 }
 
 function extractInstalls(actions: any[] | undefined): number {
@@ -73,6 +74,7 @@ async function fetchAllAds(
         ctr: parseFloat(row.ctr) || 0,
         installs,
         cpi: installs > 0 ? spend / installs : 0,
+        image_url: null,
       });
     }
     url = data.paging?.next || null;
@@ -80,6 +82,85 @@ async function fetchAllAds(
 
   console.log(`Fetched ${pageCount} pages, ${allAds.length} IMAGE/IMG ads`);
   return allAds;
+}
+
+async function resolveHighResImages(
+  ads: MetaAd[],
+  adAccountId: string,
+  accessToken: string
+): Promise<void> {
+  if (ads.length === 0) return;
+
+  // Step 1: Batch-query ad_ids to get creative{image_hash}
+  const adIds = [...new Set(ads.map((a) => a.ad_id))];
+  const adIdToHash = new Map<string, string>();
+  const BATCH_SIZE = 50;
+
+  console.log(`Resolving image hashes for ${adIds.length} unique ad IDs...`);
+
+  for (let i = 0; i < adIds.length; i += BATCH_SIZE) {
+    const batch = adIds.slice(i, i + BATCH_SIZE);
+    const idsParam = batch.join(",");
+    const url = `https://graph.facebook.com/v19.0/?ids=${idsParam}&fields=id,creative{image_hash}&access_token=${accessToken}`;
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        console.error(`Creative hash batch error: ${await resp.text()}`);
+        continue;
+      }
+      const data = await resp.json();
+      for (const [adId, adData] of Object.entries(data as Record<string, any>)) {
+        const hash = adData?.creative?.image_hash;
+        if (hash) {
+          adIdToHash.set(adId, hash);
+        }
+      }
+    } catch (err) {
+      console.error(`Creative hash batch failed:`, err);
+    }
+  }
+
+  console.log(`Found ${adIdToHash.size} image hashes out of ${adIds.length} ads`);
+
+  // Step 2: Resolve unique hashes to full-res URLs via Ad Images API
+  const uniqueHashes = [...new Set(adIdToHash.values())];
+  const hashToUrl = new Map<string, string>();
+
+  for (let i = 0; i < uniqueHashes.length; i += BATCH_SIZE) {
+    const batch = uniqueHashes.slice(i, i + BATCH_SIZE);
+    const hashesParam = JSON.stringify(batch);
+    const url = `https://graph.facebook.com/v19.0/${adAccountId}/adimages?hashes=${encodeURIComponent(hashesParam)}&fields=hash,url&access_token=${accessToken}`;
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        console.error(`Ad images batch error: ${await resp.text()}`);
+        continue;
+      }
+      const data = await resp.json();
+      for (const img of data.data || []) {
+        if (img.hash && img.url) {
+          hashToUrl.set(img.hash, img.url);
+        }
+      }
+    } catch (err) {
+      console.error(`Ad images batch failed:`, err);
+    }
+  }
+
+  console.log(`Resolved ${hashToUrl.size} full-res URLs from ${uniqueHashes.length} hashes`);
+
+  // Step 3: Map URLs back to ads
+  for (const ad of ads) {
+    const hash = adIdToHash.get(ad.ad_id);
+    if (hash) {
+      ad.image_url = hashToUrl.get(hash) || null;
+    }
+  }
+
+  const withImages = ads.filter((a) => a.image_url).length;
+  console.log(`${withImages}/${ads.length} ads now have high-res image URLs`);
 }
 
 serve(async (req) => {
@@ -101,6 +182,10 @@ serve(async (req) => {
     console.log(`Querying Meta API for Hours IMAGE ads between ${startDate} and ${endDate}`);
 
     const ads = await fetchAllAds(adAccountId, accessToken, startDate, endDate);
+
+    // Resolve high-res image URLs
+    await resolveHighResImages(ads, adAccountId, accessToken);
+
     ads.sort((a, b) => b.spend - a.spend);
 
     console.log(`Returning ${ads.length} ads`);
