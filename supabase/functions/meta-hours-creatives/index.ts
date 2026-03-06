@@ -84,6 +84,11 @@ async function fetchAllAds(
   return allAds;
 }
 
+// Upgrade thumbnail URLs from 64x64 to 1080x1080
+function upscaleThumbnailUrl(url: string): string {
+  return url.replace(/p64x64/g, "p1080x1080");
+}
+
 async function resolveHighResImages(
   ads: MetaAd[],
   adAccountId: string,
@@ -93,74 +98,49 @@ async function resolveHighResImages(
 
   const adIds = [...new Set(ads.map((a) => a.ad_id))];
   const adIdToUrl = new Map<string, string>();
-  const adIdToCreativeId = new Map<string, string>();
-  const unresolvedHashes = new Map<string, string[]>();
   const BATCH = 10;
 
-  console.log(`Step 1: Getting creative IDs for ${adIds.length} ads...`);
+  console.log(`Resolving images for ${adIds.length} unique ads in batches of ${BATCH}...`);
 
-  // Step 1: Get creative IDs from ad IDs
+  const unresolvedHashes = new Map<string, string[]>();
+  const adIdToThumbnail = new Map<string, string>(); // fallback thumbnails
+
   for (let i = 0; i < adIds.length; i += BATCH) {
     const batch = adIds.slice(i, i + BATCH);
-    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=id,creative{id}&access_token=${accessToken}`;
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) { console.error(`Creative ID batch error: ${await resp.text()}`); continue; }
-      const data = await resp.json();
-      for (const [adId, adData] of Object.entries(data as Record<string, any>)) {
-        const cid = adData?.creative?.id;
-        if (cid) adIdToCreativeId.set(adId, cid);
-      }
-    } catch (err) { console.error(`Creative ID batch failed:`, err); }
-  }
-
-  console.log(`Found ${adIdToCreativeId.size} creative IDs`);
-
-  // Step 2: Query creative IDs directly for object_story_spec + image_hash
-  const creativeIdToAdIds = new Map<string, string[]>();
-  for (const [adId, cid] of adIdToCreativeId) {
-    if (!creativeIdToAdIds.has(cid)) creativeIdToAdIds.set(cid, []);
-    creativeIdToAdIds.get(cid)!.push(adId);
-  }
-
-  const creativeIds = [...creativeIdToAdIds.keys()];
-  console.log(`Step 2: Querying ${creativeIds.length} unique creatives for image URLs...`);
-
-  for (let i = 0; i < creativeIds.length; i += BATCH) {
-    const batch = creativeIds.slice(i, i + BATCH);
-    const fields = "id,image_hash,image_url,object_story_spec";
+    const fields = "id,creative{id,thumbnail_url,image_url,image_hash}";
     const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=${encodeURIComponent(fields)}&access_token=${accessToken}`;
     try {
       const resp = await fetch(url);
-      if (!resp.ok) { console.error(`Creative detail batch ${Math.floor(i/BATCH)+1} error: ${await resp.text()}`); continue; }
+      if (!resp.ok) { console.error(`Batch ${Math.floor(i/BATCH)+1} error: ${await resp.text()}`); continue; }
       const data = await resp.json();
 
-      for (const [cid, creative] of Object.entries(data as Record<string, any>)) {
-        const adIdsForCreative = creativeIdToAdIds.get(cid) || [];
-        const oss = creative?.object_story_spec;
+      for (const [adId, adData] of Object.entries(data as Record<string, any>)) {
+        const creative = (adData as any)?.creative;
+        if (!creative) continue;
 
-        // Priority 1: link_data.picture
-        const linkPic = oss?.link_data?.picture;
-        if (linkPic) { for (const aid of adIdsForCreative) adIdToUrl.set(aid, linkPic); continue; }
-        // Priority 2: photo_data.url  
-        const photoPic = oss?.photo_data?.url;
-        if (photoPic) { for (const aid of adIdsForCreative) adIdToUrl.set(aid, photoPic); continue; }
-        // Priority 3: image_hash from any level
-        const hash = creative?.image_hash || oss?.link_data?.image_hash || oss?.photo_data?.image_hash;
-        if (hash) {
-          if (!unresolvedHashes.has(hash)) unresolvedHashes.set(hash, []);
-          for (const aid of adIdsForCreative) unresolvedHashes.get(hash)!.push(aid);
+        // Save thumbnail as fallback (upscaled)
+        if (creative.thumbnail_url) {
+          adIdToThumbnail.set(adId, upscaleThumbnailUrl(creative.thumbnail_url));
+        }
+
+        // Priority 1: image_hash → will resolve to full-res via /adimages
+        if (creative.image_hash) {
+          if (!unresolvedHashes.has(creative.image_hash)) unresolvedHashes.set(creative.image_hash, []);
+          unresolvedHashes.get(creative.image_hash)!.push(adId);
           continue;
         }
-        // Priority 4: creative.image_url fallback
-        if (creative?.image_url) { for (const aid of adIdsForCreative) adIdToUrl.set(aid, creative.image_url); }
+        // Priority 2: image_url (if available)
+        if (creative.image_url) {
+          adIdToUrl.set(adId, creative.image_url);
+          continue;
+        }
       }
-    } catch (err) { console.error(`Creative detail batch failed:`, err); }
+    } catch (err) { console.error(`Batch ${Math.floor(i/BATCH)+1} failed:`, err); }
   }
 
-  console.log(`Direct URLs: ${adIdToUrl.size}, unresolved hashes: ${unresolvedHashes.size}`);
+  console.log(`Direct URLs: ${adIdToUrl.size}, hashes to resolve: ${unresolvedHashes.size}, thumbnails: ${adIdToThumbnail.size}`);
 
-  // Step 3: Resolve remaining hashes via /adimages API
+  // Resolve remaining hashes via /adimages API
   if (unresolvedHashes.size > 0) {
     const uniqueHashes = [...unresolvedHashes.keys()];
     for (let i = 0; i < uniqueHashes.length; i += 50) {
@@ -181,13 +161,13 @@ async function resolveHighResImages(
     }
   }
 
-  // Step 4: Map URLs back to ads
+  // Map URLs back to ads: prefer full-res from /adimages, fall back to upscaled thumbnail
   for (const ad of ads) {
-    ad.image_url = adIdToUrl.get(ad.ad_id) || null;
+    ad.image_url = adIdToUrl.get(ad.ad_id) || adIdToThumbnail.get(ad.ad_id) || null;
   }
 
   const withImages = ads.filter((a) => a.image_url).length;
-  console.log(`${withImages}/${ads.length} ads now have high-res image URLs`);
+  console.log(`${withImages}/${ads.length} ads now have image URLs`);
 }
 
 serve(async (req) => {
