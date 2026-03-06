@@ -18,60 +18,79 @@ interface MetaAd {
   image_url: string | null;
 }
 
-// Fetch ad creative image URLs in batches using the /ads endpoint
-async function fetchAdImageUrls(
+// Get creative IDs and effective_object_story_ids for each ad
+async function getCreativeDetails(
   adIds: string[],
   accessToken: string
-): Promise<Map<string, string>> {
-  const imageMap = new Map<string, string>();
-  if (adIds.length === 0) return imageMap;
+): Promise<Map<string, { creativeId: string; storyId: string | null; imageUrl: string | null }>> {
+  const result = new Map<string, { creativeId: string; storyId: string | null; imageUrl: string | null }>();
 
-  // Batch in groups of 50 to avoid API limits
   for (let i = 0; i < adIds.length; i += 50) {
     const batch = adIds.slice(i, i + 50);
-    const ids = batch.join(",");
-    const url = `https://graph.facebook.com/v19.0/?ids=${ids}&fields=id,creative{image_url,thumbnail_url,object_story_spec}&access_token=${accessToken}`;
-
+    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=id,creative{id,effective_object_story_id,image_url,thumbnail_url}&access_token=${accessToken}`;
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        console.warn(`Batch creative fetch failed: ${response.status}`);
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.warn(`Creative details batch failed: ${res.status}`);
         continue;
       }
-      const data = await response.json();
-
+      const data = await res.json();
       for (const [adId, adData] of Object.entries(data)) {
-        const ad = adData as any;
-        const creative = ad?.creative;
-        if (!creative) continue;
-
-        // Priority: object_story_spec photo > link_data picture > image_url > thumbnail_url
-        const spec = creative.object_story_spec;
-        let bestUrl: string | null = null;
-
-        if (spec?.photo_data?.url) {
-          bestUrl = spec.photo_data.url;
-        } else if (spec?.link_data?.picture) {
-          bestUrl = spec.link_data.picture;
-        } else if (spec?.link_data?.child_attachments?.[0]?.picture) {
-          bestUrl = spec.link_data.child_attachments[0].picture;
-        } else if (creative.image_url) {
-          bestUrl = creative.image_url;
-        } else if (creative.thumbnail_url) {
-          bestUrl = creative.thumbnail_url;
-        }
-
-        if (bestUrl) {
-          imageMap.set(adId, bestUrl);
-        }
+        const creative = (adData as any)?.creative;
+        if (!creative?.id) continue;
+        result.set(adId, {
+          creativeId: creative.id,
+          storyId: creative.effective_object_story_id || null,
+          imageUrl: creative.image_url || creative.thumbnail_url || null,
+        });
       }
     } catch (err) {
-      console.warn(`Batch creative fetch error: ${err}`);
+      console.warn(`Creative details error: ${err}`);
     }
   }
 
-  console.log(`Resolved image URLs for ${imageMap.size} of ${adIds.length} ads`);
-  return imageMap;
+  console.log(`Got creative details for ${result.size} of ${adIds.length} ads`);
+  return result;
+}
+
+// Fetch full_picture from page posts using effective_object_story_id
+async function getPostImages(
+  storyIds: string[],
+  accessToken: string
+): Promise<Map<string, string>> {
+  const storyToImage = new Map<string, string>();
+  const unique = [...new Set(storyIds.filter(Boolean))];
+
+  if (unique.length === 0) return storyToImage;
+
+  for (let i = 0; i < unique.length; i += 50) {
+    const batch = unique.slice(i, i + 50);
+    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=id,full_picture&access_token=${accessToken}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.warn(`Post images batch ${Math.floor(i / 50) + 1} failed: ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      for (const [postId, postData] of Object.entries(data)) {
+        const pic = (postData as any)?.full_picture;
+        if (pic) storyToImage.set(postId, pic);
+      }
+    } catch (err) {
+      console.warn(`Post images error: ${err}`);
+    }
+  }
+
+  console.log(`Got full_picture for ${storyToImage.size} of ${unique.length} posts`);
+  return storyToImage;
+}
+
+// Transform Meta CDN URLs from 64x64 to higher resolution
+// Meta CDN uses `stp=...p64x64...` param to control image size
+function upscaleMetaCdnUrl(url: string): string {
+  // Replace p64x64 with p720x720 for much better quality
+  return url.replace(/p64x64/g, 'p720x720');
 }
 
 async function fetchAllAds(
@@ -81,29 +100,14 @@ async function fetchAllAds(
   endDate: string
 ): Promise<MetaAd[]> {
   const allAds: MetaAd[] = [];
-  const fields = [
-    "ad_id",
-    "ad_name",
-    "campaign_name",
-    "spend",
-    "impressions",
-    "clicks",
-    "ctr",
-    "actions",
-  ].join(",");
-
+  const fields = "ad_id,ad_name,campaign_name,spend,impressions,clicks,ctr,actions";
   const timeRange = JSON.stringify({ since: startDate, until: endDate });
-
   const filtering = JSON.stringify([
-    {
-      field: "campaign.name",
-      operator: "CONTAIN",
-      value: "hours",
-    },
+    { field: "campaign.name", operator: "CONTAIN", value: "hours" },
   ]);
 
   let url: string | null = `https://graph.facebook.com/v19.0/${adAccountId}/insights`;
-  let params = new URLSearchParams({
+  const params = new URLSearchParams({
     fields,
     time_range: timeRange,
     level: "ad",
@@ -114,33 +118,21 @@ async function fetchAllAds(
   });
 
   let pageCount = 0;
-
   while (url) {
     pageCount++;
     const fetchUrl = pageCount === 1 ? `${url}?${params.toString()}` : url;
-    console.log(`Fetching page ${pageCount}...`);
-
+    console.log(`Fetching insights page ${pageCount}...`);
     const response = await fetch(fetchUrl);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Meta API error: ${errorText}`);
-    }
-
+    if (!response.ok) throw new Error(`Meta API error: ${await response.text()}`);
     const data = await response.json();
-    const rows = data.data || [];
 
-    for (const row of rows) {
+    for (const row of data.data || []) {
       const adName = row.ad_name || "";
-      const upperAdName = adName.toUpperCase();
-
-      if (!upperAdName.includes("IMAGE") && !upperAdName.includes("IMG")) {
-        continue;
-      }
+      const upper = adName.toUpperCase();
+      if (!upper.includes("IMAGE") && !upper.includes("IMG")) continue;
 
       const spend = parseFloat(row.spend) || 0;
       const installs = extractInstalls(row.actions);
-
       allAds.push({
         ad_id: row.ad_id || "",
         ad_name: adName,
@@ -151,32 +143,51 @@ async function fetchAllAds(
         ctr: parseFloat(row.ctr) || 0,
         installs,
         cpi: installs > 0 ? spend / installs : 0,
-        image_url: null, // will be populated later
+        image_url: null,
       });
     }
-
     url = data.paging?.next || null;
   }
 
   console.log(`Fetched ${pageCount} pages, ${allAds.length} IMAGE/IMG ads`);
 
-  // Now batch-fetch image URLs for all ads
+  // Resolve images via two approaches
   const adIds = allAds.map((a) => a.ad_id).filter(Boolean);
-  const imageMap = await fetchAdImageUrls(adIds, accessToken);
+  
+  // Step 1: Get creative IDs + effective_object_story_id + image_url
+  const creativeDetails = await getCreativeDetails(adIds, accessToken);
+  
+  // Step 2: For creatives with effective_object_story_id, fetch the post's full_picture
+  const storyIds = [...creativeDetails.values()]
+    .map(c => c.storyId)
+    .filter((s): s is string => !!s);
+  
+  const postImages = await getPostImages(storyIds, accessToken);
 
+  // Map images back to ads — upscale 64x64 Meta CDN thumbnails to higher res
+  let resolved = 0;
   for (const ad of allAds) {
-    ad.image_url = imageMap.get(ad.ad_id) || null;
+    const details = creativeDetails.get(ad.ad_id);
+    if (!details) continue;
+
+    // Priority: full_picture from post > creative image_url (upscaled)
+    if (details.storyId && postImages.has(details.storyId)) {
+      ad.image_url = postImages.get(details.storyId)!;
+      resolved++;
+    } else if (details.imageUrl) {
+      ad.image_url = upscaleMetaCdnUrl(details.imageUrl);
+      resolved++;
+    }
   }
 
+  console.log(`Resolved images for ${resolved} of ${allAds.length} ads`);
   return allAds;
 }
 
 function extractInstalls(actions: any[] | undefined): number {
   if (!actions) return 0;
-  const installAction = actions.find(
-    (a: any) => a.action_type === "mobile_app_install"
-  );
-  return installAction ? parseInt(installAction.value) || 0 : 0;
+  const a = actions.find((a: any) => a.action_type === "mobile_app_install");
+  return a ? parseInt(a.value) || 0 : 0;
 }
 
 serve(async (req) => {
@@ -187,31 +198,21 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const startDate = body.startDate || "2025-10-01";
-    const endDate =
-      body.endDate ||
-      new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const endDate = body.endDate || new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
     const accessToken = Deno.env.get("META_ACCESS_TOKEN");
     let adAccountId = Deno.env.get("META_AD_ACCOUNT_ID");
 
-    if (!accessToken || !adAccountId) {
-      throw new Error("Missing META_ACCESS_TOKEN or META_AD_ACCOUNT_ID");
-    }
+    if (!accessToken || !adAccountId) throw new Error("Missing META_ACCESS_TOKEN or META_AD_ACCOUNT_ID");
+    if (!adAccountId.startsWith("act_")) adAccountId = `act_${adAccountId}`;
 
-    if (!adAccountId.startsWith("act_")) {
-      adAccountId = `act_${adAccountId}`;
-    }
-
-    console.log(
-      `Querying Meta API for Hours campaign ads (IMAGE/IMG) between ${startDate} and ${endDate}`
-    );
+    console.log(`Querying Meta API for Hours IMAGE ads between ${startDate} and ${endDate}`);
 
     const ads = await fetchAllAds(adAccountId, accessToken, startDate, endDate);
-
-    // Sort by spend descending
     ads.sort((a, b) => b.spend - a.spend);
 
-    console.log(`Found ${ads.length} IMAGE/IMG ads from Hours campaigns`);
+    const withImages = ads.filter(a => a.image_url).length;
+    console.log(`Returning ${ads.length} ads (${withImages} with images)`);
 
     return new Response(
       JSON.stringify({ success: true, data: { ads } }),
@@ -222,10 +223,7 @@ serve(async (req) => {
     console.error("Error:", message);
     return new Response(
       JSON.stringify({ success: false, error: message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
