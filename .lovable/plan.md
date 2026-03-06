@@ -1,25 +1,34 @@
 
 
-# Add Asset Type Filter (Image / Video / Both) to Creative Performance Grid
+# Add Download Functionality to Hours Creatives Page
 
-## What Changes
-Add a toggle filter below the platform filter bar that lets you filter creatives by asset type: **All**, **Images**, or **Videos**. The filter parses the asset type from field 3 of the naming convention (e.g., "Video", "Static", "Carousel").
+## Problem
+The team needs to download image assets from the Hours Creatives page to iterate on top-performing creatives. Currently the page shows thumbnails and metrics but has no download capability.
 
-## Implementation
+## Approach
 
-### 1. Add asset type filter state in `CreativePerformanceGrid.tsx`
-- New state: `assetTypeFilter` with values `"all" | "image" | "video"`
-- Filter the `data` array before rendering by checking `creative.parsed.assetType` — if it contains "VID" it's video, otherwise image
-- Place the filter toggle inline next to the platform filter bar (or right below it), using the existing `ToggleGroup` component with `ImageIcon`, `Film`, and a combined icon for "All"
+Since this page is images-only, we need the full-resolution image URL for each ad. The current flow already joins with the `creative_assets` table which stores `full_asset_url` — but many ads may not have entries there. We need to ensure reliable download URLs.
 
-### 2. Render the filter in `headerContent`
-- Add a small `ToggleGroup` after the `PlatformFilterBar` with three options: All, Images, Videos
-- Include counts for each type so the user sees how many match
+Two changes:
 
-### 3. Apply filter to both card and table views
-- Filter `data` before passing to the card grid loop and `CreativePerformanceTable`
-- The filtered data flows through the same rendering path, no changes needed in child components
+### 1. Add download button to each card and the preview dialog
+- Add a `Download` icon button on each card (bottom-right corner of the thumbnail area) that triggers a download of the full-resolution asset
+- Add a "Download" button in the `CreativePreviewDialog` when opened from this page
+- Use `fullAssetUrl` from creative_assets when available; fall back to `assetUrl` (thumbnail)
+- Downloads will use `fetch()` + blob approach to force browser download (avoiding navigation to external URLs)
 
-### File changes
-- **`src/components/reporting/CreativePerformanceGrid.tsx`** — add state, filter logic, and toggle UI
+### 2. Add "Download All" bulk action
+- Add a "Download All" button in the header/filter bar area
+- Downloads all visible (filtered) creatives sequentially as individual files
+- Uses the creative's unique identifier or ad name as the filename
+
+### File Changes
+
+- **`src/pages/HoursCreatives.tsx`** — Add per-card download button (icon overlay), bulk "Download All" button in header, download helper function
+- **`src/components/reporting/CreativePreviewDialog.tsx`** — Add a download button next to the asset type badge or in the metadata section (only when asset URL is available)
+
+### Technical Details
+- Download helper: `fetch(url) → blob → createObjectURL → click hidden anchor → revoke`
+- Stop event propagation on card download button so it doesn't open the preview dialog
+- File naming: use `parsed.uniqueIdentifier` or fall back to `adId`
 
