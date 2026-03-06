@@ -13,6 +13,12 @@ import { CreativeBreakdownDialog } from "./CreativeBreakdownDialog";
 import { CreativePreviewDialog } from "./CreativePreviewDialog";
 
 type ViewMode = "cards" | "table";
+type AssetTypeFilter = "all" | "image" | "video";
+
+function isVideoCreative(creative: EnrichedCreative): boolean {
+  const contentType = creative.parsed.contentType?.toUpperCase() || "";
+  return contentType.includes("VID");
+}
 
 interface CreativePerformanceGridProps {
   startDate: string;
@@ -253,6 +259,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
     getPlatformBreakdown
   } = useMultiPlatformCreatives();
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>("all");
   const [columnConfig, setColumnConfig] = useState<ColumnConfig>(defaultColumnConfig);
   const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -271,6 +278,16 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
       fetchAllPlatforms(startDate, endDate);
     }
   }, [startDate, endDate, dataFetched, fetchAllPlatforms]);
+
+  // Filter data by asset type
+  const filteredData = data.filter((creative) => {
+    if (assetTypeFilter === "all") return true;
+    if (assetTypeFilter === "video") return isVideoCreative(creative);
+    return !isVideoCreative(creative); // "image" includes static + carousel
+  });
+
+  const videoCount = data.filter(isVideoCreative).length;
+  const imageCount = data.length - videoCount;
 
   if (!dataFetched) {
     return null;
@@ -315,11 +332,32 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
           </ToggleGroup>
         </div>
       </div>
-      <PlatformFilterBar
-        activePlatform={activePlatform}
-        onPlatformChange={setActivePlatform}
-        counts={platformCounts}
-      />
+      <div className="flex items-center justify-between gap-4">
+        <PlatformFilterBar
+          activePlatform={activePlatform}
+          onPlatformChange={setActivePlatform}
+          counts={platformCounts}
+        />
+        <ToggleGroup
+          type="single"
+          value={assetTypeFilter}
+          onValueChange={(value) => value && setAssetTypeFilter(value as AssetTypeFilter)}
+          className="border rounded-md"
+        >
+          <ToggleGroupItem value="all" aria-label="All types" className="px-3 text-xs gap-1">
+            <LayoutGrid className="h-3.5 w-3.5" />
+            All ({data.length})
+          </ToggleGroupItem>
+          <ToggleGroupItem value="image" aria-label="Images only" className="px-3 text-xs gap-1">
+            <ImageIcon className="h-3.5 w-3.5" />
+            Image ({imageCount})
+          </ToggleGroupItem>
+          <ToggleGroupItem value="video" aria-label="Videos only" className="px-3 text-xs gap-1">
+            <Film className="h-3.5 w-3.5" />
+            Video ({videoCount})
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
     </div>
   );
 
@@ -381,7 +419,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
       {headerContent}
       {viewMode === "cards" ? (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {data.map((creative) => (
+          {filteredData.map((creative) => (
             <CreativeCard 
               key={`${creative.platform}-${creative.adId}`} 
               creative={creative} 
@@ -394,7 +432,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
         </div>
       ) : (
         <CreativePerformanceTable 
-          data={data} 
+          data={filteredData} 
           showPlatform={showPlatformBadge} 
           columnConfig={columnConfig}
           onRowClick={handleCreativeClick}
