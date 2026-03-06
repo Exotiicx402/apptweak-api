@@ -15,82 +15,12 @@ interface MetaAd {
   ctr: number;
   installs: number;
   cpi: number;
-  image_url: string | null;
 }
 
-// Get creative IDs and effective_object_story_ids for each ad
-async function getCreativeDetails(
-  adIds: string[],
-  accessToken: string
-): Promise<Map<string, { creativeId: string; storyId: string | null; imageUrl: string | null }>> {
-  const result = new Map<string, { creativeId: string; storyId: string | null; imageUrl: string | null }>();
-
-  for (let i = 0; i < adIds.length; i += 50) {
-    const batch = adIds.slice(i, i + 50);
-    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=id,creative{id,effective_object_story_id,image_url,thumbnail_url}&access_token=${accessToken}`;
-    try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        console.warn(`Creative details batch failed: ${res.status}`);
-        continue;
-      }
-      const data = await res.json();
-      for (const [adId, adData] of Object.entries(data)) {
-        const creative = (adData as any)?.creative;
-        if (!creative?.id) continue;
-        result.set(adId, {
-          creativeId: creative.id,
-          storyId: creative.effective_object_story_id || null,
-          imageUrl: creative.image_url || creative.thumbnail_url || null,
-        });
-      }
-    } catch (err) {
-      console.warn(`Creative details error: ${err}`);
-    }
-  }
-
-  console.log(`Got creative details for ${result.size} of ${adIds.length} ads`);
-  return result;
-}
-
-// Fetch full_picture from page posts using effective_object_story_id
-async function getPostImages(
-  storyIds: string[],
-  accessToken: string
-): Promise<Map<string, string>> {
-  const storyToImage = new Map<string, string>();
-  const unique = [...new Set(storyIds.filter(Boolean))];
-
-  if (unique.length === 0) return storyToImage;
-
-  for (let i = 0; i < unique.length; i += 50) {
-    const batch = unique.slice(i, i + 50);
-    const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(",")}&fields=id,full_picture&access_token=${accessToken}`;
-    try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        console.warn(`Post images batch ${Math.floor(i / 50) + 1} failed: ${res.status}`);
-        continue;
-      }
-      const data = await res.json();
-      for (const [postId, postData] of Object.entries(data)) {
-        const pic = (postData as any)?.full_picture;
-        if (pic) storyToImage.set(postId, pic);
-      }
-    } catch (err) {
-      console.warn(`Post images error: ${err}`);
-    }
-  }
-
-  console.log(`Got full_picture for ${storyToImage.size} of ${unique.length} posts`);
-  return storyToImage;
-}
-
-// Transform Meta CDN URLs from 64x64 to higher resolution
-// Meta CDN uses `stp=...p64x64...` param to control image size
-function upscaleMetaCdnUrl(url: string): string {
-  // Replace p64x64 with p720x720 for much better quality
-  return url.replace(/p64x64/g, 'p720x720');
+function extractInstalls(actions: any[] | undefined): number {
+  if (!actions) return 0;
+  const a = actions.find((a: any) => a.action_type === "mobile_app_install");
+  return a ? parseInt(a.value) || 0 : 0;
 }
 
 async function fetchAllAds(
@@ -143,51 +73,13 @@ async function fetchAllAds(
         ctr: parseFloat(row.ctr) || 0,
         installs,
         cpi: installs > 0 ? spend / installs : 0,
-        image_url: null,
       });
     }
     url = data.paging?.next || null;
   }
 
   console.log(`Fetched ${pageCount} pages, ${allAds.length} IMAGE/IMG ads`);
-
-  // Resolve images via two approaches
-  const adIds = allAds.map((a) => a.ad_id).filter(Boolean);
-  
-  // Step 1: Get creative IDs + effective_object_story_id + image_url
-  const creativeDetails = await getCreativeDetails(adIds, accessToken);
-  
-  // Step 2: For creatives with effective_object_story_id, fetch the post's full_picture
-  const storyIds = [...creativeDetails.values()]
-    .map(c => c.storyId)
-    .filter((s): s is string => !!s);
-  
-  const postImages = await getPostImages(storyIds, accessToken);
-
-  // Map images back to ads — upscale 64x64 Meta CDN thumbnails to higher res
-  let resolved = 0;
-  for (const ad of allAds) {
-    const details = creativeDetails.get(ad.ad_id);
-    if (!details) continue;
-
-    // Priority: full_picture from post > creative image_url (upscaled)
-    if (details.storyId && postImages.has(details.storyId)) {
-      ad.image_url = postImages.get(details.storyId)!;
-      resolved++;
-    } else if (details.imageUrl) {
-      ad.image_url = upscaleMetaCdnUrl(details.imageUrl);
-      resolved++;
-    }
-  }
-
-  console.log(`Resolved images for ${resolved} of ${allAds.length} ads`);
   return allAds;
-}
-
-function extractInstalls(actions: any[] | undefined): number {
-  if (!actions) return 0;
-  const a = actions.find((a: any) => a.action_type === "mobile_app_install");
-  return a ? parseInt(a.value) || 0 : 0;
 }
 
 serve(async (req) => {
@@ -211,8 +103,7 @@ serve(async (req) => {
     const ads = await fetchAllAds(adAccountId, accessToken, startDate, endDate);
     ads.sort((a, b) => b.spend - a.spend);
 
-    const withImages = ads.filter(a => a.image_url).length;
-    console.log(`Returning ${ads.length} ads (${withImages} with images)`);
+    console.log(`Returning ${ads.length} ads`);
 
     return new Response(
       JSON.stringify({ success: true, data: { ads } }),
