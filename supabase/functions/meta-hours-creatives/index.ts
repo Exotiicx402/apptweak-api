@@ -15,6 +15,63 @@ interface MetaAd {
   ctr: number;
   installs: number;
   cpi: number;
+  image_url: string | null;
+}
+
+// Fetch ad creative image URLs in batches using the /ads endpoint
+async function fetchAdImageUrls(
+  adIds: string[],
+  accessToken: string
+): Promise<Map<string, string>> {
+  const imageMap = new Map<string, string>();
+  if (adIds.length === 0) return imageMap;
+
+  // Batch in groups of 50 to avoid API limits
+  for (let i = 0; i < adIds.length; i += 50) {
+    const batch = adIds.slice(i, i + 50);
+    const ids = batch.join(",");
+    const url = `https://graph.facebook.com/v19.0/?ids=${ids}&fields=id,creative{image_url,thumbnail_url,object_story_spec}&access_token=${accessToken}`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.warn(`Batch creative fetch failed: ${response.status}`);
+        continue;
+      }
+      const data = await response.json();
+
+      for (const [adId, adData] of Object.entries(data)) {
+        const ad = adData as any;
+        const creative = ad?.creative;
+        if (!creative) continue;
+
+        // Priority: object_story_spec photo > link_data picture > image_url > thumbnail_url
+        const spec = creative.object_story_spec;
+        let bestUrl: string | null = null;
+
+        if (spec?.photo_data?.url) {
+          bestUrl = spec.photo_data.url;
+        } else if (spec?.link_data?.picture) {
+          bestUrl = spec.link_data.picture;
+        } else if (spec?.link_data?.child_attachments?.[0]?.picture) {
+          bestUrl = spec.link_data.child_attachments[0].picture;
+        } else if (creative.image_url) {
+          bestUrl = creative.image_url;
+        } else if (creative.thumbnail_url) {
+          bestUrl = creative.thumbnail_url;
+        }
+
+        if (bestUrl) {
+          imageMap.set(adId, bestUrl);
+        }
+      }
+    } catch (err) {
+      console.warn(`Batch creative fetch error: ${err}`);
+    }
+  }
+
+  console.log(`Resolved image URLs for ${imageMap.size} of ${adIds.length} ads`);
+  return imageMap;
 }
 
 async function fetchAllAds(
@@ -37,7 +94,6 @@ async function fetchAllAds(
 
   const timeRange = JSON.stringify({ since: startDate, until: endDate });
 
-  // Use filtering to only get campaigns containing "hours" (case-insensitive via Meta API)
   const filtering = JSON.stringify([
     {
       field: "campaign.name",
@@ -78,7 +134,6 @@ async function fetchAllAds(
       const adName = row.ad_name || "";
       const upperAdName = adName.toUpperCase();
 
-      // Filter: ad name must contain IMAGE or IMG
       if (!upperAdName.includes("IMAGE") && !upperAdName.includes("IMG")) {
         continue;
       }
@@ -96,14 +151,23 @@ async function fetchAllAds(
         ctr: parseFloat(row.ctr) || 0,
         installs,
         cpi: installs > 0 ? spend / installs : 0,
+        image_url: null, // will be populated later
       });
     }
 
-    // Handle pagination
     url = data.paging?.next || null;
   }
 
-  console.log(`Fetched ${pageCount} pages total`);
+  console.log(`Fetched ${pageCount} pages, ${allAds.length} IMAGE/IMG ads`);
+
+  // Now batch-fetch image URLs for all ads
+  const adIds = allAds.map((a) => a.ad_id).filter(Boolean);
+  const imageMap = await fetchAdImageUrls(adIds, accessToken);
+
+  for (const ad of allAds) {
+    ad.image_url = imageMap.get(ad.ad_id) || null;
+  }
+
   return allAds;
 }
 

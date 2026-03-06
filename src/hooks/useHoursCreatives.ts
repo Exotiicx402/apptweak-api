@@ -12,6 +12,7 @@ interface AdMetric {
   ctr: number;
   installs: number;
   cpi: number;
+  image_url: string | null;
 }
 
 interface CreativeAsset {
@@ -89,6 +90,11 @@ export function useHoursCreatives() {
   const data: HoursCreative[] = useMemo(() => {
     return ads.map((ad) => {
       const asset = assetMap.get(ad.ad_name);
+      // Prefer API image_url (high-res from Meta), then creative_assets DB, then null
+      const apiImageUrl = ad.image_url || null;
+      const dbThumbnail = asset?.url || null;
+      const dbFullAsset = asset?.fullAssetUrl || null;
+      
       return {
         adId: ad.ad_id,
         adName: ad.ad_name,
@@ -100,9 +106,9 @@ export function useHoursCreatives() {
         ctr: ad.ctr,
         cpi: ad.cpi,
         parsed: parseCreativeName(ad.ad_name),
-        assetUrl: asset?.url || null,
-        assetType: asset?.type || null,
-        fullAssetUrl: asset?.fullAssetUrl || null,
+        assetUrl: apiImageUrl || dbThumbnail,
+        assetType: asset?.type || "image",
+        fullAssetUrl: apiImageUrl || dbFullAsset,
         posterUrl: asset?.posterUrl || null,
       };
     });
