@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useHoursCreatives, HoursCreative } from "@/hooks/useHoursCreatives";
+import { useHoursCreatives, HoursCreative, CampaignType } from "@/hooks/useHoursCreatives";
 import { CreativePreviewDialog } from "@/components/reporting/CreativePreviewDialog";
 import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
 import { toast } from "sonner";
@@ -14,12 +14,10 @@ import { toast } from "sonner";
 type AssetTypeFilter = "all" | "image" | "video";
 
 function isVideo(creative: HoursCreative): boolean {
-  // Primary: parse from ad name (more reliable than DB asset_type)
   const contentType = creative.parsed.contentType?.toUpperCase() || "";
   if (contentType) {
     return contentType.includes("VID") || contentType === "VIDEO";
   }
-  // Fallback: DB asset_type
   if (creative.assetType) return creative.assetType.toLowerCase() === "video";
   return false;
 }
@@ -28,6 +26,43 @@ function formatCurrency(value: number): string {
   return value >= 1000
     ? `$${(value / 1000).toFixed(1)}k`
     : `$${value.toFixed(2)}`;
+}
+
+function getCampaignTypeBadge(type: CampaignType) {
+  switch (type) {
+    case "ftd":
+      return { label: "FTD", className: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
+    case "waitlist":
+      return { label: "Waitlist", className: "bg-purple-500/10 text-purple-600 border-purple-500/20" };
+    default:
+      return { label: "Install", className: "bg-green-500/10 text-green-600 border-green-500/20" };
+  }
+}
+
+function getConversionMetrics(creative: HoursCreative) {
+  switch (creative.campaignType) {
+    case "ftd":
+      return {
+        primaryLabel: "FTDs",
+        primaryValue: creative.ftds.toLocaleString(),
+        costLabel: "Cost/FTD",
+        costValue: formatCurrency(creative.costPerFtd),
+      };
+    case "waitlist":
+      return {
+        primaryLabel: "Sign Ups",
+        primaryValue: creative.signUps.toLocaleString(),
+        costLabel: "Cost/Sign Up",
+        costValue: formatCurrency(creative.costPerSignUp),
+      };
+    default:
+      return {
+        primaryLabel: "Installs",
+        primaryValue: creative.installs.toLocaleString(),
+        costLabel: "CPI",
+        costValue: formatCurrency(creative.cpi),
+      };
+  }
 }
 
 export default function HoursCreatives() {
@@ -84,7 +119,6 @@ export default function HoursCreatives() {
   const imageCount = data.length - videoCount;
 
   const handleCreativeClick = (creative: HoursCreative) => {
-    // Open the ad preview in Facebook
     const previewUrl = `https://www.facebook.com/ads/archive/render_ad/?id=${creative.adId}`;
     window.open(previewUrl, "_blank", "noopener,noreferrer");
   };
@@ -165,86 +199,91 @@ export default function HoursCreatives() {
         {/* Grid */}
         {!isLoading && filtered.length > 0 && (
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((creative) => (
-              <Card
-                key={creative.adId}
-                className="overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all"
-                onClick={() => handleCreativeClick(creative)}
-              >
-                <div className="relative aspect-[4/5] bg-muted">
-                  {creative.assetUrl ? (
-                    <img
-                      src={creative.assetUrl}
-                      alt={creative.parsed.uniqueIdentifier || creative.adName}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
-                      No thumbnail
-                    </div>
-                  )}
-                  {/* Asset type badge */}
-                  <Badge
-                    variant="secondary"
-                    className="absolute top-2 left-2 text-[10px] px-1.5 py-0.5"
-                  >
-                    {isVideo(creative) ? "Video" : "Image"}
-                  </Badge>
-                  {/* Download button */}
-                  {getDownloadUrl(creative) && (
-                    <button
-                      onClick={(e) => handleDownload(creative, e)}
-                      className="absolute bottom-2 right-2 p-1.5 rounded-md bg-black/60 text-white hover:bg-black/80 transition-colors"
-                      title="Download asset"
+            {filtered.map((creative) => {
+              const typeBadge = getCampaignTypeBadge(creative.campaignType);
+              const metrics = getConversionMetrics(creative);
+
+              return (
+                <Card
+                  key={creative.adId}
+                  className="overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all"
+                  onClick={() => handleCreativeClick(creative)}
+                >
+                  <div className="relative aspect-[4/5] bg-muted">
+                    {creative.assetUrl ? (
+                      <img
+                        src={creative.assetUrl}
+                        alt={creative.parsed.uniqueIdentifier || creative.adName}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
+                        No thumbnail
+                      </div>
+                    )}
+                    {/* Campaign type badge */}
+                    <Badge
+                      variant="outline"
+                      className={`absolute top-2 left-2 text-[10px] px-1.5 py-0.5 ${typeBadge.className}`}
                     >
-                      <Download className="h-4 w-4" />
-                     </button>
-                  )}
-                </div>
-                <CardContent className="p-3 space-y-2">
-                  {/* Parsed tags */}
-                  <div className="flex flex-wrap gap-1">
-                    {creative.parsed.angle && (
-                      <Badge variant="outline" className="text-[10px]">{creative.parsed.angle}</Badge>
-                    )}
-                    {creative.parsed.category && (
-                      <Badge variant="outline" className="text-[10px]">{creative.parsed.category}</Badge>
-                    )}
-                    {creative.parsed.contentType && (
-                      <Badge variant="outline" className="text-[10px]">{creative.parsed.contentType}</Badge>
+                      {typeBadge.label}
+                    </Badge>
+                    {/* Download button */}
+                    {getDownloadUrl(creative) && (
+                      <button
+                        onClick={(e) => handleDownload(creative, e)}
+                        className="absolute bottom-2 right-2 p-1.5 rounded-md bg-black/60 text-white hover:bg-black/80 transition-colors"
+                        title="Download asset"
+                      >
+                        <Download className="h-4 w-4" />
+                      </button>
                     )}
                   </div>
-                  {/* Unique identifier */}
-                  <p className="text-xs font-medium text-foreground truncate">
-                    {creative.parsed.uniqueIdentifier || creative.adName}
-                  </p>
-                  {/* Campaign name */}
-                  <p className="text-[10px] text-muted-foreground truncate">
-                    {creative.campaignName}
-                  </p>
-                  {/* Metrics */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    <div>
-                      <span className="text-muted-foreground">Spend</span>
-                      <p className="font-semibold text-foreground">{formatCurrency(creative.spend)}</p>
+                  <CardContent className="p-3 space-y-2">
+                    {/* Parsed tags */}
+                    <div className="flex flex-wrap gap-1">
+                      {creative.parsed.angle && (
+                        <Badge variant="outline" className="text-[10px]">{creative.parsed.angle}</Badge>
+                      )}
+                      {creative.parsed.category && (
+                        <Badge variant="outline" className="text-[10px]">{creative.parsed.category}</Badge>
+                      )}
+                      {creative.parsed.contentType && (
+                        <Badge variant="outline" className="text-[10px]">{creative.parsed.contentType}</Badge>
+                      )}
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">Installs</span>
-                      <p className="font-semibold text-foreground">{creative.installs.toLocaleString()}</p>
+                    {/* Unique identifier */}
+                    <p className="text-xs font-medium text-foreground truncate">
+                      {creative.parsed.uniqueIdentifier || creative.adName}
+                    </p>
+                    {/* Campaign name */}
+                    <p className="text-[10px] text-muted-foreground truncate">
+                      {creative.campaignName}
+                    </p>
+                    {/* Metrics - campaign-type aware */}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Spend</span>
+                        <p className="font-semibold text-foreground">{formatCurrency(creative.spend)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{metrics.primaryLabel}</span>
+                        <p className="font-semibold text-foreground">{metrics.primaryValue}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">CTR</span>
+                        <p className="font-semibold text-foreground">{(creative.ctr * 100).toFixed(2)}%</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{metrics.costLabel}</span>
+                        <p className="font-semibold text-foreground">{metrics.costValue}</p>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">CTR</span>
-                      <p className="font-semibold text-foreground">{(creative.ctr * 100).toFixed(2)}%</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">CPI</span>
-                      <p className="font-semibold text-foreground">{formatCurrency(creative.cpi)}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 
