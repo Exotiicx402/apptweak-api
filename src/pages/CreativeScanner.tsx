@@ -214,71 +214,19 @@ const CreativeScanner = () => {
           </CardContent>
         </Card>
 
-        {/* Creative Requests List */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="text-lg">Detected Requests</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!creativeRequests || creativeRequests.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No creative requests detected yet. Run a scan to get started.</p>
-            ) : (
-              <div className="space-y-3">
-                {creativeRequests.map((req) => (
-                  <div key={req.id} className="border border-border rounded-lg p-4 hover:bg-muted/30 transition-colors">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <Badge
-                            variant={req.priority === "High" ? "destructive" : "secondary"}
-                            className="text-xs shrink-0"
-                          >
-                            {req.priority === "High" ? "🔴 High" : "Normal"}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(req.created_at).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} EST
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium text-foreground mb-2">{req.description}</p>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                          {req.requester && (
-                            <span className="flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              {req.requester}
-                            </span>
-                          )}
-                          {req.platform && req.platform !== "Not specified" && (
-                            <span className="flex items-center gap-1">
-                              <Monitor className="h-3 w-3" />
-                              {req.platform}
-                            </span>
-                          )}
-                          {req.format && req.format !== "Not specified" && (
-                            <span className="flex items-center gap-1">
-                              <Maximize className="h-3 w-3" />
-                              {req.format}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {req.message_ts && (
-                        <a
-                          href={getPermalink(req.message_ts)!}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
-                          title="View in Slack"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Kanban Board */}
+        {creativeRequests && creativeRequests.length > 0 ? (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-foreground mb-4">Creative Requests Board</h2>
+            <KanbanBoard requests={creativeRequests} onStatusChange={() => refetchRequests()} />
+          </div>
+        ) : (
+          <Card className="mb-8">
+            <CardContent className="py-12">
+              <p className="text-sm text-muted-foreground text-center">No creative requests detected yet. Run a scan to get started.</p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* How it works */}
         <Card>
