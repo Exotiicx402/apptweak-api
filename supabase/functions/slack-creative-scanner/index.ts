@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/slack/api";
+const SLACK_API = "https://slack.com/api";
 const SOURCE_CHANNEL = "C09HBDKSUGH";
 const TARGET_CHANNEL = "C0ALEBYFJNQ";
 
@@ -19,8 +19,8 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const SLACK_API_KEY = Deno.env.get("SLACK_API_KEY");
-    if (!SLACK_API_KEY) throw new Error("SLACK_API_KEY is not configured");
+    const SLACK_BOT_TOKEN = Deno.env.get("POLYMARKET_SLACK_BOT_TOKEN");
+    if (!SLACK_BOT_TOKEN) throw new Error("POLYMARKET_SLACK_BOT_TOKEN is not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,25 +38,14 @@ serve(async (req) => {
 
     console.log(`Scanning messages since ts=${lastTs}`);
 
-    // Join source channel (no-op if already in it)
-    await fetch(`${GATEWAY_URL}/conversations.join`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": SLACK_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ channel: SOURCE_CHANNEL }),
-    });
+    const slackHeaders = {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      "Content-Type": "application/json",
+    };
 
     // Fetch recent messages from source channel
-    const historyUrl = `${GATEWAY_URL}/conversations.history?channel=${SOURCE_CHANNEL}&oldest=${lastTs}&limit=100`;
-    const historyResp = await fetch(historyUrl, {
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": SLACK_API_KEY,
-      },
-    });
+    const historyUrl = `${SLACK_API}/conversations.history?channel=${SOURCE_CHANNEL}&oldest=${lastTs}&limit=100`;
+    const historyResp = await fetch(historyUrl, { headers: slackHeaders });
     const historyData = await historyResp.json();
 
     if (!historyData.ok) {
@@ -67,7 +56,6 @@ serve(async (req) => {
     console.log(`Found ${messages.length} new messages`);
 
     if (messages.length === 0) {
-      // Update timestamp even if no messages
       await supabase
         .from("scanner_state")
         .update({ last_scanned_ts: String(now), updated_at: new Date().toISOString() })
@@ -78,24 +66,18 @@ serve(async (req) => {
       });
     }
 
-    // For threaded messages, fetch thread replies for context
+    // Enrich messages with thread replies
     const enrichedMessages: { text: string; user: string; ts: string; thread_texts: string[] }[] = [];
 
     for (const msg of messages) {
-      // Skip bot messages, join/leave events
       if (msg.subtype && msg.subtype !== "thread_broadcast") continue;
 
       const threadTexts: string[] = [];
 
       if (msg.thread_ts && msg.reply_count > 0) {
         try {
-          const repliesUrl = `${GATEWAY_URL}/conversations.replies?channel=${SOURCE_CHANNEL}&ts=${msg.thread_ts}&limit=50`;
-          const repliesResp = await fetch(repliesUrl, {
-            headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
-              "X-Connection-Api-Key": SLACK_API_KEY,
-            },
-          });
+          const repliesUrl = `${SLACK_API}/conversations.replies?channel=${SOURCE_CHANNEL}&ts=${msg.thread_ts}&limit=50`;
+          const repliesResp = await fetch(repliesUrl, { headers: slackHeaders });
           const repliesData = await repliesResp.json();
           if (repliesData.ok && repliesData.messages) {
             for (const reply of repliesData.messages) {
@@ -128,7 +110,7 @@ serve(async (req) => {
       });
     }
 
-    // Build AI prompt with all messages
+    // Build AI prompt
     const messagesForAI = enrichedMessages.map((m, i) => {
       let content = `Message ${i + 1} (from <@${m.user}>, ts=${m.ts}):\n${m.text}`;
       if (m.thread_texts.length > 0) {
@@ -269,13 +251,9 @@ For each request found, extract:
         blocks.push({ type: "divider" });
       }
 
-      const postResp = await fetch(`${GATEWAY_URL}/chat.postMessage`, {
+      const postResp = await fetch(`${SLACK_API}/chat.postMessage`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "X-Connection-Api-Key": SLACK_API_KEY,
-          "Content-Type": "application/json",
-        },
+        headers: slackHeaders,
         body: JSON.stringify({
           channel: TARGET_CHANNEL,
           text: `🎨 ${requests.length} new creative request(s) detected`,
@@ -294,7 +272,7 @@ For each request found, extract:
       console.log("Posted creative request summary to target channel");
     }
 
-    // Update last scanned timestamp to the latest message ts
+    // Update last scanned timestamp
     const latestTs = messages.reduce((max: string, m: any) => (m.ts > max ? m.ts : max), lastTs);
     await supabase
       .from("scanner_state")
