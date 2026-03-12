@@ -40,7 +40,7 @@ serve(async (req) => {
 
     const slackHeaders = {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json",
+      "Content-Type": "application/json; charset=utf-8",
     };
 
     // Fetch recent messages from source channel
@@ -211,8 +211,9 @@ For each request found, extract:
     // Post to target channel if requests found
     if (requests.length > 0) {
       // Split requests into chunks to stay under Slack's 50 block limit
-      // Each request uses 2 blocks (section + divider), plus 3 header blocks
-      const MAX_REQUESTS_PER_MESSAGE = 20;
+      // 3 fixed blocks (header/context/divider) + 2 blocks per request (section/divider)
+      // Keep under 50 with headroom: floor((48 - 3) / 2) = 22
+      const MAX_REQUESTS_PER_MESSAGE = 22;
       const chunks: any[][] = [];
       for (let i = 0; i < requests.length; i += MAX_REQUESTS_PER_MESSAGE) {
         chunks.push(requests.slice(i, i + MAX_REQUESTS_PER_MESSAGE));
