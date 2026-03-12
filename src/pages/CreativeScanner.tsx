@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Radar, Play, Loader2, Clock, MessageSquare, AlertCircle, ExternalLink, User, Monitor, Maximize, Flag } from "lucide-react";
+import { ArrowLeft, Radar, Play, Loader2, Clock, MessageSquare, AlertCircle } from "lucide-react";
+import KanbanBoard from "@/components/creative-scanner/KanbanBoard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
