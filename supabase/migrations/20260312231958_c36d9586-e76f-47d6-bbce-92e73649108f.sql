@@ -1,0 +1,1 @@
+UPDATE scanner_state SET last_scanned_ts = '0', updated_at = now() WHERE id = 'slack-creative-scanner';

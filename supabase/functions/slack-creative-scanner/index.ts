@@ -208,20 +208,33 @@ For each request found, extract:
 
     console.log(`AI identified ${requests.length} creative requests`);
 
-    // Persist requests to database
+    // Persist requests to database (deduplicate by message_ts)
     if (requests.length > 0) {
-      const rows = requests.map((r: any) => ({
-        description: r.description,
-        requester: r.requester,
-        platform: r.platform,
-        format: r.format,
-        priority: r.priority,
-        message_ts: r.message_ts,
-        source_channel: SOURCE_CHANNEL,
-      }));
-      const { error: insertError } = await supabase.from("creative_requests").insert(rows);
-      if (insertError) {
-        console.error("Failed to insert creative_requests:", insertError);
+      // Check which message_ts values already exist
+      const tsList = requests.map((r: any) => r.message_ts).filter(Boolean);
+      const { data: existing } = await supabase
+        .from("creative_requests")
+        .select("message_ts")
+        .in("message_ts", tsList);
+      const existingTs = new Set((existing || []).map((e: any) => e.message_ts));
+
+      const newRequests = requests.filter((r: any) => !existingTs.has(r.message_ts));
+      console.log(`${requests.length} requests from AI, ${newRequests.length} are new (${existingTs.size} already exist)`);
+
+      if (newRequests.length > 0) {
+        const rows = newRequests.map((r: any) => ({
+          description: r.description,
+          requester: r.requester,
+          platform: r.platform,
+          format: r.format,
+          priority: r.priority,
+          message_ts: r.message_ts,
+          source_channel: SOURCE_CHANNEL,
+        }));
+        const { error: insertError } = await supabase.from("creative_requests").insert(rows);
+        if (insertError) {
+          console.error("Failed to insert creative_requests:", insertError);
+        }
       }
     }
 
