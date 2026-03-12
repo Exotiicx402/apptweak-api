@@ -288,8 +288,6 @@ For each request found, extract:
             channel: TARGET_CHANNEL,
             text: `🎨 ${requests.length} new creative request(s) detected${partLabel}`,
             blocks,
-            username: "Creative Request Scanner",
-            icon_emoji: ":art:",
           }),
         });
 
