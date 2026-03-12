@@ -1,0 +1,304 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const GATEWAY_URL = "https://connector-gateway.lovable.dev/slack/api";
+const SOURCE_CHANNEL = "C09HBDKSUGH";
+const TARGET_CHANNEL = "C0ALEBYFJNQ";
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    const SLACK_API_KEY = Deno.env.get("SLACK_API_KEY");
+    if (!SLACK_API_KEY) throw new Error("SLACK_API_KEY is not configured");
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Get last scanned timestamp
+    const { data: stateRow } = await supabase
+      .from("scanner_state")
+      .select("last_scanned_ts")
+      .eq("id", "slack-creative-scanner")
+      .single();
+
+    const lastTs = stateRow?.last_scanned_ts || "0";
+    const now = Math.floor(Date.now() / 1000);
+
+    console.log(`Scanning messages since ts=${lastTs}`);
+
+    // Fetch recent messages from source channel
+    const historyUrl = `${GATEWAY_URL}/conversations.history?channel=${SOURCE_CHANNEL}&oldest=${lastTs}&limit=100`;
+    const historyResp = await fetch(historyUrl, {
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "X-Connection-Api-Key": SLACK_API_KEY,
+      },
+    });
+    const historyData = await historyResp.json();
+
+    if (!historyData.ok) {
+      throw new Error(`Slack conversations.history failed: ${JSON.stringify(historyData)}`);
+    }
+
+    const messages = historyData.messages || [];
+    console.log(`Found ${messages.length} new messages`);
+
+    if (messages.length === 0) {
+      // Update timestamp even if no messages
+      await supabase
+        .from("scanner_state")
+        .update({ last_scanned_ts: String(now), updated_at: new Date().toISOString() })
+        .eq("id", "slack-creative-scanner");
+
+      return new Response(JSON.stringify({ success: true, requests_found: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // For threaded messages, fetch thread replies for context
+    const enrichedMessages: { text: string; user: string; ts: string; thread_texts: string[] }[] = [];
+
+    for (const msg of messages) {
+      // Skip bot messages, join/leave events
+      if (msg.subtype && msg.subtype !== "thread_broadcast") continue;
+
+      const threadTexts: string[] = [];
+
+      if (msg.thread_ts && msg.reply_count > 0) {
+        try {
+          const repliesUrl = `${GATEWAY_URL}/conversations.replies?channel=${SOURCE_CHANNEL}&ts=${msg.thread_ts}&limit=50`;
+          const repliesResp = await fetch(repliesUrl, {
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "X-Connection-Api-Key": SLACK_API_KEY,
+            },
+          });
+          const repliesData = await repliesResp.json();
+          if (repliesData.ok && repliesData.messages) {
+            for (const reply of repliesData.messages) {
+              if (reply.ts !== msg.ts) {
+                threadTexts.push(reply.text || "");
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error fetching thread replies:", e);
+        }
+      }
+
+      enrichedMessages.push({
+        text: msg.text || "",
+        user: msg.user || "unknown",
+        ts: msg.ts,
+        thread_texts: threadTexts,
+      });
+    }
+
+    if (enrichedMessages.length === 0) {
+      await supabase
+        .from("scanner_state")
+        .update({ last_scanned_ts: String(now), updated_at: new Date().toISOString() })
+        .eq("id", "slack-creative-scanner");
+
+      return new Response(JSON.stringify({ success: true, requests_found: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Build AI prompt with all messages
+    const messagesForAI = enrichedMessages.map((m, i) => {
+      let content = `Message ${i + 1} (from <@${m.user}>, ts=${m.ts}):\n${m.text}`;
+      if (m.thread_texts.length > 0) {
+        content += `\n\nThread replies:\n${m.thread_texts.join("\n---\n")}`;
+      }
+      return content;
+    }).join("\n\n========\n\n");
+
+    const systemPrompt = `You are a creative request detector for an ad operations team. You analyze Slack messages from a channel where people request new ad creatives or modifications to existing ones.
+
+Your job is to identify messages that are creative requests — even informal ones. Look for:
+- Requests for new ad creatives (images, videos, banners)
+- Requests to modify existing creatives (resize, change copy, update branding)
+- Requests mentioning specific platforms (Meta, TikTok, Snapchat, Unity, Google, etc.)
+- Requests mentioning sizes/formats (1080x1080, 9:16, landscape, etc.)
+- Requests referencing concepts, themes, or briefs
+- Even casual messages like "can we get a version of X with Y" or "need creatives for Z campaign"
+
+Messages that are NOT requests: status updates, general chat, reactions, questions about metrics/performance, approvals of existing work.
+
+For each request found, extract:
+- description: What's being requested (1-2 sentences)
+- requester: The Slack user ID (format: <@USERID>)
+- platform: Target platform if mentioned (or "Not specified")
+- format: Size/format if mentioned (or "Not specified")  
+- priority: "High" if urgent language used, otherwise "Normal"
+- message_ts: The timestamp of the message`;
+
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Analyze these Slack messages and identify any creative requests:\n\n${messagesForAI}` },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "report_creative_requests",
+              description: "Report all creative requests found in the messages",
+              parameters: {
+                type: "object",
+                properties: {
+                  requests: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        description: { type: "string" },
+                        requester: { type: "string" },
+                        platform: { type: "string" },
+                        format: { type: "string" },
+                        priority: { type: "string", enum: ["High", "Normal"] },
+                        message_ts: { type: "string" },
+                      },
+                      required: ["description", "requester", "platform", "format", "priority", "message_ts"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["requests"],
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "report_creative_requests" } },
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error("AI gateway error:", aiResponse.status, errText);
+      throw new Error(`AI gateway error [${aiResponse.status}]: ${errText}`);
+    }
+
+    const aiData = await aiResponse.json();
+    let requests: any[] = [];
+
+    try {
+      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        requests = parsed.requests || [];
+      }
+    } catch (e) {
+      console.error("Failed to parse AI response:", e);
+    }
+
+    console.log(`AI identified ${requests.length} creative requests`);
+
+    // Post to target channel if requests found
+    if (requests.length > 0) {
+      const blocks: any[] = [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `🎨 ${requests.length} New Creative Request${requests.length > 1 ? "s" : ""} Detected`,
+            emoji: true,
+          },
+        },
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: `Scanned from <#${SOURCE_CHANNEL}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
+            },
+          ],
+        },
+        { type: "divider" },
+      ];
+
+      for (const req of requests) {
+        const permalink = `https://slack.com/archives/${SOURCE_CHANNEL}/p${req.message_ts.replace(".", "")}`;
+        const priorityEmoji = req.priority === "High" ? "🔴" : "🟡";
+
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: [
+              `${priorityEmoji} *${req.description}*`,
+              `👤 Requester: ${req.requester}`,
+              `📱 Platform: ${req.platform}`,
+              `📐 Format: ${req.format}`,
+              `<${permalink}|View original message>`,
+            ].join("\n"),
+          },
+        });
+        blocks.push({ type: "divider" });
+      }
+
+      const postResp = await fetch(`${GATEWAY_URL}/chat.postMessage`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "X-Connection-Api-Key": SLACK_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channel: TARGET_CHANNEL,
+          text: `🎨 ${requests.length} new creative request(s) detected`,
+          blocks,
+          username: "Creative Request Scanner",
+          icon_emoji: ":art:",
+        }),
+      });
+
+      const postData = await postResp.json();
+      if (!postData.ok) {
+        console.error("Failed to post to Slack:", postData);
+        throw new Error(`Slack chat.postMessage failed: ${JSON.stringify(postData)}`);
+      }
+
+      console.log("Posted creative request summary to target channel");
+    }
+
+    // Update last scanned timestamp to the latest message ts
+    const latestTs = messages.reduce((max: string, m: any) => (m.ts > max ? m.ts : max), lastTs);
+    await supabase
+      .from("scanner_state")
+      .update({ last_scanned_ts: latestTs, updated_at: new Date().toISOString() })
+      .eq("id", "slack-creative-scanner");
+
+    return new Response(
+      JSON.stringify({ success: true, messages_scanned: enrichedMessages.length, requests_found: requests.length }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Error in slack-creative-scanner:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

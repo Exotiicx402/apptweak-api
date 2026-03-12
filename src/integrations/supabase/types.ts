@@ -260,6 +260,24 @@ export type Database = {
         }
         Relationships: []
       }
+      scanner_state: {
+        Row: {
+          id: string
+          last_scanned_ts: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          last_scanned_ts?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          last_scanned_ts?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sync_logs: {
         Row: {
           created_at: string
