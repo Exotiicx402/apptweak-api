@@ -15,6 +15,7 @@ import Reporting from "./pages/Reporting";
 import CompetitorWatchlist from "./pages/CompetitorWatchlist";
 import FTDReporting from "./pages/FTDReporting";
 import HoursCreatives from "./pages/HoursCreatives";
+import CreativeScanner from "./pages/CreativeScanner";
 const queryClient = new QueryClient();
 
 const App = () => (
