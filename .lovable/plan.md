@@ -1,37 +1,52 @@
 
 
-# Fix: Only 1/126 Ads Has High-Res Image — Root Cause and Solution
+# Create `slack-creative-events` Edge Function
 
-## What's Actually Happening
+## Problem
+Slack's Event Subscriptions is trying to verify the endpoint URL with a `challenge` request, but the `slack-creative-events` edge function doesn't exist yet, so it fails.
 
-The logs prove it:
+## Plan
+
+### 1. Create the edge function `supabase/functions/slack-creative-events/index.ts`
+
+This function handles:
+
+**Challenge verification** (required first): When Slack sends `{ type: "url_verification", challenge: "..." }`, respond immediately with `{ challenge: "..." }`. This is what's failing right now.
+
+**Message events**: When `type === "event_callback"` and `event.type === "message"`:
+- Ignore bot messages, message edits, and deletions
+- Only process messages from the source channel (`C09HBDKSUGH`)
+- For **thread replies** (`event.thread_ts` exists): check if `thread_ts` matches an existing `creative_requests.message_ts` — if so, classify as comment on existing request and update `thread_context`
+- For **top-level messages**: send to AI (same Gemini Flash model) to classify as `new_request` or `not_a_request`
+- For new requests: insert into `creative_requests` table, post summary to `#ad-review-pipeline` (`C0ALEBYFJNQ`)
+- Capture any `event.files` attachments and store image URLs in a new `inspiration_url` column
+- Deduplicate by `message_ts`
+- Respond with `200 OK` quickly (Slack requires response within 3 seconds — so we'll process async after sending the response isn't possible in edge functions, but the AI call should be fast enough with Flash)
+
+### 2. Add to `supabase/config.toml`
+
+```toml
+[functions.slack-creative-events]
+verify_jwt = false
 ```
-Found 1 image hashes out of 126 ads
-1/126 ads now have high-res image URLs
-```
 
-The current approach queries `/?ids={ad_ids}&fields=creative{image_hash}`. But **125 out of 126 ads are dark posts or link ads** — their images are stored inside `object_story_spec` (as `link_data.picture` or `photo_data.url`), NOT as a top-level `image_hash`. Only 1 ad has a direct `image_hash`, which is why only that one works.
+### 3. Database migration
 
-## Solution: Fetch Creative Image URLs via `object_story_spec` in Small Batches
+Add two columns to `creative_requests`:
+- `inspiration_url TEXT` — reference image URLs from attachments
+- `thread_context TEXT` — accumulated thread reply summaries
 
-Instead of relying solely on `image_hash`, we need to query each ad's creative for the actual image source from `object_story_spec`. The key is doing this in **very small batches** (10-15 at a time) to avoid the "reduce data" error that killed previous attempts.
+### 4. AI classification prompt
 
-### Changes to `meta-hours-creatives/index.ts`
+Updated prompt with three classifications:
+- `new_request` — extract description, requester, platform, format, priority, message_ts, inspiration_urls
+- `comment_on_existing` — link via `related_message_ts`
+- `not_a_request` — ignore
 
-Rewrite `resolveHighResImages` to:
+### Files to create/edit
+- **Create**: `supabase/functions/slack-creative-events/index.ts`
+- **Edit**: `supabase/config.toml` (add function entry)
+- **Migration**: Add `inspiration_url` and `thread_context` columns to `creative_requests`
 
-1. **Batch-query ad IDs** (batches of 10) with fields: `creative{id,image_hash,image_url,object_story_spec{link_data{picture,image_hash},photo_data{url,image_hash}}}`
-2. **Extract image URL** using this priority:
-   - `object_story_spec.link_data.picture` (most common for dark posts — returns full-res)
-   - `object_story_spec.photo_data.url` (full-res photo post URL)
-   - If only `image_hash` found (from any level), batch-resolve via `/adimages` API as before
-   - `creative.image_url` as last resort (may still be low-res but better than nothing)
-3. **For any remaining hashes**, do the existing `/adimages?hashes=[...]` batch resolution
-
-The small batch size (10) is critical — previous attempts with 500 and even 100 caused Meta API errors. With 126 ads, that's only 13 API calls.
-
-### Files to edit
-- **`supabase/functions/meta-hours-creatives/index.ts`** — Rewrite `resolveHighResImages` to extract URLs from `object_story_spec` in small batches, falling back to `image_hash` → `/adimages` resolution
-
-No frontend changes needed — the hook already maps `ad.image_url` to `assetUrl`.
+Once deployed, hit **Retry** on the Slack Event Subscriptions page and the challenge should pass.
 
