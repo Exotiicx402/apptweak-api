@@ -1,5 +1,8 @@
 project_id = "agususzieosizftucxxq"
 
+[functions.slack-creative-scanner]
+verify_jwt = false
+
 [functions.facebook-page-search]
 verify_jwt = false
 
