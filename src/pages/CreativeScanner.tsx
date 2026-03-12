@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Radar, Play, Loader2, Clock, MessageSquare, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Radar, Play, Loader2, Clock, MessageSquare, AlertCircle, ExternalLink, User, Monitor, Maximize, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,21 @@ interface ScanResult {
   requests_found?: number;
   error?: string;
 }
+
+interface CreativeRequest {
+  id: string;
+  description: string;
+  requester: string | null;
+  platform: string | null;
+  format: string | null;
+  priority: string | null;
+  message_ts: string | null;
+  source_channel: string | null;
+  status: string | null;
+  created_at: string;
+}
+
+const SOURCE_CHANNEL = "C09HBDKSUGH";
 
 const CreativeScanner = () => {
   const [isScanning, setIsScanning] = useState(false);
@@ -47,6 +62,20 @@ const CreativeScanner = () => {
     refetchInterval: 30000,
   });
 
+  const { data: creativeRequests, refetch: refetchRequests } = useQuery({
+    queryKey: ["creative-requests"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("creative_requests")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data || []) as CreativeRequest[];
+    },
+    refetchInterval: 30000,
+  });
+
   const handleManualScan = async () => {
     setIsScanning(true);
     try {
@@ -54,6 +83,7 @@ const CreativeScanner = () => {
       if (error) throw error;
       setLastResult(data);
       refetchState();
+      refetchRequests();
       if (data?.requests_found > 0) {
         toast.success(`Found ${data.requests_found} creative request(s)!`);
       } else {
@@ -80,6 +110,11 @@ const CreativeScanner = () => {
   const updatedAtDisplay = scannerState?.updated_at
     ? new Date(scannerState.updated_at).toLocaleString("en-US", { timeZone: "America/New_York" }) + " EST"
     : "—";
+
+  const getPermalink = (messageTs: string | null) => {
+    if (!messageTs) return null;
+    return `https://slack.com/archives/${SOURCE_CHANNEL}/p${messageTs.replace(".", "")}`;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -132,20 +167,14 @@ const CreativeScanner = () => {
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
                 <Radar className="h-4 w-4" />
-                Last Manual Scan
+                Total Requests
               </div>
-              {lastResult ? (
-                <>
-                  <p className="text-lg font-semibold text-foreground">
-                    {lastResult.requests_found ?? 0} request{(lastResult.requests_found ?? 0) !== 1 ? "s" : ""}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {lastResult.messages_scanned ?? 0} messages scanned
-                  </p>
-                </>
-              ) : (
-                <p className="text-lg font-semibold text-muted-foreground">—</p>
-              )}
+              <p className="text-lg font-semibold text-foreground">
+                {creativeRequests?.length ?? 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {creativeRequests?.filter(r => r.priority === "High").length ?? 0} high priority
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -179,6 +208,72 @@ const CreativeScanner = () => {
               <div className="mt-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                 {lastResult.error}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Creative Requests List */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg">Detected Requests</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!creativeRequests || creativeRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No creative requests detected yet. Run a scan to get started.</p>
+            ) : (
+              <div className="space-y-3">
+                {creativeRequests.map((req) => (
+                  <div key={req.id} className="border border-border rounded-lg p-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Badge
+                            variant={req.priority === "High" ? "destructive" : "secondary"}
+                            className="text-xs shrink-0"
+                          >
+                            {req.priority === "High" ? "🔴 High" : "Normal"}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(req.created_at).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} EST
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-foreground mb-2">{req.description}</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          {req.requester && (
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {req.requester}
+                            </span>
+                          )}
+                          {req.platform && req.platform !== "Not specified" && (
+                            <span className="flex items-center gap-1">
+                              <Monitor className="h-3 w-3" />
+                              {req.platform}
+                            </span>
+                          )}
+                          {req.format && req.format !== "Not specified" && (
+                            <span className="flex items-center gap-1">
+                              <Maximize className="h-3 w-3" />
+                              {req.format}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {req.message_ts && (
+                        <a
+                          href={getPermalink(req.message_ts)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                          title="View in Slack"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
