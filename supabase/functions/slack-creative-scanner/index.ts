@@ -38,6 +38,17 @@ serve(async (req) => {
 
     console.log(`Scanning messages since ts=${lastTs}`);
 
+    // Join source channel (no-op if already in it)
+    await fetch(`${GATEWAY_URL}/conversations.join`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "X-Connection-Api-Key": SLACK_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ channel: SOURCE_CHANNEL }),
+    });
+
     // Fetch recent messages from source channel
     const historyUrl = `${GATEWAY_URL}/conversations.history?channel=${SOURCE_CHANNEL}&oldest=${lastTs}&limit=100`;
     const historyResp = await fetch(historyUrl, {
