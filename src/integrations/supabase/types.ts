@@ -191,6 +191,45 @@ export type Database = {
         }
         Relationships: []
       }
+      creative_requests: {
+        Row: {
+          created_at: string
+          description: string
+          format: string | null
+          id: string
+          message_ts: string | null
+          platform: string | null
+          priority: string | null
+          requester: string | null
+          source_channel: string | null
+          status: string | null
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          format?: string | null
+          id?: string
+          message_ts?: string | null
+          platform?: string | null
+          priority?: string | null
+          requester?: string | null
+          source_channel?: string | null
+          status?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          format?: string | null
+          id?: string
+          message_ts?: string | null
+          platform?: string | null
+          priority?: string | null
+          requester?: string | null
+          source_channel?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       ftd_performance: {
         Row: {
           ad_id: string | null

@@ -208,6 +208,23 @@ For each request found, extract:
 
     console.log(`AI identified ${requests.length} creative requests`);
 
+    // Persist requests to database
+    if (requests.length > 0) {
+      const rows = requests.map((r: any) => ({
+        description: r.description,
+        requester: r.requester,
+        platform: r.platform,
+        format: r.format,
+        priority: r.priority,
+        message_ts: r.message_ts,
+        source_channel: SOURCE_CHANNEL,
+      }));
+      const { error: insertError } = await supabase.from("creative_requests").insert(rows);
+      if (insertError) {
+        console.error("Failed to insert creative_requests:", insertError);
+      }
+    }
+
     // Post to target channel if requests found
     if (requests.length > 0) {
       // Split requests into chunks to stay under Slack's 50 block limit
