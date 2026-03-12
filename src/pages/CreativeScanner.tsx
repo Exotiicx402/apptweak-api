@@ -113,7 +113,7 @@ const CreativeScanner = () => {
                 Schedule
               </div>
               <p className="text-lg font-semibold text-foreground">Every 15 minutes</p>
-              <Badge variant="outline" className="mt-2 text-emerald-600 border-emerald-200 bg-emerald-50">Active</Badge>
+              <Badge variant="outline" className="mt-2 text-primary border-primary/20 bg-primary/5">Active</Badge>
             </CardContent>
           </Card>
 
