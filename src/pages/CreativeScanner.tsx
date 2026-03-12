@@ -100,10 +100,6 @@ const CreativeScanner = () => {
     ? new Date(scannerState.updated_at).toLocaleString("en-US", { timeZone: "America/New_York" }) + " EST"
     : "—";
 
-  const getPermalink = (messageTs: string | null) => {
-    if (!messageTs) return null;
-    return `https://slack.com/archives/${SOURCE_CHANNEL}/p${messageTs.replace(".", "")}`;
-  };
 
   return (
     <div className="min-h-screen bg-background">
