@@ -210,66 +210,79 @@ For each request found, extract:
 
     // Post to target channel if requests found
     if (requests.length > 0) {
-      const blocks: any[] = [
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: `🎨 ${requests.length} New Creative Request${requests.length > 1 ? "s" : ""} Detected`,
-            emoji: true,
-          },
-        },
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `Scanned from <#${SOURCE_CHANNEL}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
+      // Split requests into chunks to stay under Slack's 50 block limit
+      // Each request uses 2 blocks (section + divider), plus 3 header blocks
+      const MAX_REQUESTS_PER_MESSAGE = 20;
+      const chunks: any[][] = [];
+      for (let i = 0; i < requests.length; i += MAX_REQUESTS_PER_MESSAGE) {
+        chunks.push(requests.slice(i, i + MAX_REQUESTS_PER_MESSAGE));
+      }
+
+      for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+        const chunk = chunks[chunkIdx];
+        const partLabel = chunks.length > 1 ? ` (Part ${chunkIdx + 1}/${chunks.length})` : "";
+
+        const blocks: any[] = [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: `🎨 ${requests.length} New Creative Request${requests.length > 1 ? "s" : ""} Detected${partLabel}`,
+              emoji: true,
             },
-          ],
-        },
-        { type: "divider" },
-      ];
-
-      for (const req of requests) {
-        const permalink = `https://slack.com/archives/${SOURCE_CHANNEL}/p${req.message_ts.replace(".", "")}`;
-        const priorityEmoji = req.priority === "High" ? "🔴" : "🟡";
-
-        blocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: [
-              `${priorityEmoji} *${req.description}*`,
-              `👤 Requester: ${req.requester}`,
-              `📱 Platform: ${req.platform}`,
-              `📐 Format: ${req.format}`,
-              `<${permalink}|View original message>`,
-            ].join("\n"),
           },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: `Scanned from <#${SOURCE_CHANNEL}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
+              },
+            ],
+          },
+          { type: "divider" },
+        ];
+
+        for (const req of chunk) {
+          const permalink = `https://slack.com/archives/${SOURCE_CHANNEL}/p${req.message_ts.replace(".", "")}`;
+          const priorityEmoji = req.priority === "High" ? "🔴" : "🟡";
+
+          blocks.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: [
+                `${priorityEmoji} *${req.description}*`,
+                `👤 Requester: ${req.requester}`,
+                `📱 Platform: ${req.platform}`,
+                `📐 Format: ${req.format}`,
+                `<${permalink}|View original message>`,
+              ].join("\n"),
+            },
+          });
+          blocks.push({ type: "divider" });
+        }
+
+        const postResp = await fetch(`${SLACK_API}/chat.postMessage`, {
+          method: "POST",
+          headers: slackHeaders,
+          body: JSON.stringify({
+            channel: TARGET_CHANNEL,
+            text: `🎨 ${requests.length} new creative request(s) detected${partLabel}`,
+            blocks,
+            username: "Creative Request Scanner",
+            icon_emoji: ":art:",
+          }),
         });
-        blocks.push({ type: "divider" });
+
+        const postData = await postResp.json();
+        if (!postData.ok) {
+          console.error("Failed to post to Slack:", postData);
+          throw new Error(`Slack chat.postMessage failed: ${JSON.stringify(postData)}`);
+        }
       }
 
-      const postResp = await fetch(`${SLACK_API}/chat.postMessage`, {
-        method: "POST",
-        headers: slackHeaders,
-        body: JSON.stringify({
-          channel: TARGET_CHANNEL,
-          text: `🎨 ${requests.length} new creative request(s) detected`,
-          blocks,
-          username: "Creative Request Scanner",
-          icon_emoji: ":art:",
-        }),
-      });
-
-      const postData = await postResp.json();
-      if (!postData.ok) {
-        console.error("Failed to post to Slack:", postData);
-        throw new Error(`Slack chat.postMessage failed: ${JSON.stringify(postData)}`);
-      }
-
-      console.log("Posted creative request summary to target channel");
+      console.log(`Posted creative request summary in ${chunks.length} message(s)`);
     }
 
     // Update last scanned timestamp
