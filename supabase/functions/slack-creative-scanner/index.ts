@@ -40,7 +40,7 @@ serve(async (req) => {
 
     const slackHeaders = {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json",
+      "Content-Type": "application/json; charset=utf-8",
     };
 
     // Fetch recent messages from source channel
