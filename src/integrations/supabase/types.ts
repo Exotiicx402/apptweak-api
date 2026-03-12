@@ -197,36 +197,42 @@ export type Database = {
           description: string
           format: string | null
           id: string
+          inspiration_url: string | null
           message_ts: string | null
           platform: string | null
           priority: string | null
           requester: string | null
           source_channel: string | null
           status: string | null
+          thread_context: string | null
         }
         Insert: {
           created_at?: string
           description: string
           format?: string | null
           id?: string
+          inspiration_url?: string | null
           message_ts?: string | null
           platform?: string | null
           priority?: string | null
           requester?: string | null
           source_channel?: string | null
           status?: string | null
+          thread_context?: string | null
         }
         Update: {
           created_at?: string
           description?: string
           format?: string | null
           id?: string
+          inspiration_url?: string | null
           message_ts?: string | null
           platform?: string | null
           priority?: string | null
           requester?: string | null
           source_channel?: string | null
           status?: string | null
+          thread_context?: string | null
         }
         Relationships: []
       }
