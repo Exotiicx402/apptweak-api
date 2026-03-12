@@ -16,18 +16,6 @@ interface ScanResult {
   error?: string;
 }
 
-interface CreativeRequest {
-  id: string;
-  description: string;
-  requester: string | null;
-  platform: string | null;
-  format: string | null;
-  priority: string | null;
-  message_ts: string | null;
-  source_channel: string | null;
-  status: string | null;
-  created_at: string;
-}
 
 const SOURCE_CHANNEL = "C09HBDKSUGH";
 
