@@ -384,6 +384,7 @@ serve(async (req) => {
     // Step 5: Store everything in DB
     const { error: insertError } = await supabase.from("creative_requests").insert({
       description: classification.description || messageText,
+      raw_message: messageText,
       requester: `<@${userId}>`,
       platform: classification.platform || "Not specified",
       format: classification.format || "Not specified",

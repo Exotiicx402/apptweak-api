@@ -1,46 +1,37 @@
 
 
-## Plan: Make Kanban Cards Look Like Slack Messages
+# Fix: Only 1/126 Ads Has High-Res Image — Root Cause and Solution
 
-### Problem
-The cards currently show an AI-summarized `description` instead of the original Slack message. Attachments (images stored in `inspiration_url`) aren't displayed. Deadline and figma_url are also missing from the cards.
+## What's Actually Happening
 
-### Changes
-
-**1. Database: Add `raw_message` column**
-- Add a `raw_message` text column to `creative_requests` to preserve the exact Slack message text (the current `description` field holds the AI summary).
-
-**2. Edge Function: Store raw message**
-- In `slack-creative-events/index.ts`, save `messageText` into the new `raw_message` field on insert.
-- Thread replies already accumulate in `thread_context`.
-
-**3. Kanban Card Redesign (both KanbanBoard + ReadOnlyKanbanBoard)**
-- Restructure each card to resemble a Slack message:
-  - **Header row**: Requester name (bold) + timestamp + priority badge
-  - **Body**: Show `raw_message` (the actual Slack text), falling back to `description`
-  - **Attachments**: Parse `inspiration_url` (comma-separated), render image URLs as inline thumbnails with click-to-expand
-  - **Metadata pills**: Platform, Format, Deadline (with calendar icon), Figma link
-  - **Thread context**: If `thread_context` exists, show a collapsed "N thread replies" indicator
-- Update the `CreativeRequest` interface to include: `inspiration_url`, `deadline`, `figma_url`, `thread_context`, `raw_message`
-
-**4. Query update**
-- The `select("*")` in `CreativeScanner.tsx` already fetches all columns, so no query changes needed.
-
-### Visual Layout (per card)
-```text
-┌──────────────────────────────────────┐
-│ 👤 U0806LJJNCU   Mar 13, 9:21 AM  🔴│
-│                                      │
-│ "Can we get a march madness email    │
-│  header 1000x347 similar to what     │
-│  kalshi does? Need by noon today"    │
-│                                      │
-│ ┌────────┐                           │
-│ │  img   │  (thumbnail from storage) │
-│ └────────┘                           │
-│                                      │
-│ 📱 Email  📐 1000x347  📅 Noon today│
-│ 💬 2 thread replies                  │
-└──────────────────────────────────────┘
+The logs prove it:
 ```
+Found 1 image hashes out of 126 ads
+1/126 ads now have high-res image URLs
+```
+
+The current approach queries `/?ids={ad_ids}&fields=creative{image_hash}`. But **125 out of 126 ads are dark posts or link ads** — their images are stored inside `object_story_spec` (as `link_data.picture` or `photo_data.url`), NOT as a top-level `image_hash`. Only 1 ad has a direct `image_hash`, which is why only that one works.
+
+## Solution: Fetch Creative Image URLs via `object_story_spec` in Small Batches
+
+Instead of relying solely on `image_hash`, we need to query each ad's creative for the actual image source from `object_story_spec`. The key is doing this in **very small batches** (10-15 at a time) to avoid the "reduce data" error that killed previous attempts.
+
+### Changes to `meta-hours-creatives/index.ts`
+
+Rewrite `resolveHighResImages` to:
+
+1. **Batch-query ad IDs** (batches of 10) with fields: `creative{id,image_hash,image_url,object_story_spec{link_data{picture,image_hash},photo_data{url,image_hash}}}`
+2. **Extract image URL** using this priority:
+   - `object_story_spec.link_data.picture` (most common for dark posts — returns full-res)
+   - `object_story_spec.photo_data.url` (full-res photo post URL)
+   - If only `image_hash` found (from any level), batch-resolve via `/adimages` API as before
+   - `creative.image_url` as last resort (may still be low-res but better than nothing)
+3. **For any remaining hashes**, do the existing `/adimages?hashes=[...]` batch resolution
+
+The small batch size (10) is critical — previous attempts with 500 and even 100 caused Meta API errors. With 126 ads, that's only 13 API calls.
+
+### Files to edit
+- **`supabase/functions/meta-hours-creatives/index.ts`** — Rewrite `resolveHighResImages` to extract URLs from `object_story_spec` in small batches, falling back to `image_hash` → `/adimages` resolution
+
+No frontend changes needed — the hook already maps `ad.image_url` to `assetUrl`.
 
