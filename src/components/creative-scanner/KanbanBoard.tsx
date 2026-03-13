@@ -3,7 +3,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ExternalLink, User, Monitor, Maximize, GripVertical, Trash2 } from "lucide-react";
+import { ExternalLink, User, Monitor, Maximize, GripVertical, Trash2, Send, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -55,6 +55,7 @@ interface KanbanBoardProps {
 
 export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardProps) {
   const [localRequests, setLocalRequests] = useState<CreativeRequest[]>(requests);
+  const [pushingIds, setPushingIds] = useState<Set<string>>(new Set());
 
   // Keep local state in sync when props change (but not during drag)
   const requestsKey = requests.map((r) => `${r.id}:${r.status}`).join(",");
@@ -116,6 +117,26 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
     }
   };
 
+  const handlePushToSlackList = async (id: string) => {
+    setPushingIds((prev) => new Set(prev).add(id));
+    try {
+      const { data, error } = await supabase.functions.invoke("push-to-slack-list", {
+        body: { request_id: id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success("Pushed to PM: Creative Tracker list!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to push to Slack List");
+    } finally {
+      setPushingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -168,6 +189,18 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
                                   {req.priority === "High" ? "🔴 High" : "Normal"}
                                 </Badge>
                                 <div className="ml-auto flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handlePushToSlackList(req.id)}
+                                    disabled={pushingIds.has(req.id)}
+                                    className="shrink-0 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                                    title="Push to PM: Creative Tracker"
+                                  >
+                                    {pushingIds.has(req.id) ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Send className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
                                   {req.message_ts && (
                                     <a
                                       href={getPermalink(req.message_ts)!}

@@ -109,3 +109,6 @@ verify_jwt = false
 [functions.slack-creative-events]
 verify_jwt = false
 
+[functions.push-to-slack-list]
+verify_jwt = false
+
