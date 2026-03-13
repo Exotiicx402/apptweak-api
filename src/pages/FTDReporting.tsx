@@ -368,7 +368,7 @@ export default function FTDReporting() {
             {/* No data after apply */}
             {!isLoading && data && data.daily.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
-                <p className="mb-2">No FTD data found for this date range.</p>
+                <p className="mb-2">No data found for this date range.</p>
                 <p className="text-sm">
                   Click <strong>Sync from Meta</strong> to pull data for this period.
                 </p>

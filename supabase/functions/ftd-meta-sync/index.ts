@@ -126,13 +126,13 @@ async function fetchMetaFTDInsights(
     console.log(`Sample campaign names: ${[...new Set(allRows.slice(0, 5).map((r: any) => r.campaign_name))].join(" | ")}`);
   }
 
-  // Filter client-side to only FTD campaign rows (case-insensitive, matches "FTD" anywhere in name)
+  // Filter client-side to only HOURS campaign rows (case-insensitive)
   const ftdRows = allRows.filter((row: any) =>
     typeof row.campaign_name === "string" &&
     row.campaign_name.toUpperCase().includes(FTD_CAMPAIGN_FRAGMENT.toUpperCase())
   );
 
-  console.log(`FTD rows after filtering: ${ftdRows.length}`);
+  console.log(`HOURS campaign rows after filtering: ${ftdRows.length}`);
   return ftdRows;
 }
 

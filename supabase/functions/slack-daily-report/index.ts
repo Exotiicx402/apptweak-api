@@ -114,16 +114,16 @@ async function fetchFTDData(
   };
 }
 
-// Short label from campaign name: extract the differentiating part (e.g. "WORLD" or "TIER ONE")
+// Short label from campaign name: extract the distinguishing segments after "HOURS"
 function campaignLabel(name: string): string {
   const parts = name.split('|').map(s => s.trim());
-  // Find the part after INTERNATIONAL and before WEB
-  const intlIdx = parts.findIndex(p => p.toUpperCase() === 'INTERNATIONAL');
-  const webIdx = parts.findIndex(p => p.toUpperCase() === 'WEB');
-  if (intlIdx >= 0 && webIdx > intlIdx) {
-    return parts.slice(intlIdx + 1, webIdx).join(' ');
+  const hoursIdx = parts.findIndex(p => p.toUpperCase() === 'HOURS');
+  if (hoursIdx >= 0 && parts.length > hoursIdx + 1) {
+    // Take segments after HOURS, skip generic trailing parts like "WEB"
+    const meaningful = parts.slice(hoursIdx + 1).filter(p => !['WEB', 'FTD'].includes(p.toUpperCase()));
+    if (meaningful.length > 0) return meaningful.join(' · ');
   }
-  return name.length > 20 ? name.substring(0, 20) + '…' : name;
+  return name.length > 25 ? name.substring(0, 25) + '…' : name;
 }
 
 function buildSlackMessage(
