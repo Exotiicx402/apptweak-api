@@ -300,32 +300,15 @@ Classify the message and extract details if it's a request.`;
     console.log("New creative request processed and posted");
 
     // Add to Slack List "PM: Creative Tracker"
-    const richText = (text: string) => JSON.stringify([{
+    const richText = (text: string) => [{
       type: "rich_text",
-      block_id: crypto.randomUUID().slice(0, 5),
       elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
-    }]);
+    }];
 
-    const priorityRichText = JSON.stringify([{
-      type: "rich_text",
-      block_id: crypto.randomUUID().slice(0, 5),
-      elements: [{
-        type: "rich_text_section",
-        elements: classification.priority === "High"
-          ? [{ type: "emoji", name: "red_circle", unicode: "1f534" }, { type: "text", text: " High" }]
-          : [{ type: "emoji", name: "large_yellow_circle", unicode: "1f7e1" }, { type: "text", text: " Normal" }],
-      }],
-    }]);
-
-    const shortDesc = (classification.description || messageText).slice(0, 60);
     const initialFields = [
-      { column_id: "name", value: richText(shortDesc) },
-      { column_id: "Col09RPSC7FTN", value: richText(classification.description || messageText) },
-      { column_id: "Col07QP76TBQD", value: richText(classification.platform || "Not specified") },
-      { column_id: "Col09RL9S2DNW", value: richText(classification.format || "Not specified") },
-      { column_id: "Col09RDTELGN7", value: priorityRichText },
-      { column_id: "Col07R4P97PPB", value: userId },
-      { column_id: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
+      { column_id: "Col09R4RW383Z", rich_text: richText(classification.description || messageText) },
+      { column_id: "Col09RJ7Z6V70", rich_text: richText(classification.platform || "Not specified") },
+      { column_id: "Col09RZ6VGHB3", rich_text: richText(classification.format || "Not specified") },
     ];
 
     const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {

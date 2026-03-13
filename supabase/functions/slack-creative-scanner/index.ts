@@ -234,34 +234,16 @@ For each request found, extract:
         }
 
         // Add new requests to Slack List "PM: Creative Tracker"
-        const richText = (text: string) => JSON.stringify([{
+        const richText = (text: string) => [{
           type: "rich_text",
-          block_id: crypto.randomUUID().slice(0, 5),
           elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
-        }]);
+        }];
 
         for (const r of newRequests) {
-          const priorityRichText = JSON.stringify([{
-            type: "rich_text",
-            block_id: crypto.randomUUID().slice(0, 5),
-            elements: [{
-              type: "rich_text_section",
-              elements: r.priority === "High"
-                ? [{ type: "emoji", name: "red_circle", unicode: "1f534" }, { type: "text", text: " High" }]
-                : [{ type: "emoji", name: "large_yellow_circle", unicode: "1f7e1" }, { type: "text", text: " Normal" }],
-            }],
-          }]);
-
-          const shortDesc = (r.description || "").slice(0, 60);
-          const userIdClean = (r.requester || "").replace(/<@|>/g, "");
           const initialFields = [
-            { column_id: "name", value: richText(shortDesc) },
-            { column_id: "Col09RPSC7FTN", value: richText(r.description || "") },
-            { column_id: "Col07QP76TBQD", value: richText(r.platform || "Not specified") },
-            { column_id: "Col09RL9S2DNW", value: richText(r.format || "Not specified") },
-            { column_id: "Col09RDTELGN7", value: priorityRichText },
-            ...(userIdClean ? [{ column_id: "Col07R4P97PPB", value: userIdClean }] : []),
-            { column_id: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
+            { column_id: "Col09R4RW383Z", rich_text: richText(r.description || "") },
+            { column_id: "Col09RJ7Z6V70", rich_text: richText(r.platform || "Not specified") },
+            { column_id: "Col09RZ6VGHB3", rich_text: richText(r.format || "Not specified") },
           ];
 
           try {
