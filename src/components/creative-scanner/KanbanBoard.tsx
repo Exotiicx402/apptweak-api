@@ -3,7 +3,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ExternalLink, User, Monitor, Maximize, GripVertical } from "lucide-react";
+import { ExternalLink, User, Monitor, Maximize, GripVertical, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -104,6 +104,18 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
     }
   };
 
+  const handleDelete = async (id: string) => {
+    setLocalRequests((prev) => prev.filter((r) => r.id !== id));
+    const { error } = await supabase.from("creative_requests").delete().eq("id", id);
+    if (error) {
+      toast.error("Failed to delete request");
+      setLocalRequests(requests);
+    } else {
+      toast.success("Request deleted");
+      onStatusChange();
+    }
+  };
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -155,7 +167,7 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
                                 >
                                   {req.priority === "High" ? "🔴 High" : "Normal"}
                                 </Badge>
-                                <div className="ml-auto">
+                                <div className="ml-auto flex items-center gap-1.5">
                                   {req.message_ts && (
                                     <a
                                       href={getPermalink(req.message_ts)!}
@@ -167,6 +179,13 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
                                       <ExternalLink className="h-3.5 w-3.5" />
                                     </a>
                                   )}
+                                  <button
+                                    onClick={() => handleDelete(req.id)}
+                                    className="shrink-0 text-muted-foreground/40 hover:text-destructive transition-colors"
+                                    title="Delete request"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
                                 </div>
                               </div>
                               <p className="text-xs font-medium text-foreground mb-2 line-clamp-3">

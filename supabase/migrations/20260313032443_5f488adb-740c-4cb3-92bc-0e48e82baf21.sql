@@ -1,0 +1,1 @@
+CREATE POLICY "Allow public delete from creative_requests" ON public.creative_requests FOR DELETE USING (true);
