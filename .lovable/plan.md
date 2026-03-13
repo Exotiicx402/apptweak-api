@@ -1,37 +1,33 @@
 
 
-# Fix: Only 1/126 Ads Has High-Res Image — Root Cause and Solution
+# Update FTD Reporting to Track All HOURS Campaigns with "Adds Payment Info"
 
-## What's Actually Happening
+## Problem
+Two issues visible from the screenshots:
+1. **Campaign filter too narrow**: The sync function filters for campaigns containing "FTD" in the name, but only 4 of 6 HOURS campaigns have "FTD" in their name. Campaigns like "HOURS | OSCARS | DEFI | AWARENESS" and "HOURS | DESKTOP ONLY" are excluded.
+2. **Terminology**: Everything still says "FTD" but the tracked event is now "Website Adds Payment Info". Labels throughout the UI and Slack report need updating.
 
-The logs prove it:
-```
-Found 1 image hashes out of 126 ads
-1/126 ads now have high-res image URLs
-```
+## Changes
 
-The current approach queries `/?ids={ad_ids}&fields=creative{image_hash}`. But **125 out of 126 ads are dark posts or link ads** — their images are stored inside `object_story_spec` (as `link_data.picture` or `photo_data.url`), NOT as a top-level `image_hash`. Only 1 ad has a direct `image_hash`, which is why only that one works.
+### 1. Edge Function: `supabase/functions/ftd-meta-sync/index.ts`
+- Change `FTD_CAMPAIGN_FRAGMENT` from `"FTD"` to `"HOURS"` so all 6 HOURS campaigns are captured
+- Update log messages to reference "HOURS campaigns" instead of "FTD campaigns"
 
-## Solution: Fetch Creative Image URLs via `object_story_spec` in Small Batches
+### 2. UI: `src/pages/FTDReporting.tsx`
+- Page title: "FTD Campaigns" → "HOURS Campaigns"
+- Subtitle: Update to `HOURS · DEFI · WEB`
+- KPI labels: "FTD Count" → "Results", "Cost per FTD" → "Cost / Result"
+- Chart titles: "FTDs Over Time" → "Results Over Time", "Cost per FTD" → "Cost per Result"
+- Table headers: "FTDs" → "Results", "Cost / FTD" → "Cost / Result"
+- Empty state text updates
 
-Instead of relying solely on `image_hash`, we need to query each ad's creative for the actual image source from `object_story_spec`. The key is doing this in **very small batches** (10-15 at a time) to avoid the "reduce data" error that killed previous attempts.
+### 3. Slack Report: `supabase/functions/slack-daily-report/index.ts`
+- Update `Results (FTDs)` → `Results (API)`
+- Update `Avg. FTD Value` → `Avg. Result Value`
+- Fix `campaignLabel()` function — currently looks for "INTERNATIONAL" which many HOURS campaigns don't have. Update to extract the distinguishing segment more generically (e.g., parts between "HOURS" and the last segment)
 
-### Changes to `meta-hours-creatives/index.ts`
+### 4. Redeploy
+Both `ftd-meta-sync` and `slack-daily-report` edge functions.
 
-Rewrite `resolveHighResImages` to:
-
-1. **Batch-query ad IDs** (batches of 10) with fields: `creative{id,image_hash,image_url,object_story_spec{link_data{picture,image_hash},photo_data{url,image_hash}}}`
-2. **Extract image URL** using this priority:
-   - `object_story_spec.link_data.picture` (most common for dark posts — returns full-res)
-   - `object_story_spec.photo_data.url` (full-res photo post URL)
-   - If only `image_hash` found (from any level), batch-resolve via `/adimages` API as before
-   - `creative.image_url` as last resort (may still be low-res but better than nothing)
-3. **For any remaining hashes**, do the existing `/adimages?hashes=[...]` batch resolution
-
-The small batch size (10) is critical — previous attempts with 500 and even 100 caused Meta API errors. With 126 ads, that's only 13 API calls.
-
-### Files to edit
-- **`supabase/functions/meta-hours-creatives/index.ts`** — Rewrite `resolveHighResImages` to extract URLs from `object_story_spec` in small batches, falling back to `image_hash` → `/adimages` resolution
-
-No frontend changes needed — the hook already maps `ad.image_url` to `assetUrl`.
+No database changes needed — the `ftd_performance` table columns stay the same, just the filter and labels change.
 
