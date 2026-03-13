@@ -55,6 +55,7 @@ interface KanbanBoardProps {
 
 export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardProps) {
   const [localRequests, setLocalRequests] = useState<CreativeRequest[]>(requests);
+  const [pushingIds, setPushingIds] = useState<Set<string>>(new Set());
 
   // Keep local state in sync when props change (but not during drag)
   const requestsKey = requests.map((r) => `${r.id}:${r.status}`).join(",");
@@ -113,6 +114,26 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
     } else {
       toast.success("Request deleted");
       onStatusChange();
+    }
+  };
+
+  const handlePushToSlackList = async (id: string) => {
+    setPushingIds((prev) => new Set(prev).add(id));
+    try {
+      const { data, error } = await supabase.functions.invoke("push-to-slack-list", {
+        body: { request_id: id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success("Pushed to PM: Creative Tracker list!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to push to Slack List");
+    } finally {
+      setPushingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
