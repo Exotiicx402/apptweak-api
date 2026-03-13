@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const SLACK_API = "https://slack.com/api";
-const SOURCE_CHANNEL = "C09HBDKSUGH";
+const SOURCE_CHANNELS = ["C09HBDKSUGH", "C0AL5KYSXQT"];
 const TARGET_CHANNEL = "C0ALEBYFJNQ";
 
 serve(async (req) => {
@@ -46,7 +46,7 @@ serve(async (req) => {
       event.subtype === "message_changed" ||
       event.subtype === "message_deleted" ||
       event.subtype === "bot_message" ||
-      event.channel !== SOURCE_CHANNEL
+      !SOURCE_CHANNELS.includes(event.channel)
     ) {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -229,7 +229,7 @@ Classify the message and extract details if it's a request.`;
       format: classification.format || "Not specified",
       priority: classification.priority || "Normal",
       message_ts: messageTs,
-      source_channel: SOURCE_CHANNEL,
+      source_channel: event.channel,
       inspiration_url: fileUrls.length > 0 ? fileUrls.join(", ") : null,
     });
 
@@ -243,7 +243,7 @@ Classify the message and extract details if it's a request.`;
       "Content-Type": "application/json; charset=utf-8",
     };
 
-    const permalink = `https://slack.com/archives/${SOURCE_CHANNEL}/p${messageTs.replace(".", "")}`;
+    const permalink = `https://slack.com/archives/${event.channel}/p${messageTs.replace(".", "")}`;
     const priorityEmoji = classification.priority === "High" ? "🔴" : "🟡";
 
     const blocks = [
@@ -260,7 +260,7 @@ Classify the message and extract details if it's a request.`;
         elements: [
           {
             type: "mrkdwn",
-            text: `From <#${SOURCE_CHANNEL}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
+            text: `From <#${event.channel}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
           },
         ],
       },
