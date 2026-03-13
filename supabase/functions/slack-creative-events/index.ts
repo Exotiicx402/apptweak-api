@@ -58,13 +58,21 @@ async function downloadAndStoreFile(
       return null;
     }
 
-    const blob = await resp.blob();
+    const arrayBuf = await resp.arrayBuffer();
+    const fileBytes = new Uint8Array(arrayBuf);
+    console.log(`Downloaded Slack file ${file.id}: ${fileBytes.length} bytes`);
+
+    if (fileBytes.length === 0) {
+      console.error(`Slack file ${file.id} downloaded as empty`);
+      return null;
+    }
+
     const ext = file.filetype || file.name?.split(".").pop() || "png";
     const fileName = `slack-attachments/${file.id}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("creative-assets")
-      .upload(fileName, blob, {
+      .upload(fileName, fileBytes, {
         contentType: file.mimetype || "application/octet-stream",
         upsert: true,
       });
