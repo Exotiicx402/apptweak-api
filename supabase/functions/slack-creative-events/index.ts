@@ -286,7 +286,7 @@ Classify the message and extract details if it's a request.`;
       headers: slackHeaders,
       body: JSON.stringify({
         channel: TARGET_CHANNEL,
-        text: `🎨 New creative request detected from <@${userId}>`,
+        text: `<!channel> 🎨 New creative request detected from <@${userId}>`,
         blocks,
       }),
     });
