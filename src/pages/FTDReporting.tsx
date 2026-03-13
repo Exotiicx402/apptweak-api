@@ -117,7 +117,7 @@ export default function FTDReporting() {
         {(data || isLoading) && (
           <>
             {/* KPI Cards */}
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-8 mb-6">
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-4 mb-6">
               <MetricKpiCard
                 title="Total Spend"
                 value={totals?.spend ?? 0}
