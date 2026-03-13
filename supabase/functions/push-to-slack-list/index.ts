@@ -65,7 +65,7 @@ serve(async (req) => {
             body: JSON.stringify({
               list_id: SLACK_LIST_ID,
               item_id,
-              fields: [
+              cells: [
                 { column_id: COL_STATUS, select: [select_value] },
               ],
             }),
