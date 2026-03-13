@@ -500,7 +500,11 @@ async function classifyMessage(
   referenceUrls: string[],
   isThreadReply: boolean,
 ): Promise<any> {
+  const nowEST = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "full", timeStyle: "short" });
+
   const systemPrompt = `You are a creative request detector for an ad operations team. You analyze Slack messages to determine if they contain creative requests and extract ALL available information.
+
+CURRENT DATE/TIME (EST): ${nowEST}
 
 A creative request is when someone asks for:
 - New ad creatives (images, videos, banners, email headers)
@@ -516,7 +520,10 @@ Extract EVERY piece of information you can find:
 - Description: comprehensive summary of what's being requested
 - Platform: the target platform or channel (Meta, TikTok, Email, Display, Esports site, etc.)
 - Format: ALL dimensions/sizes/formats mentioned (e.g. "1000x347", "9:16 and 1:1", "300x250 & 320x250")
-- Priority: "High" if urgent/ASAP language, "Low" if no rush mentioned, otherwise "Normal"
+- Priority: Use the current date/time to judge urgency:
+  - "High" if deadline is within 24 hours, or urgent/ASAP language is used
+  - "Normal" if deadline is 1-7 days away or no urgency signals
+  - "Low" if explicitly "no rush" or "whenever" or deadline is >7 days away
 - Deadline: exact deadline text if mentioned (e.g. "Noon Friday 3/13", "EOD tomorrow", "by next week")
 - Figma URL: any Figma link if present
 - Inspiration notes: any reference to style, competitors, examples, or attached images
