@@ -299,6 +299,51 @@ Classify the message and extract details if it's a request.`;
 
     console.log("New creative request processed and posted");
 
+    // Add to Slack List "PM: Creative Tracker"
+    const richText = (text: string) => JSON.stringify([{
+      type: "rich_text",
+      block_id: crypto.randomUUID().slice(0, 5),
+      elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
+    }]);
+
+    const priorityRichText = JSON.stringify([{
+      type: "rich_text",
+      block_id: crypto.randomUUID().slice(0, 5),
+      elements: [{
+        type: "rich_text_section",
+        elements: classification.priority === "High"
+          ? [{ type: "emoji", name: "red_circle", unicode: "1f534" }, { type: "text", text: " High" }]
+          : [{ type: "emoji", name: "large_yellow_circle", unicode: "1f7e1" }, { type: "text", text: " Normal" }],
+      }],
+    }]);
+
+    const shortDesc = (classification.description || messageText).slice(0, 60);
+    const initialFields = [
+      { key: "name", value: richText(shortDesc) },
+      { key: "Col09RPSC7FTN", value: richText(classification.description || messageText) },
+      { key: "Col07QP76TBQD", value: richText(classification.platform || "Not specified") },
+      { key: "Col09RL9S2DNW", value: richText(classification.format || "Not specified") },
+      { key: "Col09RDTELGN7", value: priorityRichText },
+      { key: "Col07R4P97PPB", value: userId },
+      { key: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
+    ];
+
+    const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+      method: "POST",
+      headers: slackHeaders,
+      body: JSON.stringify({
+        list_id: SLACK_LIST_ID,
+        initial_fields: initialFields,
+      }),
+    });
+
+    const listData = await listResp.json();
+    if (!listData.ok) {
+      console.error("Failed to add to Slack List:", listData);
+    } else {
+      console.log("Added item to Slack List:", listData.item?.id);
+    }
+
     return new Response(
       JSON.stringify({ ok: true, action: "new_request", description: classification.description }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
