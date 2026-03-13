@@ -157,6 +157,7 @@ For each request found, extract:
 - platform: Target platform if mentioned (or "Not specified")
 - format: Size/format if mentioned (or "Not specified")  
 - priority: "High" if urgent language used, otherwise "Normal"
+- deadline: Deadline or due date if mentioned (e.g. "Noon Friday 3/13", "EOD tomorrow"). Null if not mentioned.
 - message_ts: The timestamp of the message`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -190,6 +191,7 @@ For each request found, extract:
                         platform: { type: "string" },
                         format: { type: "string" },
                         priority: { type: "string", enum: ["High", "Normal"] },
+                        deadline: { type: "string", description: "Deadline/due date if mentioned, or null" },
                         message_ts: { type: "string" },
                       },
                       required: ["description", "requester", "platform", "format", "priority", "message_ts"],
@@ -247,6 +249,7 @@ For each request found, extract:
           platform: r.platform,
           format: r.format,
           priority: r.priority,
+          deadline: r.deadline || null,
           message_ts: r.message_ts,
           source_channel: tsToChannel.get(r.message_ts) || SOURCE_CHANNELS[0],
         }));
