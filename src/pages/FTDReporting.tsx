@@ -128,7 +128,7 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <MetricKpiCard
-                title="Results"
+                title="Payment Info Adds"
                 value={totals?.ftd_count ?? 0}
                 currentValue={totals?.ftd_count ?? 0}
                 previousValue={0}
@@ -137,7 +137,7 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <MetricKpiCard
-                title="Cost / Result"
+                title="Cost / Add"
                 value={totals?.cost_per_ftd ?? 0}
                 currentValue={totals?.cost_per_ftd ?? 0}
                 previousValue={0}
@@ -207,8 +207,8 @@ export default function FTDReporting() {
                       <TableRow>
                         <TableHead>Campaign</TableHead>
                         <TableHead className="text-right">Spend</TableHead>
-                        <TableHead className="text-right">Results</TableHead>
-                        <TableHead className="text-right">Cost / Result</TableHead>
+                        <TableHead className="text-right">Payment Info Adds</TableHead>
+                        <TableHead className="text-right">Cost / Add</TableHead>
                         <TableHead className="text-right">Revenue</TableHead>
                         <TableHead className="text-right">ROAS</TableHead>
                         <TableHead className="text-right">Impressions</TableHead>
@@ -251,14 +251,14 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <TimeSeriesChart
-                title="Results Over Time"
+                title="Payment Info Adds Over Time"
                 data={(data?.daily ?? []).map((d) => ({ date: d.date, value: d.ftd_count }))}
                 format="number"
                 color="hsl(142, 76%, 36%)"
                 loading={isLoading}
               />
               <TimeSeriesChart
-                title="Cost / Result"
+                title="Cost / Add"
                 data={(data?.daily ?? []).map((d) => ({ date: d.date, value: d.cost_per_ftd }))}
                 format="currency"
                 color="hsl(280, 67%, 50%)"
@@ -288,8 +288,8 @@ export default function FTDReporting() {
                       <TableRow>
                         <TableHead>Ad Set</TableHead>
                         <TableHead className="text-right">Spend</TableHead>
-                        <TableHead className="text-right">Results</TableHead>
-                        <TableHead className="text-right">Cost / Result</TableHead>
+                        <TableHead className="text-right">Payment Info Adds</TableHead>
+                        <TableHead className="text-right">Cost / Add</TableHead>
                         <TableHead className="text-right">Impressions</TableHead>
                         <TableHead className="text-right">Clicks</TableHead>
                         <TableHead className="text-right">CTR</TableHead>
@@ -333,8 +333,8 @@ export default function FTDReporting() {
                         <TableHead>Ad Name</TableHead>
                         <TableHead>Ad Set</TableHead>
                         <TableHead className="text-right">Spend</TableHead>
-                        <TableHead className="text-right">Results</TableHead>
-                        <TableHead className="text-right">Cost / Result</TableHead>
+                        <TableHead className="text-right">Payment Info Adds</TableHead>
+                        <TableHead className="text-right">Cost / Add</TableHead>
                         <TableHead className="text-right">Impressions</TableHead>
                         <TableHead className="text-right">Clicks</TableHead>
                         <TableHead className="text-right">CTR</TableHead>
