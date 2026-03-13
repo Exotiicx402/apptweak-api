@@ -299,7 +299,7 @@ For each request found, extract:
           headers: slackHeaders,
           body: JSON.stringify({
             channel: TARGET_CHANNEL,
-            text: `🎨 ${requests.length} new creative request(s) detected${partLabel}`,
+            text: `<!channel> 🎨 ${requests.length} new creative request(s) detected${partLabel}`,
             blocks,
           }),
         });
