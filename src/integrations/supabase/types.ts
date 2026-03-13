@@ -202,6 +202,7 @@ export type Database = {
           platform: string | null
           priority: string | null
           requester: string | null
+          slack_list_item_id: string | null
           source_channel: string | null
           status: string | null
           thread_context: string | null
@@ -216,6 +217,7 @@ export type Database = {
           platform?: string | null
           priority?: string | null
           requester?: string | null
+          slack_list_item_id?: string | null
           source_channel?: string | null
           status?: string | null
           thread_context?: string | null
@@ -230,6 +232,7 @@ export type Database = {
           platform?: string | null
           priority?: string | null
           requester?: string | null
+          slack_list_item_id?: string | null
           source_channel?: string | null
           status?: string | null
           thread_context?: string | null
