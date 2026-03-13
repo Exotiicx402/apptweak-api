@@ -191,6 +191,7 @@ For each request found, extract:
                         platform: { type: "string" },
                         format: { type: "string" },
                         priority: { type: "string", enum: ["High", "Normal"] },
+                        deadline: { type: "string", description: "Deadline/due date if mentioned, or null" },
                         message_ts: { type: "string" },
                       },
                       required: ["description", "requester", "platform", "format", "priority", "message_ts"],
