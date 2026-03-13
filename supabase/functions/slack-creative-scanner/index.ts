@@ -43,63 +43,57 @@ serve(async (req) => {
       "Content-Type": "application/json; charset=utf-8",
     };
 
-    // Fetch recent messages from source channel
-    const historyUrl = `${SLACK_API}/conversations.history?channel=${SOURCE_CHANNEL}&oldest=${lastTs}&limit=100`;
-    const historyResp = await fetch(historyUrl, { headers: slackHeaders });
-    const historyData = await historyResp.json();
+    // Scan all source channels and collect messages
+    let allEnrichedMessages: { text: string; user: string; ts: string; thread_texts: string[]; channel: string }[] = [];
+    let allRawMessages: any[] = [];
 
-    if (!historyData.ok) {
-      throw new Error(`Slack conversations.history failed: ${JSON.stringify(historyData)}`);
-    }
+    for (const channel of SOURCE_CHANNELS) {
+      const historyUrl = `${SLACK_API}/conversations.history?channel=${channel}&oldest=${lastTs}&limit=100`;
+      const historyResp = await fetch(historyUrl, { headers: slackHeaders });
+      const historyData = await historyResp.json();
 
-    const messages = historyData.messages || [];
-    console.log(`Found ${messages.length} new messages`);
-
-    if (messages.length === 0) {
-      await supabase
-        .from("scanner_state")
-        .update({ last_scanned_ts: String(now), updated_at: new Date().toISOString() })
-        .eq("id", "slack-creative-scanner");
-
-      return new Response(JSON.stringify({ success: true, requests_found: 0 }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Enrich messages with thread replies
-    const enrichedMessages: { text: string; user: string; ts: string; thread_texts: string[] }[] = [];
-
-    for (const msg of messages) {
-      if (msg.subtype && msg.subtype !== "thread_broadcast") continue;
-
-      const threadTexts: string[] = [];
-
-      if (msg.thread_ts && msg.reply_count > 0) {
-        try {
-          const repliesUrl = `${SLACK_API}/conversations.replies?channel=${SOURCE_CHANNEL}&ts=${msg.thread_ts}&limit=50`;
-          const repliesResp = await fetch(repliesUrl, { headers: slackHeaders });
-          const repliesData = await repliesResp.json();
-          if (repliesData.ok && repliesData.messages) {
-            for (const reply of repliesData.messages) {
-              if (reply.ts !== msg.ts) {
-                threadTexts.push(reply.text || "");
-              }
-            }
-          }
-        } catch (e) {
-          console.error("Error fetching thread replies:", e);
-        }
+      if (!historyData.ok) {
+        console.error(`Slack conversations.history failed for ${channel}: ${JSON.stringify(historyData)}`);
+        continue;
       }
 
-      enrichedMessages.push({
-        text: msg.text || "",
-        user: msg.user || "unknown",
-        ts: msg.ts,
-        thread_texts: threadTexts,
-      });
+      const messages = historyData.messages || [];
+      console.log(`Found ${messages.length} new messages in ${channel}`);
+      allRawMessages.push(...messages);
+
+      for (const msg of messages) {
+        if (msg.subtype && msg.subtype !== "thread_broadcast") continue;
+
+        const threadTexts: string[] = [];
+
+        if (msg.thread_ts && msg.reply_count > 0) {
+          try {
+            const repliesUrl = `${SLACK_API}/conversations.replies?channel=${channel}&ts=${msg.thread_ts}&limit=50`;
+            const repliesResp = await fetch(repliesUrl, { headers: slackHeaders });
+            const repliesData = await repliesResp.json();
+            if (repliesData.ok && repliesData.messages) {
+              for (const reply of repliesData.messages) {
+                if (reply.ts !== msg.ts) {
+                  threadTexts.push(reply.text || "");
+                }
+              }
+            }
+          } catch (e) {
+            console.error("Error fetching thread replies:", e);
+          }
+        }
+
+        allEnrichedMessages.push({
+          text: msg.text || "",
+          user: msg.user || "unknown",
+          ts: msg.ts,
+          thread_texts: threadTexts,
+          channel,
+        });
+      }
     }
 
-    if (enrichedMessages.length === 0) {
+    if (allEnrichedMessages.length === 0) {
       await supabase
         .from("scanner_state")
         .update({ last_scanned_ts: String(now), updated_at: new Date().toISOString() })
@@ -111,15 +105,18 @@ serve(async (req) => {
     }
 
     // Build AI prompt
-    const messagesForAI = enrichedMessages.map((m, i) => {
-      let content = `Message ${i + 1} (from <@${m.user}>, ts=${m.ts}):\n${m.text}`;
+    const messagesForAI = allEnrichedMessages.map((m, i) => {
+      let content = `Message ${i + 1} (from <@${m.user}>, ts=${m.ts}, channel=${m.channel}):\n${m.text}`;
       if (m.thread_texts.length > 0) {
         content += `\n\nThread replies:\n${m.thread_texts.join("\n---\n")}`;
       }
       return content;
     }).join("\n\n========\n\n");
 
-    const systemPrompt = `You are a creative request detector for an ad operations team. You analyze Slack messages from a channel where people request new ad creatives or modifications to existing ones.
+    // Build a lookup from ts to channel
+    const tsToChannel = new Map(allEnrichedMessages.map(m => [m.ts, m.channel]));
+
+    const systemPrompt = `You are a creative request detector for an ad operations team. You analyze Slack messages from channels where people request new ad creatives or modifications to existing ones.
 
 Your job is to identify messages that are creative requests — even informal ones. Look for:
 - Requests for new ad creatives (images, videos, banners)
@@ -210,7 +207,6 @@ For each request found, extract:
 
     // Persist requests to database (deduplicate by message_ts)
     if (requests.length > 0) {
-      // Check which message_ts values already exist
       const tsList = requests.map((r: any) => r.message_ts).filter(Boolean);
       const { data: existing } = await supabase
         .from("creative_requests")
@@ -229,7 +225,7 @@ For each request found, extract:
           format: r.format,
           priority: r.priority,
           message_ts: r.message_ts,
-          source_channel: SOURCE_CHANNEL,
+          source_channel: tsToChannel.get(r.message_ts) || SOURCE_CHANNELS[0],
         }));
         const { error: insertError } = await supabase.from("creative_requests").insert(rows);
         if (insertError) {
@@ -240,9 +236,6 @@ For each request found, extract:
 
     // Post to target channel if requests found
     if (requests.length > 0) {
-      // Split requests into chunks to stay under Slack's 50 block limit
-      // 3 fixed blocks (header/context/divider) + 2 blocks per request (section/divider)
-      // Keep under 50 with headroom: floor((48 - 3) / 2) = 22
       const MAX_REQUESTS_PER_MESSAGE = 22;
       const chunks: any[][] = [];
       for (let i = 0; i < requests.length; i += MAX_REQUESTS_PER_MESSAGE) {
@@ -267,7 +260,7 @@ For each request found, extract:
             elements: [
               {
                 type: "mrkdwn",
-                text: `Scanned from <#${SOURCE_CHANNEL}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
+                text: `Scanned from multiple channels • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
               },
             ],
           },
@@ -275,7 +268,8 @@ For each request found, extract:
         ];
 
         for (const req of chunk) {
-          const permalink = `https://slack.com/archives/${SOURCE_CHANNEL}/p${req.message_ts.replace(".", "")}`;
+          const reqChannel = tsToChannel.get(req.message_ts) || SOURCE_CHANNELS[0];
+          const permalink = `https://slack.com/archives/${reqChannel}/p${req.message_ts.replace(".", "")}`;
           const priorityEmoji = req.priority === "High" ? "🔴" : "🟡";
 
           blocks.push({
@@ -315,14 +309,14 @@ For each request found, extract:
     }
 
     // Update last scanned timestamp
-    const latestTs = messages.reduce((max: string, m: any) => (m.ts > max ? m.ts : max), lastTs);
+    const latestTs = allRawMessages.reduce((max: string, m: any) => (m.ts > max ? m.ts : max), lastTs);
     await supabase
       .from("scanner_state")
       .update({ last_scanned_ts: latestTs, updated_at: new Date().toISOString() })
       .eq("id", "slack-creative-scanner");
 
     return new Response(
-      JSON.stringify({ success: true, messages_scanned: enrichedMessages.length, requests_found: requests.length }),
+      JSON.stringify({ success: true, messages_scanned: allEnrichedMessages.length, requests_found: requests.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
