@@ -229,7 +229,7 @@ Classify the message and extract details if it's a request.`;
       format: classification.format || "Not specified",
       priority: classification.priority || "Normal",
       message_ts: messageTs,
-      source_channel: SOURCE_CHANNEL,
+      source_channel: event.channel,
       inspiration_url: fileUrls.length > 0 ? fileUrls.join(", ") : null,
     });
 
