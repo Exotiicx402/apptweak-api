@@ -232,6 +232,54 @@ For each request found, extract:
         if (insertError) {
           console.error("Failed to insert creative_requests:", insertError);
         }
+
+        // Add new requests to Slack List "PM: Creative Tracker"
+        const richText = (text: string) => JSON.stringify([{
+          type: "rich_text",
+          block_id: crypto.randomUUID().slice(0, 5),
+          elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
+        }]);
+
+        for (const r of newRequests) {
+          const priorityRichText = JSON.stringify([{
+            type: "rich_text",
+            block_id: crypto.randomUUID().slice(0, 5),
+            elements: [{
+              type: "rich_text_section",
+              elements: r.priority === "High"
+                ? [{ type: "emoji", name: "red_circle", unicode: "1f534" }, { type: "text", text: " High" }]
+                : [{ type: "emoji", name: "large_yellow_circle", unicode: "1f7e1" }, { type: "text", text: " Normal" }],
+            }],
+          }]);
+
+          const shortDesc = (r.description || "").slice(0, 60);
+          const userIdClean = (r.requester || "").replace(/<@|>/g, "");
+          const initialFields = [
+            { key: "name", value: richText(shortDesc) },
+            { key: "Col09RPSC7FTN", value: richText(r.description || "") },
+            { key: "Col07QP76TBQD", value: richText(r.platform || "Not specified") },
+            { key: "Col09RL9S2DNW", value: richText(r.format || "Not specified") },
+            { key: "Col09RDTELGN7", value: priorityRichText },
+            ...(userIdClean ? [{ key: "Col07R4P97PPB", value: userIdClean }] : []),
+            { key: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
+          ];
+
+          try {
+            const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+              method: "POST",
+              headers: slackHeaders,
+              body: JSON.stringify({ list_id: SLACK_LIST_ID, initial_fields: initialFields }),
+            });
+            const listData = await listResp.json();
+            if (!listData.ok) {
+              console.error("Failed to add to Slack List:", listData);
+            } else {
+              console.log("Added item to Slack List:", listData.item?.id);
+            }
+          } catch (e) {
+            console.error("Error adding to Slack List:", e);
+          }
+        }
       }
     }
 
