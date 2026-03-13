@@ -9,10 +9,13 @@ const corsHeaders = {
 // Campaign name fragment to identify the FTD campaign
 const FTD_CAMPAIGN_FRAGMENT = "FTD";
 
-// The Meta custom conversion event name
-const FTD_ACTION_TYPE = "offsite_conversion.custom.FirstTimeDeposit";
-// Fallback: some setups use the pixel custom event name differently
-const FTD_ACTION_TYPE_ALT = "offsite_conversion.fb_pixel_custom.FirstTimeDeposit";
+// Primary: Meta standard "Add Payment Info" event
+const FTD_ACTION_TYPE = "add_payment_info";
+// Fallback: pixel custom variant
+const FTD_ACTION_TYPE_ALT = "offsite_conversion.fb_pixel_custom.AddPaymentInfo";
+// Legacy fallbacks for historical data
+const FTD_ACTION_TYPE_LEGACY = "offsite_conversion.custom.FirstTimeDeposit";
+const FTD_ACTION_TYPE_LEGACY_ALT = "offsite_conversion.fb_pixel_custom.FirstTimeDeposit";
 
 function extractFTDCount(actions: any[]): number {
   if (!actions || !Array.isArray(actions)) return 0;
