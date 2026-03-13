@@ -104,6 +104,18 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
     }
   };
 
+  const handleDelete = async (id: string) => {
+    setLocalRequests((prev) => prev.filter((r) => r.id !== id));
+    const { error } = await supabase.from("creative_requests").delete().eq("id", id);
+    if (error) {
+      toast.error("Failed to delete request");
+      setLocalRequests(requests);
+    } else {
+      toast.success("Request deleted");
+      onStatusChange();
+    }
+  };
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
