@@ -174,11 +174,7 @@ async function pushToSlackList(
   }
 
   console.log("Added to Slack List:", itemId, "title:", fields.title);
-    return itemId;
-  }
-
-  console.log("Added to Slack List:", listData.item?.id, "title:", fields.title);
-  return listData.item?.id;
+  return itemId;
 }
 
 // Update an existing Slack List item with new thread info
