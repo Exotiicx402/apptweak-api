@@ -41,7 +41,9 @@ function extractFTDValue(actionValues: any[]): number {
     (a: any) =>
       a.action_type === FTD_ACTION_TYPE ||
       a.action_type === FTD_ACTION_TYPE_ALT ||
-      (typeof a.action_type === "string" && a.action_type.toLowerCase().includes("firsttimedeposit"))
+      a.action_type === FTD_ACTION_TYPE_LEGACY ||
+      a.action_type === FTD_ACTION_TYPE_LEGACY_ALT ||
+      (typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("firsttimedeposit")))
   );
   if (specific) return parseFloat(specific.value) || 0;
 
