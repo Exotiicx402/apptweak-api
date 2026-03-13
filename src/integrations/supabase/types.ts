@@ -194,6 +194,7 @@ export type Database = {
       creative_requests: {
         Row: {
           created_at: string
+          deadline: string | null
           description: string
           format: string | null
           id: string
@@ -209,6 +210,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          deadline?: string | null
           description: string
           format?: string | null
           id?: string
@@ -224,6 +226,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          deadline?: string | null
           description?: string
           format?: string | null
           id?: string
