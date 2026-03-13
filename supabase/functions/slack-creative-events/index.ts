@@ -37,7 +37,7 @@ const toRichText = (text: string) => [
 const toRichTextLinks = (urls: string[]) => {
   const elements: any[] = [];
   urls.forEach((url, i) => {
-    if (i > 0) elements.push({ type: "text", text: "\n" });
+    if (i > 0) elements.push({ type: "text", text: "\n\n" });
     elements.push({ type: "link", url, text: url });
   });
   return [
