@@ -63,19 +63,16 @@ serve(async (req) => {
       });
     }
 
+    const userIdClean = (request.requester || "").replace(/<@|>/g, "");
+
     const initialFields = [
-      {
-        column_id: "Col09RPSC7FTN",
-        rich_text: toRichText(request.description || ""),
-      },
-      {
-        column_id: "Col07QP76TBQD",
-        rich_text: toRichText(request.platform || "Not specified"),
-      },
-      {
-        column_id: "Col09RL9S2DNW",
-        rich_text: toRichText(request.format || "Not specified"),
-      },
+      { column_id: "Col09RPRVKYUC", rich_text: toRichText((request.description || "Creative request").slice(0, 80)) },
+      { column_id: "Col09R4RW383Z", rich_text: toRichText(request.description || "") },
+      { column_id: "Col09RJ7Z6V70", rich_text: toRichText(request.platform || "Not specified") },
+      { column_id: "Col09RZ6VGHB3", rich_text: toRichText(request.format || "Not specified") },
+      { column_id: "Col09RL9W6L5Q", rich_text: toRichText(request.priority || "Normal") },
+      { column_id: "Col09SEJ8H16C", timestamp: [Math.floor(Date.now() / 1000)] },
+      ...(userIdClean ? [{ column_id: "Col09RGRF5DHB", user: [userIdClean] }] : []),
     ];
 
     const createWithFieldsBody = {

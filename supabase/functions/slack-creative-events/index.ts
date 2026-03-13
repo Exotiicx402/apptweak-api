@@ -306,9 +306,13 @@ Classify the message and extract details if it's a request.`;
     }];
 
     const initialFields = [
-      { column_id: "Col09RPSC7FTN", rich_text: richText(classification.description || messageText) },
-      { column_id: "Col07QP76TBQD", rich_text: richText(classification.platform || "Not specified") },
-      { column_id: "Col09RL9S2DNW", rich_text: richText(classification.format || "Not specified") },
+      { column_id: "Col09RPRVKYUC", rich_text: richText((classification.description || messageText).slice(0, 80)) },
+      { column_id: "Col09R4RW383Z", rich_text: richText(classification.description || messageText) },
+      { column_id: "Col09RJ7Z6V70", rich_text: richText(classification.platform || "Not specified") },
+      { column_id: "Col09RZ6VGHB3", rich_text: richText(classification.format || "Not specified") },
+      { column_id: "Col09RL9W6L5Q", rich_text: richText(classification.priority || "Normal") },
+      { column_id: "Col09SEJ8H16C", timestamp: [Math.floor(Date.now() / 1000)] },
+      { column_id: "Col09RGRF5DHB", user: [userId] },
     ];
 
     const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
