@@ -58,13 +58,21 @@ async function downloadAndStoreFile(
       return null;
     }
 
-    const blob = await resp.blob();
+    const arrayBuf = await resp.arrayBuffer();
+    const fileBytes = new Uint8Array(arrayBuf);
+    console.log(`Downloaded Slack file ${file.id}: ${fileBytes.length} bytes`);
+
+    if (fileBytes.length === 0) {
+      console.error(`Slack file ${file.id} downloaded as empty`);
+      return null;
+    }
+
     const ext = file.filetype || file.name?.split(".").pop() || "png";
     const fileName = `slack-attachments/${file.id}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("creative-assets")
-      .upload(fileName, blob, {
+      .upload(fileName, fileBytes, {
         contentType: file.mimetype || "application/octet-stream",
         upsert: true,
       });
@@ -106,28 +114,20 @@ async function pushToSlackList(
     fullDesc += `\n\n📅 Deadline: ${fields.deadline}`;
   }
 
+  // Don't include status or user columns on create — they cause "uneditable_column" errors
+  // We'll patch them via update after creation
   const initialFields: any[] = [
     { column_id: COL.NAME, rich_text: toRichText(fields.title) },
     { column_id: COL.DESCRIPTION, rich_text: toRichText(fullDesc) },
     { column_id: COL.PLATFORM, rich_text: toRichText(fields.platform) },
     { column_id: COL.FORMAT, rich_text: toRichText(fields.format) },
-    { column_id: COL.STATUS, select: [OPT_NEW] },
     { column_id: COL.PRIORITY, rich_text: toRichText(fields.priority) },
   ];
 
-  // Add inspiration/reference URLs
   if (fields.inspirationUrls.length > 0) {
     initialFields.push({
       column_id: COL.INSPIRATION,
       rich_text: toRichText(fields.inspirationUrls.join("\n")),
-    });
-  }
-
-  // Set submitter
-  if (fields.submitterUserId) {
-    initialFields.push({
-      column_id: COL.SUBMITTED_BY,
-      user: [fields.submitterUserId],
     });
   }
 
@@ -139,42 +139,42 @@ async function pushToSlackList(
   const listData = await listResp.json();
 
   if (!listData.ok) {
-    // Fallback: try without status and user fields (they can be finicky)
-    console.warn("Create failed:", listData.error, "— trying fallback");
-    const safeFields = initialFields.filter(
-      f => f.column_id !== COL.STATUS && f.column_id !== COL.SUBMITTED_BY
-    );
-    const fallbackResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
-      method: "POST",
-      headers: slackHeaders,
-      body: JSON.stringify({ list_id: SLACK_LIST_ID, initial_fields: safeFields }),
-    });
-    const fallbackData = await fallbackResp.json();
-    if (!fallbackData.ok) {
-      console.error("Fallback also failed:", fallbackData);
-      return null;
-    }
-    const itemId = fallbackData.item?.id;
-    if (itemId) {
-      // Patch status + submitted_by via update
-      const cells: any[] = [
-        { row_id: itemId, column_id: COL.STATUS, select: [OPT_NEW] },
-      ];
-      if (fields.submitterUserId) {
-        cells.push({ row_id: itemId, column_id: COL.SUBMITTED_BY, user: [fields.submitterUserId] });
-      }
-      await fetch(`${SLACK_API}/slackLists.items.update`, {
-        method: "POST",
-        headers: slackHeaders,
-        body: JSON.stringify({ list_id: SLACK_LIST_ID, cells }),
-      });
-    }
-    console.log("Added to Slack List (fallback):", itemId, "title:", fields.title);
-    return itemId;
+    console.error("Failed to create Slack List item:", listData);
+    return null;
   }
 
-  console.log("Added to Slack List:", listData.item?.id, "title:", fields.title);
-  return listData.item?.id;
+  const itemId = listData.item?.id;
+  if (!itemId) return null;
+
+  // Patch status + submitted_by via separate update call
+  const patchCells: any[] = [
+    { row_id: itemId, column_id: COL.STATUS, select: [OPT_NEW] },
+  ];
+  if (fields.submitterUserId) {
+    patchCells.push({ row_id: itemId, column_id: COL.SUBMITTED_BY, user: [fields.submitterUserId] });
+  }
+
+  const patchResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+    method: "POST",
+    headers: slackHeaders,
+    body: JSON.stringify({ list_id: SLACK_LIST_ID, cells: patchCells }),
+  });
+  const patchData = await patchResp.json();
+  if (!patchData.ok) {
+    console.warn("Status/user patch failed:", patchData.error, "— trying status only");
+    // Try status alone if user field also fails
+    await fetch(`${SLACK_API}/slackLists.items.update`, {
+      method: "POST",
+      headers: slackHeaders,
+      body: JSON.stringify({
+        list_id: SLACK_LIST_ID,
+        cells: [{ row_id: itemId, column_id: COL.STATUS, select: [OPT_NEW] }],
+      }),
+    });
+  }
+
+  console.log("Added to Slack List:", itemId, "title:", fields.title);
+  return itemId;
 }
 
 // Update an existing Slack List item with new thread info
@@ -496,7 +496,11 @@ async function classifyMessage(
   referenceUrls: string[],
   isThreadReply: boolean,
 ): Promise<any> {
+  const nowEST = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "full", timeStyle: "short" });
+
   const systemPrompt = `You are a creative request detector for an ad operations team. You analyze Slack messages to determine if they contain creative requests and extract ALL available information.
+
+CURRENT DATE/TIME (EST): ${nowEST}
 
 A creative request is when someone asks for:
 - New ad creatives (images, videos, banners, email headers)
@@ -512,7 +516,10 @@ Extract EVERY piece of information you can find:
 - Description: comprehensive summary of what's being requested
 - Platform: the target platform or channel (Meta, TikTok, Email, Display, Esports site, etc.)
 - Format: ALL dimensions/sizes/formats mentioned (e.g. "1000x347", "9:16 and 1:1", "300x250 & 320x250")
-- Priority: "High" if urgent/ASAP language, "Low" if no rush mentioned, otherwise "Normal"
+- Priority: Use the current date/time to judge urgency:
+  - "High" if deadline is within 24 hours, or urgent/ASAP language is used
+  - "Normal" if deadline is 1-7 days away or no urgency signals
+  - "Low" if explicitly "no rush" or "whenever" or deadline is >7 days away
 - Deadline: exact deadline text if mentioned (e.g. "Noon Friday 3/13", "EOD tomorrow", "by next week")
 - Figma URL: any Figma link if present
 - Inspiration notes: any reference to style, competitors, examples, or attached images
