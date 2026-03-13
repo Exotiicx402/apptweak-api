@@ -9,6 +9,18 @@ const corsHeaders = {
 const SLACK_API = "https://slack.com/api";
 const SLACK_LIST_ID = "F09R4RD9G5D";
 
+const toRichText = (text: string) => [
+  {
+    type: "rich_text",
+    elements: [
+      {
+        type: "rich_text_section",
+        elements: [{ type: "text", text }],
+      },
+    ],
+  },
+];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -26,83 +38,79 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: r, error } = await supabase
+    const { data: request, error } = await supabase
       .from("creative_requests")
       .select("*")
       .eq("id", request_id)
       .single();
 
-    if (error || !r) throw new Error("Request not found");
+    if (error || !request) throw new Error("Request not found");
 
     const slackHeaders = {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
       "Content-Type": "application/json; charset=utf-8",
     };
 
-    // If debug mode, fetch list schema first
     if (debug) {
-      const schemaResp = await fetch(`${SLACK_API}/slackLists.items.list?list_id=${SLACK_LIST_ID}&limit=1`, {
+      const schemaResp = await fetch(`${SLACK_API}/slackLists.items.list`, {
+        method: "POST",
         headers: slackHeaders,
+        body: JSON.stringify({ list_id: SLACK_LIST_ID, limit: 1 }),
       });
       const schemaData = await schemaResp.json();
-      console.log("List schema response:", JSON.stringify(schemaData, null, 2));
-      return new Response(
-        JSON.stringify({ debug: true, schema: schemaData }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ debug: true, schema: schemaData }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const richText = (text: string) => [{
-      type: "rich_text",
-      block_id: crypto.randomUUID().slice(0, 5),
-      elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
-    }];
-
-    const priorityRichText = [{
-      type: "rich_text",
-      block_id: crypto.randomUUID().slice(0, 5),
-      elements: [{
-        type: "rich_text_section",
-        elements: r.priority === "High"
-          ? [{ type: "emoji", name: "red_circle", unicode: "1f534" }, { type: "text", text: " High" }]
-          : [{ type: "emoji", name: "large_yellow_circle", unicode: "1f7e1" }, { type: "text", text: " Normal" }],
-      }],
-    }];
-
-    const shortDesc = (r.description || "").slice(0, 60);
-    const userIdClean = (r.requester || "").replace(/<@|>/g, "");
-
-    // initial_fields must be array of { column_id, value }
     const initialFields = [
-      { column_id: "name", value: richText(shortDesc) },
-      { column_id: "Col09RPSC7FTN", value: richText(r.description || "") },
-      { column_id: "Col07QP76TBQD", value: richText(r.platform || "Not specified") },
-      { column_id: "Col09RL9S2DNW", value: richText(r.format || "Not specified") },
-      { column_id: "Col09RDTELGN7", value: priorityRichText },
-      ...(userIdClean ? [{ column_id: "Col07R4P97PPB", value: userIdClean }] : []),
-      { column_id: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
+      {
+        column_id: "Col09RPSC7FTN",
+        rich_text: toRichText(request.description || ""),
+      },
+      {
+        column_id: "Col07QP76TBQD",
+        rich_text: toRichText(request.platform || "Not specified"),
+      },
+      {
+        column_id: "Col09RL9S2DNW",
+        rich_text: toRichText(request.format || "Not specified"),
+      },
     ];
 
-    const requestBody = { list_id: SLACK_LIST_ID, initial_fields: initialFields };
-    console.log("Sending to Slack Lists API:", JSON.stringify(requestBody, null, 2));
+    const createWithFieldsBody = {
+      list_id: SLACK_LIST_ID,
+      initial_fields: initialFields,
+    };
 
-    const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+    let listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
       method: "POST",
       headers: slackHeaders,
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(createWithFieldsBody),
     });
 
-    const listData = await listResp.json();
-    console.log("Slack Lists API response:", JSON.stringify(listData, null, 2));
+    let listData = await listResp.json();
+    let fallbackUsed = false;
+
+    if (!listData.ok && listData.error === "invalid_arguments") {
+      fallbackUsed = true;
+      console.warn("Falling back to minimal list item create", listData);
+
+      listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+        method: "POST",
+        headers: slackHeaders,
+        body: JSON.stringify({ list_id: SLACK_LIST_ID }),
+      });
+
+      listData = await listResp.json();
+    }
 
     if (!listData.ok) {
       throw new Error(`Slack List error: ${listData.error || JSON.stringify(listData)}`);
     }
 
-    console.log("Added item to Slack List:", listData.item?.id);
-
     return new Response(
-      JSON.stringify({ success: true, item_id: listData.item?.id }),
+      JSON.stringify({ success: true, item_id: listData.item?.id, fallback_used: fallbackUsed }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
