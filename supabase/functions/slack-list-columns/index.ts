@@ -13,14 +13,18 @@ serve(async (req) => {
   const SLACK_BOT_TOKEN = Deno.env.get("POLYMARKET_SLACK_BOT_TOKEN");
   const SLACK_LIST_ID = "F09R4RD9G5D";
 
-  // Try to get list info/items to see column structure
-  const resp = await fetch(`https://slack.com/api/slackLists.items.list`, {
+  // Try to create a new column
+  const resp = await fetch(`https://slack.com/api/slackLists.columns.create`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
       "Content-Type": "application/json; charset=utf-8",
     },
-    body: JSON.stringify({ list_id: SLACK_LIST_ID, limit: 1 }),
+    body: JSON.stringify({
+      list_id: SLACK_LIST_ID,
+      column_name: "Source Message",
+      column_type: "url",
+    }),
   });
   const data = await resp.json();
 
