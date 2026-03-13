@@ -17,6 +17,7 @@ const COL_DESCRIPTION = "Col09R4RW383Z";
 const COL_PLATFORM = "Col09RJ7Z6V70";
 const COL_FORMAT = "Col09RZ6VGHB3";
 const COL_STATUS = "Col09RJ959822";
+const COL_REFERENCE = "Col09RPSKU48L";
 const OPT_NEW = "Opt1IOIRNGD";
 
 const toRichText = (text: string) => [
@@ -33,13 +34,67 @@ const generateTitle = (description: string): string => {
   return firstLine.substring(0, 67) + "...";
 };
 
-async function addToSlackList(slackHeaders: Record<string, string>, title: string, description: string, platform: string, format: string) {
+// Download a Slack file and upload to Supabase storage, return public URL
+async function downloadAndStoreFile(
+  file: any,
+  slackToken: string,
+  supabase: any,
+): Promise<string | null> {
+  try {
+    const url = file.url_private || file.url_private_download;
+    if (!url) return null;
+
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${slackToken}` },
+    });
+    if (!resp.ok) {
+      console.error(`Failed to download Slack file ${file.id}: ${resp.status}`);
+      return null;
+    }
+
+    const blob = await resp.blob();
+    const ext = file.filetype || file.name?.split(".").pop() || "png";
+    const fileName = `slack-attachments/${file.id}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("creative-assets")
+      .upload(fileName, blob, {
+        contentType: file.mimetype || "application/octet-stream",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error(`Failed to upload file ${file.id}:`, uploadError);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("creative-assets")
+      .getPublicUrl(fileName);
+
+    console.log(`Stored Slack file ${file.id} → ${urlData.publicUrl}`);
+    return urlData.publicUrl;
+  } catch (e) {
+    console.error("Error downloading/storing Slack file:", e);
+    return null;
+  }
+}
+
+async function addToSlackList(
+  slackHeaders: Record<string, string>,
+  title: string,
+  description: string,
+  platform: string,
+  format: string,
+  referenceUrls?: string,
+) {
   const initialFields = [
     { column_id: COL_NAME, rich_text: toRichText(title) },
     { column_id: COL_DESCRIPTION, rich_text: toRichText(description) },
     { column_id: COL_PLATFORM, rich_text: toRichText(platform) },
     { column_id: COL_FORMAT, rich_text: toRichText(format) },
     { column_id: COL_STATUS, select: [OPT_NEW] },
+    ...(referenceUrls ? [{ column_id: COL_REFERENCE, rich_text: toRichText(referenceUrls) }] : []),
   ];
 
   const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
@@ -50,7 +105,6 @@ async function addToSlackList(slackHeaders: Record<string, string>, title: strin
   const listData = await listResp.json();
 
   if (!listData.ok) {
-    // Fallback: create without status, then update via cells API
     console.warn("Create with status failed:", listData.error);
     const fallbackResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
       method: "POST",
@@ -101,7 +155,6 @@ serve(async (req) => {
       });
     }
 
-    // Only process event_callback
     if (body.type !== "event_callback") {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -115,7 +168,6 @@ serve(async (req) => {
       });
     }
 
-    // Ignore bot messages, edits, deletions, and messages from other channels
     if (
       event.bot_id ||
       event.subtype === "message_changed" ||
@@ -143,19 +195,22 @@ serve(async (req) => {
     const messageText = event.text || "";
     const userId = event.user || "unknown";
 
-    // Extract file/image URLs from attachments
-    const fileUrls: string[] = [];
+    // Download files from Slack and store in our storage bucket
+    const storedFileUrls: string[] = [];
+    const slackFileUrls: string[] = [];
     if (event.files && Array.isArray(event.files)) {
       for (const file of event.files) {
-        if (file.url_private) {
-          fileUrls.push(file.url_private);
-        } else if (file.permalink) {
-          fileUrls.push(file.permalink);
-        }
+        slackFileUrls.push(file.url_private || file.permalink || "");
+        const publicUrl = await downloadAndStoreFile(file, SLACK_BOT_TOKEN, supabase);
+        if (publicUrl) storedFileUrls.push(publicUrl);
       }
     }
 
-    // Deduplicate: check if this message_ts already exists
+    // Extract links from message text
+    const linkMatches = messageText.match(/https?:\/\/[^\s>]+/g) || [];
+    const allReferenceUrls = [...storedFileUrls, ...linkMatches];
+
+    // Deduplicate
     const { data: existing } = await supabase
       .from("creative_requests")
       .select("id, message_ts")
@@ -169,7 +224,7 @@ serve(async (req) => {
       });
     }
 
-    // If this is a thread reply, check if the parent thread is an existing request
+    // Thread reply → update existing request
     if (threadTs && threadTs !== messageTs) {
       const { data: parentRequest } = await supabase
         .from("creative_requests")
@@ -184,50 +239,57 @@ serve(async (req) => {
           ? `${existingContext}\n---\n${userId}: ${cleanMessage}`
           : `${userId}: ${cleanMessage}`;
 
-        // Extract URLs/links from message text
-        const linkMatches = messageText.match(/https?:\/\/[^\s>]+/g) || [];
-        const allUrls = [...fileUrls, ...linkMatches];
+        // Merge all URLs (existing + new stored files + new links)
+        const existingUrls = parentRequest.inspiration_url
+          ? parentRequest.inspiration_url.split(", ").filter(Boolean)
+          : [];
+        const mergedUrls = [...existingUrls, ...allReferenceUrls].filter(Boolean);
 
         await supabase
           .from("creative_requests")
           .update({
             thread_context: newContext,
-            ...(allUrls.length > 0 ? { inspiration_url: [parentRequest.inspiration_url, ...allUrls].filter(Boolean).join(", ") } : {}),
+            ...(mergedUrls.length > 0 ? { inspiration_url: mergedUrls.join(", ") } : {}),
           })
           .eq("id", parentRequest.id);
 
-        // Update Slack List item if we have the item ID
+        // Update Slack List item
         if (parentRequest.slack_list_item_id) {
-          const SLACK_BOT_TOKEN_VAL = Deno.env.get("POLYMARKET_SLACK_BOT_TOKEN");
-          if (SLACK_BOT_TOKEN_VAL) {
-            const slackHdrs = {
-              Authorization: `Bearer ${SLACK_BOT_TOKEN_VAL}`,
-              "Content-Type": "application/json; charset=utf-8",
-            };
-            const updatedDesc = [
-              parentRequest.description || "",
-              "\n\n---\nThread updates:",
-              newContext,
-              ...(allUrls.length > 0 ? [`\n🔗 ${allUrls.join("\n🔗 ")}`] : []),
-            ].join("\n");
+          const slackHdrs = {
+            Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+            "Content-Type": "application/json; charset=utf-8",
+          };
+          const updatedDesc = [
+            parentRequest.description || "",
+            "\n\n---\nThread updates:",
+            newContext,
+            ...(allReferenceUrls.length > 0 ? [`\n🔗 ${allReferenceUrls.join("\n🔗 ")}`] : []),
+          ].join("\n");
 
-            const updateResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
-              method: "POST",
-              headers: slackHdrs,
-              body: JSON.stringify({
-                list_id: SLACK_LIST_ID,
-                cells: [
-                  {
-                    row_id: parentRequest.slack_list_item_id,
-                    column_id: COL_DESCRIPTION,
-                    rich_text: toRichText(updatedDesc),
-                  },
-                ],
-              }),
+          const cells: any[] = [
+            {
+              row_id: parentRequest.slack_list_item_id,
+              column_id: COL_DESCRIPTION,
+              rich_text: toRichText(updatedDesc),
+            },
+          ];
+
+          // Also update reference column with all URLs
+          if (mergedUrls.length > 0) {
+            cells.push({
+              row_id: parentRequest.slack_list_item_id,
+              column_id: COL_REFERENCE,
+              rich_text: toRichText(mergedUrls.join("\n")),
             });
-            const updateData = await updateResp.json();
-            console.log("Slack List update:", updateData.ok ? "success" : JSON.stringify(updateData));
           }
+
+          const updateResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+            method: "POST",
+            headers: slackHdrs,
+            body: JSON.stringify({ list_id: SLACK_LIST_ID, cells }),
+          });
+          const updateData = await updateResp.json();
+          console.log("Slack List update:", updateData.ok ? "success" : JSON.stringify(updateData));
         }
 
         console.log(`Updated thread_context for request ${parentRequest.id}`);
@@ -250,9 +312,9 @@ A creative request is when someone asks for:
 
 NOT requests: status updates, general chat, reactions, questions about metrics/performance, approvals of existing work, scheduling discussions.
 
-Classify the message and extract details if it's a request.`;
+Classify the message and extract details if it's a request. Pay special attention to any deadline or due date mentioned (e.g. "by Friday", "EOD tomorrow", "Deadline: Noon Friday 3/13").`;
 
-    const userContent = `Message from <@${userId}> (ts=${messageTs}):\n${messageText}${fileUrls.length > 0 ? `\n\nAttached files: ${fileUrls.join(", ")}` : ""}`;
+    const userContent = `Message from <@${userId}> (ts=${messageTs}):\n${messageText}${slackFileUrls.length > 0 ? `\n\nAttached files: ${slackFileUrls.join(", ")}` : ""}`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -296,6 +358,10 @@ Classify the message and extract details if it's a request.`;
                     enum: ["High", "Normal"],
                     description: "High if urgent language used, otherwise Normal",
                   },
+                  deadline: {
+                    type: "string",
+                    description: "Deadline or due date if mentioned (e.g. 'Noon Friday 3/13', 'EOD tomorrow'). Null if not mentioned.",
+                  },
                 },
                 required: ["classification"],
                 additionalProperties: false,
@@ -325,12 +391,18 @@ Classify the message and extract details if it's a request.`;
       console.error("Failed to parse AI response:", e);
     }
 
-    console.log(`Classification: ${classification.classification}`);
+    console.log(`Classification: ${classification.classification}, deadline: ${classification.deadline || "none"}`);
 
     if (classification.classification !== "new_request") {
       return new Response(JSON.stringify({ ok: true, action: "not_a_request" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Build description with deadline if present
+    let fullDescription = classification.description || messageText;
+    if (classification.deadline) {
+      fullDescription += `\n\n📅 Deadline: ${classification.deadline}`;
     }
 
     // Insert new creative request
@@ -340,9 +412,10 @@ Classify the message and extract details if it's a request.`;
       platform: classification.platform || "Not specified",
       format: classification.format || "Not specified",
       priority: classification.priority || "Normal",
+      deadline: classification.deadline || null,
       message_ts: messageTs,
       source_channel: event.channel,
-      inspiration_url: fileUrls.length > 0 ? fileUrls.join(", ") : null,
+      inspiration_url: allReferenceUrls.length > 0 ? allReferenceUrls.join(", ") : null,
     });
 
     if (insertError) {
@@ -386,7 +459,8 @@ Classify the message and extract details if it's a request.`;
             `👤 Requester: <@${userId}>`,
             `📱 Platform: ${classification.platform || "Not specified"}`,
             `📐 Format: ${classification.format || "Not specified"}`,
-            fileUrls.length > 0 ? `🖼️ Reference image attached` : "",
+            classification.deadline ? `📅 Deadline: ${classification.deadline}` : "",
+            storedFileUrls.length > 0 ? `🖼️ Reference image attached` : "",
             `<${permalink}|View original message>`,
           ].filter(Boolean).join("\n"),
         },
@@ -412,12 +486,14 @@ Classify the message and extract details if it's a request.`;
 
     // Add to Slack List "PM: Creative Tracker"
     const title = generateTitle(classification.description || messageText);
+    const referenceText = allReferenceUrls.length > 0 ? allReferenceUrls.join("\n") : undefined;
     const slackListItemId = await addToSlackList(
       slackHeaders,
       title,
-      classification.description || messageText,
+      fullDescription,
       classification.platform || "Not specified",
       classification.format || "Not specified",
+      referenceText,
     );
 
     // Store the Slack List item ID back on the creative_requests row
