@@ -127,7 +127,7 @@ async function pushToSlackList(
   if (fields.inspirationUrls.length > 0) {
     initialFields.push({
       column_id: COL.INSPIRATION,
-      rich_text: toRichText(fields.inspirationUrls.join("\n")),
+      rich_text: toRichTextLinks(fields.inspirationUrls),
     });
   }
 
