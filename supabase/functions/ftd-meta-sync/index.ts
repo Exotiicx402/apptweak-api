@@ -6,8 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Campaign name fragment to identify HOURS campaigns
-const FTD_CAMPAIGN_FRAGMENT = "HOURS";
+// Campaign name must contain BOTH fragments to be included
+// This ensures only "Website Adds Payment Info" campaigns are tracked
+const CAMPAIGN_REQUIRED_FRAGMENTS = ["HOURS", "FTD"];
 
 // Primary: Meta standard "Add Payment Info" event
 const FTD_ACTION_TYPE = "add_payment_info";
