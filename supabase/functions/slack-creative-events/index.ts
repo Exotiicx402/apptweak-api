@@ -46,7 +46,7 @@ serve(async (req) => {
       event.subtype === "message_changed" ||
       event.subtype === "message_deleted" ||
       event.subtype === "bot_message" ||
-      event.channel !== SOURCE_CHANNEL
+      !SOURCE_CHANNELS.includes(event.channel)
     ) {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
