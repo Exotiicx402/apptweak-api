@@ -33,6 +33,21 @@ const toRichText = (text: string) => [
   },
 ];
 
+// Build rich_text with clickable link elements for Slack Lists
+const toRichTextLinks = (urls: string[]) => {
+  const elements: any[] = [];
+  urls.forEach((url, i) => {
+    if (i > 0) elements.push({ type: "text", text: "\n" });
+    elements.push({ type: "link", url, text: url });
+  });
+  return [
+    {
+      type: "rich_text",
+      elements: [{ type: "rich_text_section", elements }],
+    },
+  ];
+};
+
 const generateTitle = (description: string): string => {
   if (!description) return "Creative Request";
   const firstLine = description.split("\n")[0].trim();
