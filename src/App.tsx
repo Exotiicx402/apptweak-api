@@ -16,6 +16,7 @@ import CompetitorWatchlist from "./pages/CompetitorWatchlist";
 import FTDReporting from "./pages/FTDReporting";
 import HoursCreatives from "./pages/HoursCreatives";
 import CreativeScanner from "./pages/CreativeScanner";
+import CreativeBoardView from "./pages/CreativeBoardView";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/ftd-reporting" element={<FTDReporting />} />
           <Route path="/hours-creatives" element={<HoursCreatives />} />
           <Route path="/creative-scanner" element={<CreativeScanner />} />
+          <Route path="/creative-board" element={<CreativeBoardView />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
