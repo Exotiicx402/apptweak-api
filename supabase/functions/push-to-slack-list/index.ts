@@ -83,7 +83,7 @@ serve(async (req) => {
     let listData = await listResp.json();
     let fallbackUsed = false;
 
-    if (!listData.ok && listData.error === "invalid_arguments") {
+    if (!listData.ok) {
       fallbackUsed = true;
       console.warn("Falling back to minimal list item create", listData);
 

@@ -240,15 +240,10 @@ For each request found, extract:
         }];
 
         for (const r of newRequests) {
-          const userIdClean = (r.requester || "").replace(/<@|>/g, "");
           const initialFields = [
-            { column_id: "Col09RPRVKYUC", rich_text: richText((r.description || "Creative request").slice(0, 80)) },
             { column_id: "Col09R4RW383Z", rich_text: richText(r.description || "") },
             { column_id: "Col09RJ7Z6V70", rich_text: richText(r.platform || "Not specified") },
             { column_id: "Col09RZ6VGHB3", rich_text: richText(r.format || "Not specified") },
-            { column_id: "Col09RL9W6L5Q", rich_text: richText(r.priority || "Normal") },
-            { column_id: "Col09SEJ8H16C", timestamp: [Math.floor(Date.now() / 1000)] },
-            ...(userIdClean ? [{ column_id: "Col09RGRF5DHB", user: [userIdClean] }] : []),
           ];
 
           try {
