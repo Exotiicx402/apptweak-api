@@ -20,6 +20,7 @@ import {
 
 export interface CreativeRequest {
   id: string;
+  name: string | null;
   description: string;
   raw_message?: string | null;
   requester: string | null;
