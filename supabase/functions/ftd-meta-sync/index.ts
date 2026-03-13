@@ -97,7 +97,7 @@ async function fetchMetaFTDInsights(
   params.set("limit", "500");
 
   const baseUrl = `https://graph.facebook.com/v22.0/${adAccountId}/insights`;
-  console.log(`Fetching Meta FTD ad-level data: ${startDate} to ${endDate}`);
+  console.log(`Fetching Meta HOURS campaign data: ${startDate} to ${endDate}`);
 
   const response = await fetch(`${baseUrl}?${params.toString()}`);
   if (!response.ok) {
