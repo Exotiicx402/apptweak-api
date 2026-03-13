@@ -201,6 +201,7 @@ export type Database = {
           id: string
           inspiration_url: string | null
           message_ts: string | null
+          name: string | null
           platform: string | null
           priority: string | null
           raw_message: string | null
@@ -219,6 +220,7 @@ export type Database = {
           id?: string
           inspiration_url?: string | null
           message_ts?: string | null
+          name?: string | null
           platform?: string | null
           priority?: string | null
           raw_message?: string | null
@@ -237,6 +239,7 @@ export type Database = {
           id?: string
           inspiration_url?: string | null
           message_ts?: string | null
+          name?: string | null
           platform?: string | null
           priority?: string | null
           raw_message?: string | null
