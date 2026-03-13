@@ -24,14 +24,11 @@ serve(async (req) => {
   });
   const data = await resp.json();
 
-  // Extract column info from the response
+  // Return full first item to see column structure
   return new Response(JSON.stringify({
     ok: data.ok,
-    columns: data.columns || null,
-    column_order: data.column_order || null,
-    // If items have fields, show the first item's field keys
-    sample_item_fields: data.items?.[0]?.fields ? Object.keys(data.items[0].fields) : null,
-    raw_keys: data ? Object.keys(data) : null,
+    first_item: data.items?.[0] || null,
+    response_metadata: data.response_metadata || null,
     error: data.error || null,
   }, null, 2), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
