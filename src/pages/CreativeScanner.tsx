@@ -185,7 +185,7 @@ const CreativeScanner = () => {
                 )}
               </Button>
               <p className="text-sm text-muted-foreground">
-                Scans the channel for new messages and uses AI to identify creative requests. Results are posted to <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">#ad-review-pipeline</code>.
+                Scans the channel for new messages and uses AI to identify creative requests. Results are posted to <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">#pm-internal-creative-notifications</code>.
               </p>
             </div>
 
