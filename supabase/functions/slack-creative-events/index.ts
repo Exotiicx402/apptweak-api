@@ -273,9 +273,15 @@ serve(async (req) => {
       }
     }
 
-    // Extract inline links from message text
-    const linkMatches = messageText.match(/https?:\/\/[^\s>]+/g) || [];
-    const allReferenceUrls = [...storedFileUrls, ...linkMatches];
+    // Extract inline links from message text — Slack formats links as <URL|display>
+    const rawLinks = messageText.match(/<(https?:\/\/[^|>]+)(?:\|[^>]*)?>/g) || [];
+    const parsedLinks = rawLinks.map((m: string) => {
+      const match = m.match(/<(https?:\/\/[^|>]+)/);
+      return match ? match[1] : null;
+    }).filter(Boolean) as string[];
+    // Also grab any bare URLs not wrapped in angle brackets
+    const bareLinks = messageText.replace(/<https?:\/\/[^>]+>/g, "").match(/https?:\/\/[^\s]+/g) || [];
+    const allReferenceUrls = [...new Set([...storedFileUrls, ...parsedLinks, ...bareLinks])];
 
     // Step 2: Dedup check
     const { data: existing } = await supabase

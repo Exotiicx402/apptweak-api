@@ -67,7 +67,9 @@ function parseInspirationUrls(url: string | null): string[] {
 }
 
 function isImageUrl(url: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg|bmp)(\?|$)/i.test(url);
+  // Match common image extensions OR Supabase storage URLs in creative-assets/slack-attachments
+  return /\.(png|jpe?g|gif|webp|svg|bmp)(\?|$)/i.test(url) ||
+    /\/storage\/v1\/object\/public\/creative-assets\/slack-attachments\//i.test(url);
 }
 
 function getThreadReplyCount(threadContext: string | null): number {
@@ -132,6 +134,9 @@ export default function SlackMessageCard({ req, actions, className }: SlackMessa
                   alt={`Attachment ${i + 1}`}
                   className="h-16 w-auto object-cover"
                   loading="lazy"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
                 />
               </button>
             ))}
