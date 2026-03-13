@@ -260,7 +260,7 @@ Classify the message and extract details if it's a request.`;
         elements: [
           {
             type: "mrkdwn",
-            text: `From <#${SOURCE_CHANNEL}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
+            text: `From <#${event.channel}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
           },
         ],
       },
