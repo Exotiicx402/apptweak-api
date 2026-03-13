@@ -511,6 +511,7 @@ serve(async (req) => {
       inspirationUrls: allReferenceUrls,
       submitterUserId: userId,
       deadline: classification.deadline,
+      permalink,
     });
 
     // Step 8: Store Slack List item ID
