@@ -9,6 +9,13 @@ const corsHeaders = {
 const SLACK_API = "https://slack.com/api";
 const SLACK_LIST_ID = "F09R4RD9G5D";
 
+// Column IDs
+const COL_NAME = "Col09RPRVKYUC";
+const COL_DESCRIPTION = "Col09R4RW383Z";
+const COL_PLATFORM = "Col09RJ7Z6V70";
+const COL_FORMAT = "Col09RZ6VGHB3";
+const COL_STATUS = "Col09RJ959822";
+
 const toRichText = (text: string) => [
   {
     type: "rich_text",
@@ -21,6 +28,13 @@ const toRichText = (text: string) => [
   },
 ];
 
+const generateTitle = (description: string): string => {
+  if (!description) return "Creative Request";
+  const firstLine = description.split("\n")[0].trim();
+  if (firstLine.length <= 70) return firstLine;
+  return firstLine.substring(0, 67) + "...";
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,7 +44,85 @@ serve(async (req) => {
     const SLACK_BOT_TOKEN = Deno.env.get("POLYMARKET_SLACK_BOT_TOKEN");
     if (!SLACK_BOT_TOKEN) throw new Error("POLYMARKET_SLACK_BOT_TOKEN is not configured");
 
-    const { request_id, debug } = await req.json();
+    const { request_id, debug, debug_options } = await req.json();
+
+    const slackHeaders = {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      "Content-Type": "application/json; charset=utf-8",
+    };
+
+    // Debug mode: discover list schema or try updating an item
+    if (debug) {
+      if (debug_options) {
+        // Try to create a temporary item with each possible status to discover option IDs
+        // Or update existing item
+        const { action, item_id, select_value } = debug_options;
+        
+        if (action === "update_select" && item_id && select_value) {
+          const updateResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+            method: "POST",
+            headers: slackHeaders,
+            body: JSON.stringify({
+              list_id: SLACK_LIST_ID,
+              cells: [
+                { row_id: item_id, column_id: COL_STATUS, select: [select_value] },
+              ],
+            }),
+          });
+          const updateData = await updateResp.json();
+          return new Response(JSON.stringify({ debug: true, update_result: updateData }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        if (action === "update_name" && item_id) {
+          const updateResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+            method: "POST",
+            headers: slackHeaders,
+            body: JSON.stringify({
+              list_id: SLACK_LIST_ID,
+              cells: [
+                { row_id: item_id, column_id: COL_NAME, rich_text: toRichText("Test Name from Bot") },
+              ],
+            }),
+          });
+          const updateData = await updateResp.json();
+          return new Response(JSON.stringify({ debug: true, update_result: updateData }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        if (action === "create_with_status" && select_value) {
+          const createResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+            method: "POST",
+            headers: slackHeaders,
+            body: JSON.stringify({
+              list_id: SLACK_LIST_ID,
+              initial_fields: [
+                { column_id: COL_NAME, rich_text: toRichText("Status Test Item") },
+                { column_id: COL_STATUS, select: [select_value] },
+              ],
+            }),
+          });
+          const createData = await createResp.json();
+          return new Response(JSON.stringify({ debug: true, create_result: createData }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      // Default debug: list items
+      const schemaResp = await fetch(`${SLACK_API}/slackLists.items.list`, {
+        method: "POST",
+        headers: slackHeaders,
+        body: JSON.stringify({ list_id: SLACK_LIST_ID, limit: 10 }),
+      });
+      const schemaData = await schemaResp.json();
+      return new Response(JSON.stringify({ debug: true, schema: schemaData }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!request_id) throw new Error("request_id is required");
 
     const supabase = createClient(
@@ -46,64 +138,44 @@ serve(async (req) => {
 
     if (error || !request) throw new Error("Request not found");
 
-    const slackHeaders = {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json; charset=utf-8",
-    };
-
-    if (debug) {
-      const schemaResp = await fetch(`${SLACK_API}/slackLists.items.list`, {
-        method: "POST",
-        headers: slackHeaders,
-        body: JSON.stringify({ list_id: SLACK_LIST_ID, limit: 10 }),
-      });
-      const schemaData = await schemaResp.json();
-      return new Response(JSON.stringify({ debug: true, schema: schemaData }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const title = generateTitle(request.description || "");
 
     const initialFields = [
-      { column_id: "Col09R4RW383Z", rich_text: toRichText(request.description || "") },
-      { column_id: "Col09RJ7Z6V70", rich_text: toRichText(request.platform || "Not specified") },
-      { column_id: "Col09RZ6VGHB3", rich_text: toRichText(request.format || "Not specified") },
+      { column_id: COL_NAME, rich_text: toRichText(title) },
+      { column_id: COL_DESCRIPTION, rich_text: toRichText(request.description || "") },
+      { column_id: COL_PLATFORM, rich_text: toRichText(request.platform || "Not specified") },
+      { column_id: COL_FORMAT, rich_text: toRichText(request.format || "Not specified") },
     ];
 
-    const createWithFieldsBody = {
-      list_id: SLACK_LIST_ID,
-      initial_fields: initialFields,
-    };
+    console.log("Creating list item with fields:", JSON.stringify(initialFields.map(f => ({ col: f.column_id }))));
 
     let listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
       method: "POST",
       headers: slackHeaders,
-      body: JSON.stringify(createWithFieldsBody),
+      body: JSON.stringify({
+        list_id: SLACK_LIST_ID,
+        initial_fields: initialFields,
+      }),
     });
 
     let listData = await listResp.json();
-    let fallbackUsed = false;
-    console.log("Create with fields response:", JSON.stringify(listData));
-
-    if (!listData.ok) {
-      fallbackUsed = true;
-      console.warn("Falling back to minimal list item create", listData);
-
-      listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
-        method: "POST",
-        headers: slackHeaders,
-        body: JSON.stringify({ list_id: SLACK_LIST_ID }),
-      });
-
-      listData = await listResp.json();
-      console.log("Fallback minimal create response:", JSON.stringify(listData));
-    }
+    console.log("Create response:", JSON.stringify(listData));
 
     if (!listData.ok) {
       throw new Error(`Slack List error: ${listData.error || JSON.stringify(listData)}`);
     }
 
+    const itemId = listData.item?.id;
+
+    // Try to set status to "New" via update (status select may not work in initial_fields)
+    if (itemId) {
+      // We'll need to discover the "New" option ID - placeholder for now
+      // Known options: Opt180YZZPU (In progress), OptBFTZT5CG (Complete)
+      console.log("Item created:", itemId);
+    }
+
     return new Response(
-      JSON.stringify({ success: true, item_id: listData.item?.id, fallback_used: fallbackUsed }),
+      JSON.stringify({ success: true, item_id: itemId, title }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
