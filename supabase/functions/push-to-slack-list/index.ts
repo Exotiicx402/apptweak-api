@@ -81,9 +81,8 @@ serve(async (req) => {
             headers: slackHeaders,
             body: JSON.stringify({
               list_id: SLACK_LIST_ID,
-              row_id: item_id,
               cells: [
-                { column_id: COL_NAME, rich_text: toRichText("Test Name from Bot") },
+                { row_id: item_id, column_id: COL_NAME, rich_text: toRichText("Test Name from Bot") },
               ],
             }),
           });
