@@ -1,0 +1,1 @@
+ALTER TABLE public.creative_requests ADD COLUMN slack_list_item_id text;

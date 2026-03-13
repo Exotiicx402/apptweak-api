@@ -173,7 +173,7 @@ serve(async (req) => {
     if (threadTs && threadTs !== messageTs) {
       const { data: parentRequest } = await supabase
         .from("creative_requests")
-        .select("id, thread_context")
+        .select("id, thread_context, slack_list_item_id, description, inspiration_url")
         .eq("message_ts", threadTs)
         .maybeSingle();
 
@@ -183,13 +183,51 @@ serve(async (req) => {
           ? `${existingContext}\n---\n<@${userId}>: ${messageText}`
           : `<@${userId}>: ${messageText}`;
 
+        // Extract URLs/links from message text
+        const linkMatches = messageText.match(/https?:\/\/[^\s>]+/g) || [];
+        const allUrls = [...fileUrls, ...linkMatches];
+
         await supabase
           .from("creative_requests")
           .update({
             thread_context: newContext,
-            ...(fileUrls.length > 0 ? { inspiration_url: fileUrls.join(", ") } : {}),
+            ...(allUrls.length > 0 ? { inspiration_url: [parentRequest.inspiration_url, ...allUrls].filter(Boolean).join(", ") } : {}),
           })
           .eq("id", parentRequest.id);
+
+        // Update Slack List item if we have the item ID
+        if (parentRequest.slack_list_item_id) {
+          const SLACK_BOT_TOKEN_VAL = Deno.env.get("POLYMARKET_SLACK_BOT_TOKEN");
+          if (SLACK_BOT_TOKEN_VAL) {
+            const slackHdrs = {
+              Authorization: `Bearer ${SLACK_BOT_TOKEN_VAL}`,
+              "Content-Type": "application/json; charset=utf-8",
+            };
+            const updatedDesc = [
+              parentRequest.description || "",
+              "\n\n---\nThread updates:",
+              newContext,
+              ...(allUrls.length > 0 ? [`\n🔗 ${allUrls.join("\n🔗 ")}`] : []),
+            ].join("\n");
+
+            const updateResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+              method: "POST",
+              headers: slackHdrs,
+              body: JSON.stringify({
+                list_id: SLACK_LIST_ID,
+                cells: [
+                  {
+                    row_id: parentRequest.slack_list_item_id,
+                    column_id: COL_DESCRIPTION,
+                    rich_text: toRichText(updatedDesc),
+                  },
+                ],
+              }),
+            });
+            const updateData = await updateResp.json();
+            console.log("Slack List update:", updateData.ok ? "success" : JSON.stringify(updateData));
+          }
+        }
 
         console.log(`Updated thread_context for request ${parentRequest.id}`);
         return new Response(JSON.stringify({ ok: true, action: "comment_on_existing" }), {
@@ -373,13 +411,21 @@ Classify the message and extract details if it's a request.`;
 
     // Add to Slack List "PM: Creative Tracker"
     const title = generateTitle(classification.description || messageText);
-    await addToSlackList(
+    const slackListItemId = await addToSlackList(
       slackHeaders,
       title,
       classification.description || messageText,
       classification.platform || "Not specified",
       classification.format || "Not specified",
     );
+
+    // Store the Slack List item ID back on the creative_requests row
+    if (slackListItemId) {
+      await supabase
+        .from("creative_requests")
+        .update({ slack_list_item_id: slackListItemId })
+        .eq("message_ts", messageTs);
+    }
 
     return new Response(
       JSON.stringify({ ok: true, action: "new_request", description: classification.description }),
