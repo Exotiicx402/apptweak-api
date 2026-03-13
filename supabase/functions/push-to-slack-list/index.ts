@@ -137,6 +137,14 @@ serve(async (req) => {
         console.log("Status update:", updateData.ok ? "success" : JSON.stringify(updateData));
       }
 
+      // Store the Slack List item ID back on the creative_requests row
+      if (itemId) {
+        await supabase
+          .from("creative_requests")
+          .update({ slack_list_item_id: itemId })
+          .eq("id", request_id);
+      }
+
       return new Response(
         JSON.stringify({ success: true, item_id: itemId, title, fallback: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }

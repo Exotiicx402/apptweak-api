@@ -411,13 +411,21 @@ Classify the message and extract details if it's a request.`;
 
     // Add to Slack List "PM: Creative Tracker"
     const title = generateTitle(classification.description || messageText);
-    await addToSlackList(
+    const slackListItemId = await addToSlackList(
       slackHeaders,
       title,
       classification.description || messageText,
       classification.platform || "Not specified",
       classification.format || "Not specified",
     );
+
+    // Store the Slack List item ID back on the creative_requests row
+    if (slackListItemId) {
+      await supabase
+        .from("creative_requests")
+        .update({ slack_list_item_id: slackListItemId })
+        .eq("message_ts", messageTs);
+    }
 
     return new Response(
       JSON.stringify({ ok: true, action: "new_request", description: classification.description }),

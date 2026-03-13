@@ -250,10 +250,16 @@ For each request found, extract:
           message_ts: r.message_ts,
           source_channel: tsToChannel.get(r.message_ts) || SOURCE_CHANNELS[0],
         }));
-        const { error: insertError } = await supabase.from("creative_requests").insert(rows);
+        const { error: insertError, data: insertedRows } = await supabase
+          .from("creative_requests")
+          .insert(rows)
+          .select("id, message_ts");
         if (insertError) {
           console.error("Failed to insert creative_requests:", insertError);
         }
+
+        // Build a map from message_ts to DB id for storing slack_list_item_id
+        const tsToDbId = new Map((insertedRows || []).map((r: any) => [r.message_ts, r.id]));
 
         // Add new requests to Slack List "PM: Creative Tracker"
         for (const r of newRequests) {
@@ -267,6 +273,8 @@ For each request found, extract:
           ];
 
           try {
+            let slackListItemId: string | null = null;
+
             const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
               method: "POST",
               headers: slackHeaders,
@@ -274,7 +282,6 @@ For each request found, extract:
             });
             const listData = await listResp.json();
             if (!listData.ok) {
-              // Fallback: create without status, then update
               console.warn("Create with status failed:", listData.error);
               const fallbackResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
                 method: "POST",
@@ -286,20 +293,33 @@ For each request found, extract:
               });
               const fallbackData = await fallbackResp.json();
               if (fallbackData.ok && fallbackData.item?.id) {
+                slackListItemId = fallbackData.item.id;
                 await fetch(`${SLACK_API}/slackLists.items.update`, {
                   method: "POST",
                   headers: slackHeaders,
                   body: JSON.stringify({
                     list_id: SLACK_LIST_ID,
-                    cells: [{ row_id: fallbackData.item.id, column_id: COL_STATUS, select: [OPT_NEW] }],
+                    cells: [{ row_id: slackListItemId, column_id: COL_STATUS, select: [OPT_NEW] }],
                   }),
                 });
-                console.log("Added to Slack List (fallback):", fallbackData.item.id, "title:", title);
+                console.log("Added to Slack List (fallback):", slackListItemId, "title:", title);
               } else {
                 console.error("Fallback also failed:", fallbackData);
               }
             } else {
-              console.log("Added to Slack List:", listData.item?.id, "title:", title);
+              slackListItemId = listData.item?.id;
+              console.log("Added to Slack List:", slackListItemId, "title:", title);
+            }
+
+            // Store slack_list_item_id back on the DB row
+            if (slackListItemId) {
+              const dbId = tsToDbId.get(r.message_ts);
+              if (dbId) {
+                await supabase
+                  .from("creative_requests")
+                  .update({ slack_list_item_id: slackListItemId })
+                  .eq("id", dbId);
+              }
             }
           } catch (e) {
             console.error("Error adding to Slack List:", e);
