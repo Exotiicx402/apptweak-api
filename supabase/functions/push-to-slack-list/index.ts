@@ -55,7 +55,7 @@ serve(async (req) => {
       const schemaResp = await fetch(`${SLACK_API}/slackLists.items.list`, {
         method: "POST",
         headers: slackHeaders,
-        body: JSON.stringify({ list_id: SLACK_LIST_ID, limit: 1 }),
+        body: JSON.stringify({ list_id: SLACK_LIST_ID, limit: 10 }),
       });
       const schemaData = await schemaResp.json();
       return new Response(JSON.stringify({ debug: true, schema: schemaData }), {
