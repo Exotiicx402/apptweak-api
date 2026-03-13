@@ -473,10 +473,12 @@ serve(async (req) => {
     });
 
     // Step 7: Push to Slack List with ALL extracted fields
-    const title = generateTitle(classification.description || messageText);
+    // Name = AI short title, Description = full original message
+    const title = classification.name || generateTitle(classification.description || messageText);
+    const fullDescription = messageText;
     const slackListItemId = await pushToSlackList(slackHeaders, {
       title,
-      description: classification.description || messageText,
+      description: fullDescription,
       platform: classification.platform || "Not specified",
       format: classification.format || "Not specified",
       priority: classification.priority || "Normal",
