@@ -196,6 +196,7 @@ export type Database = {
           created_at: string
           deadline: string | null
           description: string
+          figma_url: string | null
           format: string | null
           id: string
           inspiration_url: string | null
@@ -212,6 +213,7 @@ export type Database = {
           created_at?: string
           deadline?: string | null
           description: string
+          figma_url?: string | null
           format?: string | null
           id?: string
           inspiration_url?: string | null
@@ -228,6 +230,7 @@ export type Database = {
           created_at?: string
           deadline?: string | null
           description?: string
+          figma_url?: string | null
           format?: string | null
           id?: string
           inspiration_url?: string | null

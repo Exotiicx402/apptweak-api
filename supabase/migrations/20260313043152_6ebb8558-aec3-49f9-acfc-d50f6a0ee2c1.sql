@@ -1,0 +1,1 @@
+ALTER TABLE public.creative_requests ADD COLUMN figma_url text;
