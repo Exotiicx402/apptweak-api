@@ -134,6 +134,9 @@ export default function SlackMessageCard({ req, actions, className }: SlackMessa
                   alt={`Attachment ${i + 1}`}
                   className="h-16 w-auto object-cover"
                   loading="lazy"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
                 />
               </button>
             ))}
