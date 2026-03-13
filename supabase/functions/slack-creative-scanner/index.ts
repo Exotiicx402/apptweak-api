@@ -11,6 +11,28 @@ const SOURCE_CHANNELS = ["C0AL5KYSXQT"];
 const TARGET_CHANNEL = "C0ALEBYFJNQ";
 const SLACK_LIST_ID = "F09R4RD9G5D";
 
+// Column IDs for PM: Creative Tracker
+const COL_NAME = "Col09RPRVKYUC";
+const COL_DESCRIPTION = "Col09R4RW383Z";
+const COL_PLATFORM = "Col09RJ7Z6V70";
+const COL_FORMAT = "Col09RZ6VGHB3";
+const COL_STATUS = "Col09RJ959822";
+const OPT_NEW = "Opt1IOIRNGD";
+
+const toRichText = (text: string) => [
+  {
+    type: "rich_text",
+    elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
+  },
+];
+
+const generateTitle = (description: string): string => {
+  if (!description) return "Creative Request";
+  const firstLine = description.split("\n")[0].trim();
+  if (firstLine.length <= 70) return firstLine;
+  return firstLine.substring(0, 67) + "...";
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
