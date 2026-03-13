@@ -128,7 +128,7 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <MetricKpiCard
-                title="Results"
+                title="Payment Info Adds"
                 value={totals?.ftd_count ?? 0}
                 currentValue={totals?.ftd_count ?? 0}
                 previousValue={0}
