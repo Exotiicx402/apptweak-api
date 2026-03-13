@@ -9,6 +9,7 @@ interface DownloadDataPoint {
 
 interface AppsFlyerResponse {
   downloads: DownloadDataPoint[];
+  disabled?: boolean;
   error?: string;
 }
 
