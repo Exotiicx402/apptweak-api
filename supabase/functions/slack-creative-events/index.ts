@@ -535,6 +535,7 @@ A creative request is when someone asks for:
 NOT requests: status updates, general chat, reactions, questions about metrics/performance, approvals of existing work.
 
 Extract EVERY piece of information you can find:
+- Name: a short, punchy title for this request (max 60 chars). Think ticket title, e.g. "March Madness Email Header" or "TikTok 9:16 Promo Video"
 - Description: comprehensive summary of what's being requested
 - Platform: the target platform or channel (Meta, TikTok, Email, Display, Esports site, etc.)
 - Format: ALL dimensions/sizes/formats mentioned (e.g. "1000x347", "9:16 and 1:1", "300x250 & 320x250")
