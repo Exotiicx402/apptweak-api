@@ -48,6 +48,30 @@ const toRichTextLinks = (urls: string[]) => {
   ];
 };
 
+// Build rich_text description with clickable source link
+const toRichTextDescription = (description: string, permalink?: string, deadline?: string) => {
+  const elements: any[] = [];
+  
+  if (permalink) {
+    elements.push({ type: "text", text: "🔗 Source: " });
+    elements.push({ type: "link", url: permalink, text: permalink });
+    elements.push({ type: "text", text: "\n\n" });
+  }
+  
+  elements.push({ type: "text", text: description });
+  
+  if (deadline) {
+    elements.push({ type: "text", text: `\n\n📅 Deadline: ${deadline}` });
+  }
+  
+  return [
+    {
+      type: "rich_text",
+      elements: [{ type: "rich_text_section", elements }],
+    },
+  ];
+};
+
 const generateTitle = (description: string): string => {
   if (!description) return "Creative Request";
   const firstLine = description.split("\n")[0].trim();
