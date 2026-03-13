@@ -195,7 +195,7 @@ async function updateSlackListItem(
     cells.push({
       row_id: itemId,
       column_id: COL.INSPIRATION,
-      rich_text: toRichText(allReferenceUrls.join("\n")),
+      rich_text: toRichTextLinks(allReferenceUrls),
     });
   }
 
