@@ -243,7 +243,7 @@ Classify the message and extract details if it's a request.`;
       "Content-Type": "application/json; charset=utf-8",
     };
 
-    const permalink = `https://slack.com/archives/${SOURCE_CHANNEL}/p${messageTs.replace(".", "")}`;
+    const permalink = `https://slack.com/archives/${event.channel}/p${messageTs.replace(".", "")}`;
     const priorityEmoji = classification.priority === "High" ? "🔴" : "🟡";
 
     const blocks = [
