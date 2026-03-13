@@ -82,7 +82,7 @@ async function fetchAllAds(
 
       const installs = extractActionValue(row.actions, "mobile_app_install");
       const signUps = extractActionValue(row.actions, "complete_registration");
-      const ftds = extractActionValue(row.actions, "offsite_conversion.fb_pixel_custom.FirstTimeDeposit");
+      const ftds = extractActionValue(row.actions, "add_payment_info");
 
       allAds.push({
         ad_id: row.ad_id || "",
