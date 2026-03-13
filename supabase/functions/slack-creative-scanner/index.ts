@@ -9,6 +9,7 @@ const corsHeaders = {
 const SLACK_API = "https://slack.com/api";
 const SOURCE_CHANNELS = ["C0AL5KYSXQT"];
 const TARGET_CHANNEL = "C0ALEBYFJNQ";
+const SLACK_LIST_ID = "F09R4RD9G5D";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
