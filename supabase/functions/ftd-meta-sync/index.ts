@@ -172,9 +172,9 @@ serve(async (req) => {
     // Log FTD extraction for verification
     rawRows.forEach((row: any) => {
       const ftdConv = (row.conversions || []).find((a: any) => 
-        typeof a.action_type === "string" && a.action_type.toLowerCase().includes("firsttimedeposit")
+        typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("add_payment_info") || a.action_type.toLowerCase().includes("firsttimedeposit"))
       );
-      console.log(`Campaign: ${row.campaign_name} | Date: ${row.date_start} | FTD conversions: ${JSON.stringify(ftdConv || 'none')}`);
+      console.log(`Campaign: ${row.campaign_name} | Date: ${row.date_start} | FTD/AddPaymentInfo conversions: ${JSON.stringify(ftdConv || 'none')}`);
     });
 
     // Transform rows (campaign-level)
