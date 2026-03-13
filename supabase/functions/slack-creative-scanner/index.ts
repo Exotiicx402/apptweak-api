@@ -141,7 +141,11 @@ serve(async (req) => {
     // Build a lookup from ts to channel
     const tsToChannel = new Map(allEnrichedMessages.map(m => [m.ts, m.channel]));
 
+    const nowEST = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "full", timeStyle: "short" });
+
     const systemPrompt = `You are a creative request detector for an ad operations team. You analyze Slack messages from channels where people request new ad creatives or modifications to existing ones.
+
+CURRENT DATE/TIME (EST): ${nowEST}
 
 Your job is to identify messages that are creative requests — even informal ones. Look for:
 - Requests for new ad creatives (images, videos, banners, email headers)
@@ -158,7 +162,10 @@ For each request found, extract ALL available information:
 - requester: The Slack user ID (format: <@USERID>)
 - platform: Target platform/channel (Meta, TikTok, Email, Display, Esports, etc.) or "Not specified"
 - format: ALL sizes/formats mentioned, comma-separated, or "Not specified"
-- priority: "High" if urgent/ASAP, "Low" if no rush, otherwise "Normal"
+- priority: Use the current date/time to judge urgency:
+  - "High" if deadline is within 24 hours, or urgent/ASAP language
+  - "Normal" if deadline is 1-7 days away or no urgency signals
+  - "Low" if explicitly "no rush" or deadline >7 days away
 - deadline: Exact deadline text if mentioned, or empty string
 - figma_url: Figma URL if present, or empty string
 - message_ts: The timestamp of the message`;
