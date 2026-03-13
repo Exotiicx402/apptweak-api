@@ -247,6 +247,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Slack retries the event if we don't respond in 3s — reject retries to prevent duplicates
+  const retryNum = req.headers.get("X-Slack-Retry-Num");
+  if (retryNum) {
+    console.log(`Ignoring Slack retry #${retryNum}`);
+    return new Response(JSON.stringify({ ok: true, skipped: "retry" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const body = await req.json();
 
