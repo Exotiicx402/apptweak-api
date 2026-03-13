@@ -16,6 +16,7 @@ import CompetitorWatchlist from "./pages/CompetitorWatchlist";
 import FTDReporting from "./pages/FTDReporting";
 import HoursCreatives from "./pages/HoursCreatives";
 import CreativeScanner from "./pages/CreativeScanner";
+import CreativeBoardView from "./pages/CreativeBoardView";
 const queryClient = new QueryClient();
 
 const App = () => (
