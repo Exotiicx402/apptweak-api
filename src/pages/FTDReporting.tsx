@@ -61,9 +61,9 @@ export default function FTDReporting() {
             <div className="flex items-center gap-3">
               <img src={metaLogo} alt="Meta" className="w-6 h-6 object-contain" />
               <div>
-                <h1 className="text-2xl font-bold text-foreground">FTD Campaigns</h1>
+                <h1 className="text-2xl font-bold text-foreground">HOURS Campaigns</h1>
                 <p className="text-xs text-muted-foreground font-mono">
-                  HOURS · PROSPECTING · INTERNATIONAL · WEB · FTD
+                  Website Adds Payment Info · All HOURS Campaigns
                 </p>
               </div>
             </div>
