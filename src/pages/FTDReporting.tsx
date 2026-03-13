@@ -107,7 +107,7 @@ export default function FTDReporting() {
         {/* Empty state */}
         {!isLoading && !data && (
           <div className="text-center py-16 text-muted-foreground">
-            <p className="text-lg mb-2">Select a date range and click Apply to view FTD metrics</p>
+            <p className="text-lg mb-2">Select a date range and click Apply to view HOURS campaign metrics</p>
             <p className="text-sm">
               If no data appears, click <strong>Sync from Meta</strong> first to pull campaign data.
             </p>
