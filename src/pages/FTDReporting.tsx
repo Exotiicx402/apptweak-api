@@ -251,7 +251,7 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <TimeSeriesChart
-                title="FTDs Over Time"
+                title="Results Over Time"
                 data={(data?.daily ?? []).map((d) => ({ date: d.date, value: d.ftd_count }))}
                 format="number"
                 color="hsl(142, 76%, 36%)"
