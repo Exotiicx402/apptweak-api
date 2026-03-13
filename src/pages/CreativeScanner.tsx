@@ -223,7 +223,7 @@ const CreativeScanner = () => {
                 { step: "1", title: "Read Messages", desc: "Fetches new messages & threads from #hours-creative-polymarket" },
                 { step: "2", title: "AI Classification", desc: "Gemini Flash analyzes each message to detect creative requests" },
                 { step: "3", title: "Extract Details", desc: "Pulls out platform, format, priority, and description" },
-                { step: "4", title: "Notify Team", desc: "Posts a formatted summary to #ad-review-pipeline" },
+                { step: "4", title: "Notify Team", desc: "Posts a formatted summary to #pm-internal-creative-notifications" },
               ].map((item) => (
                 <div key={item.step} className="flex flex-col items-center text-center p-4 rounded-lg bg-muted/50">
                   <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold mb-3">
