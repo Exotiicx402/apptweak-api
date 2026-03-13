@@ -114,28 +114,20 @@ async function pushToSlackList(
     fullDesc += `\n\n📅 Deadline: ${fields.deadline}`;
   }
 
+  // Don't include status or user columns on create — they cause "uneditable_column" errors
+  // We'll patch them via update after creation
   const initialFields: any[] = [
     { column_id: COL.NAME, rich_text: toRichText(fields.title) },
     { column_id: COL.DESCRIPTION, rich_text: toRichText(fullDesc) },
     { column_id: COL.PLATFORM, rich_text: toRichText(fields.platform) },
     { column_id: COL.FORMAT, rich_text: toRichText(fields.format) },
-    { column_id: COL.STATUS, select: [OPT_NEW] },
     { column_id: COL.PRIORITY, rich_text: toRichText(fields.priority) },
   ];
 
-  // Add inspiration/reference URLs
   if (fields.inspirationUrls.length > 0) {
     initialFields.push({
       column_id: COL.INSPIRATION,
       rich_text: toRichText(fields.inspirationUrls.join("\n")),
-    });
-  }
-
-  // Set submitter
-  if (fields.submitterUserId) {
-    initialFields.push({
-      column_id: COL.SUBMITTED_BY,
-      user: [fields.submitterUserId],
     });
   }
 
@@ -147,37 +139,41 @@ async function pushToSlackList(
   const listData = await listResp.json();
 
   if (!listData.ok) {
-    // Fallback: try without status and user fields (they can be finicky)
-    console.warn("Create failed:", listData.error, "— trying fallback");
-    const safeFields = initialFields.filter(
-      f => f.column_id !== COL.STATUS && f.column_id !== COL.SUBMITTED_BY
-    );
-    const fallbackResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+    console.error("Failed to create Slack List item:", listData);
+    return null;
+  }
+
+  const itemId = listData.item?.id;
+  if (!itemId) return null;
+
+  // Patch status + submitted_by via separate update call
+  const patchCells: any[] = [
+    { row_id: itemId, column_id: COL.STATUS, select: [OPT_NEW] },
+  ];
+  if (fields.submitterUserId) {
+    patchCells.push({ row_id: itemId, column_id: COL.SUBMITTED_BY, user: [fields.submitterUserId] });
+  }
+
+  const patchResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+    method: "POST",
+    headers: slackHeaders,
+    body: JSON.stringify({ list_id: SLACK_LIST_ID, cells: patchCells }),
+  });
+  const patchData = await patchResp.json();
+  if (!patchData.ok) {
+    console.warn("Status/user patch failed:", patchData.error, "— trying status only");
+    // Try status alone if user field also fails
+    await fetch(`${SLACK_API}/slackLists.items.update`, {
       method: "POST",
       headers: slackHeaders,
-      body: JSON.stringify({ list_id: SLACK_LIST_ID, initial_fields: safeFields }),
+      body: JSON.stringify({
+        list_id: SLACK_LIST_ID,
+        cells: [{ row_id: itemId, column_id: COL.STATUS, select: [OPT_NEW] }],
+      }),
     });
-    const fallbackData = await fallbackResp.json();
-    if (!fallbackData.ok) {
-      console.error("Fallback also failed:", fallbackData);
-      return null;
-    }
-    const itemId = fallbackData.item?.id;
-    if (itemId) {
-      // Patch status + submitted_by via update
-      const cells: any[] = [
-        { row_id: itemId, column_id: COL.STATUS, select: [OPT_NEW] },
-      ];
-      if (fields.submitterUserId) {
-        cells.push({ row_id: itemId, column_id: COL.SUBMITTED_BY, user: [fields.submitterUserId] });
-      }
-      await fetch(`${SLACK_API}/slackLists.items.update`, {
-        method: "POST",
-        headers: slackHeaders,
-        body: JSON.stringify({ list_id: SLACK_LIST_ID, cells }),
-      });
-    }
-    console.log("Added to Slack List (fallback):", itemId, "title:", fields.title);
+  }
+
+  console.log("Added to Slack List:", itemId, "title:", fields.title);
     return itemId;
   }
 
