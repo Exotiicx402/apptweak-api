@@ -579,6 +579,10 @@ ${isThreadReply ? "This is a THREAD REPLY adding info to an existing request. Ex
                   enum: ["new_request", "additional_info", "not_a_request"],
                   description: "new_request = fresh creative ask, additional_info = adds detail to an existing thread, not_a_request = unrelated",
                 },
+                name: {
+                  type: "string",
+                  description: "Short punchy title for this request, max 60 chars. e.g. 'March Madness Email Header' or 'TikTok 9:16 Promo Video'",
+                },
                 description: {
                   type: "string",
                   description: "Comprehensive description of what's being requested (include all details about style, copy, branding requirements)",
