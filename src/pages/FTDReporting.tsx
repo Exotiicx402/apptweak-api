@@ -61,9 +61,9 @@ export default function FTDReporting() {
             <div className="flex items-center gap-3">
               <img src={metaLogo} alt="Meta" className="w-6 h-6 object-contain" />
               <div>
-                <h1 className="text-2xl font-bold text-foreground">FTD Campaigns</h1>
+                <h1 className="text-2xl font-bold text-foreground">HOURS Campaigns</h1>
                 <p className="text-xs text-muted-foreground font-mono">
-                  HOURS · PROSPECTING · INTERNATIONAL · WEB · FTD
+                  Website Adds Payment Info · All HOURS Campaigns
                 </p>
               </div>
             </div>
@@ -107,7 +107,7 @@ export default function FTDReporting() {
         {/* Empty state */}
         {!isLoading && !data && (
           <div className="text-center py-16 text-muted-foreground">
-            <p className="text-lg mb-2">Select a date range and click Apply to view FTD metrics</p>
+            <p className="text-lg mb-2">Select a date range and click Apply to view HOURS campaign metrics</p>
             <p className="text-sm">
               If no data appears, click <strong>Sync from Meta</strong> first to pull campaign data.
             </p>
@@ -128,7 +128,7 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <MetricKpiCard
-                title="FTD Count"
+                title="Results"
                 value={totals?.ftd_count ?? 0}
                 currentValue={totals?.ftd_count ?? 0}
                 previousValue={0}
@@ -137,7 +137,7 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <MetricKpiCard
-                title="Cost per FTD"
+                title="Cost / Result"
                 value={totals?.cost_per_ftd ?? 0}
                 currentValue={totals?.cost_per_ftd ?? 0}
                 previousValue={0}
@@ -207,8 +207,8 @@ export default function FTDReporting() {
                       <TableRow>
                         <TableHead>Campaign</TableHead>
                         <TableHead className="text-right">Spend</TableHead>
-                        <TableHead className="text-right">FTDs</TableHead>
-                        <TableHead className="text-right">Cost / FTD</TableHead>
+                        <TableHead className="text-right">Results</TableHead>
+                        <TableHead className="text-right">Cost / Result</TableHead>
                         <TableHead className="text-right">Revenue</TableHead>
                         <TableHead className="text-right">ROAS</TableHead>
                         <TableHead className="text-right">Impressions</TableHead>
@@ -251,14 +251,14 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <TimeSeriesChart
-                title="FTDs Over Time"
+                title="Results Over Time"
                 data={(data?.daily ?? []).map((d) => ({ date: d.date, value: d.ftd_count }))}
                 format="number"
                 color="hsl(142, 76%, 36%)"
                 loading={isLoading}
               />
               <TimeSeriesChart
-                title="Cost per FTD"
+                title="Cost / Result"
                 data={(data?.daily ?? []).map((d) => ({ date: d.date, value: d.cost_per_ftd }))}
                 format="currency"
                 color="hsl(280, 67%, 50%)"
@@ -288,8 +288,8 @@ export default function FTDReporting() {
                       <TableRow>
                         <TableHead>Ad Set</TableHead>
                         <TableHead className="text-right">Spend</TableHead>
-                        <TableHead className="text-right">FTDs</TableHead>
-                        <TableHead className="text-right">Cost / FTD</TableHead>
+                        <TableHead className="text-right">Results</TableHead>
+                        <TableHead className="text-right">Cost / Result</TableHead>
                         <TableHead className="text-right">Impressions</TableHead>
                         <TableHead className="text-right">Clicks</TableHead>
                         <TableHead className="text-right">CTR</TableHead>
@@ -333,8 +333,8 @@ export default function FTDReporting() {
                         <TableHead>Ad Name</TableHead>
                         <TableHead>Ad Set</TableHead>
                         <TableHead className="text-right">Spend</TableHead>
-                        <TableHead className="text-right">FTDs</TableHead>
-                        <TableHead className="text-right">Cost / FTD</TableHead>
+                        <TableHead className="text-right">Results</TableHead>
+                        <TableHead className="text-right">Cost / Result</TableHead>
                         <TableHead className="text-right">Impressions</TableHead>
                         <TableHead className="text-right">Clicks</TableHead>
                         <TableHead className="text-right">CTR</TableHead>
@@ -368,7 +368,7 @@ export default function FTDReporting() {
             {/* No data after apply */}
             {!isLoading && data && data.daily.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
-                <p className="mb-2">No FTD data found for this date range.</p>
+                <p className="mb-2">No data found for this date range.</p>
                 <p className="text-sm">
                   Click <strong>Sync from Meta</strong> to pull data for this period.
                 </p>

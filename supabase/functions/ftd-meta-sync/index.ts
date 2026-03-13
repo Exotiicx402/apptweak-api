@@ -6,8 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Campaign name fragment to identify the FTD campaign
-const FTD_CAMPAIGN_FRAGMENT = "FTD";
+// Campaign name fragment to identify HOURS campaigns
+const FTD_CAMPAIGN_FRAGMENT = "HOURS";
 
 // Primary: Meta standard "Add Payment Info" event
 const FTD_ACTION_TYPE = "add_payment_info";
@@ -97,7 +97,7 @@ async function fetchMetaFTDInsights(
   params.set("limit", "500");
 
   const baseUrl = `https://graph.facebook.com/v22.0/${adAccountId}/insights`;
-  console.log(`Fetching Meta FTD ad-level data: ${startDate} to ${endDate}`);
+  console.log(`Fetching Meta HOURS campaign data: ${startDate} to ${endDate}`);
 
   const response = await fetch(`${baseUrl}?${params.toString()}`);
   if (!response.ok) {
@@ -126,13 +126,13 @@ async function fetchMetaFTDInsights(
     console.log(`Sample campaign names: ${[...new Set(allRows.slice(0, 5).map((r: any) => r.campaign_name))].join(" | ")}`);
   }
 
-  // Filter client-side to only FTD campaign rows (case-insensitive, matches "FTD" anywhere in name)
+  // Filter client-side to only HOURS campaign rows (case-insensitive)
   const ftdRows = allRows.filter((row: any) =>
     typeof row.campaign_name === "string" &&
     row.campaign_name.toUpperCase().includes(FTD_CAMPAIGN_FRAGMENT.toUpperCase())
   );
 
-  console.log(`FTD rows after filtering: ${ftdRows.length}`);
+  console.log(`HOURS campaign rows after filtering: ${ftdRows.length}`);
   return ftdRows;
 }
 
