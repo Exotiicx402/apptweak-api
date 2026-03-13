@@ -254,6 +254,7 @@ For each request found, extract ALL available information:
           format: r.format,
           priority: r.priority,
           deadline: r.deadline || null,
+          figma_url: r.figma_url || null,
           message_ts: r.message_ts,
           source_channel: tsToChannel.get(r.message_ts) || SOURCE_CHANNELS[0],
         }));
@@ -271,12 +272,16 @@ For each request found, extract ALL available information:
         // Add new requests to Slack List "PM: Creative Tracker"
         for (const r of newRequests) {
           const title = generateTitle(r.description || "");
-          const initialFields = [
+          let fullDesc = r.description || "";
+          if (r.deadline) fullDesc += `\n\n📅 Deadline: ${r.deadline}`;
+
+          const initialFields: any[] = [
             { column_id: COL_NAME, rich_text: toRichText(title) },
-            { column_id: COL_DESCRIPTION, rich_text: toRichText(r.description || "") },
+            { column_id: COL_DESCRIPTION, rich_text: toRichText(fullDesc) },
             { column_id: COL_PLATFORM, rich_text: toRichText(r.platform || "Not specified") },
             { column_id: COL_FORMAT, rich_text: toRichText(r.format || "Not specified") },
             { column_id: COL_STATUS, select: [OPT_NEW] },
+            { column_id: COL_PRIORITY, rich_text: toRichText(r.priority || "Normal") },
           ];
 
           try {
