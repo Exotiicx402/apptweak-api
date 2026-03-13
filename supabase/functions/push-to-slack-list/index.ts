@@ -18,7 +18,7 @@ serve(async (req) => {
     const SLACK_BOT_TOKEN = Deno.env.get("POLYMARKET_SLACK_BOT_TOKEN");
     if (!SLACK_BOT_TOKEN) throw new Error("POLYMARKET_SLACK_BOT_TOKEN is not configured");
 
-    const { request_id } = await req.json();
+    const { request_id, debug } = await req.json();
     if (!request_id) throw new Error("request_id is required");
 
     const supabase = createClient(
@@ -39,13 +39,26 @@ serve(async (req) => {
       "Content-Type": "application/json; charset=utf-8",
     };
 
-    const richText = (text: string) => JSON.stringify([{
+    // If debug mode, fetch list schema first
+    if (debug) {
+      const schemaResp = await fetch(`${SLACK_API}/slackLists.items.list?list_id=${SLACK_LIST_ID}&limit=1`, {
+        headers: slackHeaders,
+      });
+      const schemaData = await schemaResp.json();
+      console.log("List schema response:", JSON.stringify(schemaData, null, 2));
+      return new Response(
+        JSON.stringify({ debug: true, schema: schemaData }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const richText = (text: string) => [{
       type: "rich_text",
       block_id: crypto.randomUUID().slice(0, 5),
       elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
-    }]);
+    }];
 
-    const priorityRichText = JSON.stringify([{
+    const priorityRichText = [{
       type: "rich_text",
       block_id: crypto.randomUUID().slice(0, 5),
       elements: [{
@@ -54,30 +67,38 @@ serve(async (req) => {
           ? [{ type: "emoji", name: "red_circle", unicode: "1f534" }, { type: "text", text: " High" }]
           : [{ type: "emoji", name: "large_yellow_circle", unicode: "1f7e1" }, { type: "text", text: " Normal" }],
       }],
-    }]);
+    }];
 
     const shortDesc = (r.description || "").slice(0, 60);
     const userIdClean = (r.requester || "").replace(/<@|>/g, "");
 
-    const initialFields = [
-      { key: "name", value: richText(shortDesc) },
-      { key: "Col09RPSC7FTN", value: richText(r.description || "") },
-      { key: "Col07QP76TBQD", value: richText(r.platform || "Not specified") },
-      { key: "Col09RL9S2DNW", value: richText(r.format || "Not specified") },
-      { key: "Col09RDTELGN7", value: priorityRichText },
-      ...(userIdClean ? [{ key: "Col07R4P97PPB", value: userIdClean }] : []),
-      { key: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
-    ];
+    // Try as object map instead of array
+    const initialFields: Record<string, any> = {
+      name: richText(shortDesc),
+      Col09RPSC7FTN: richText(r.description || ""),
+      Col07QP76TBQD: richText(r.platform || "Not specified"),
+      Col09RL9S2DNW: richText(r.format || "Not specified"),
+      Col09RDTELGN7: priorityRichText,
+      Col07QKEDLLAJ: String(Math.floor(Date.now() / 1000)),
+    };
+
+    if (userIdClean) {
+      initialFields["Col07R4P97PPB"] = userIdClean;
+    }
+
+    const requestBody = { list_id: SLACK_LIST_ID, initial_fields: initialFields };
+    console.log("Sending to Slack Lists API:", JSON.stringify(requestBody, null, 2));
 
     const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
       method: "POST",
       headers: slackHeaders,
-      body: JSON.stringify({ list_id: SLACK_LIST_ID, initial_fields: initialFields }),
+      body: JSON.stringify(requestBody),
     });
 
     const listData = await listResp.json();
+    console.log("Slack Lists API response:", JSON.stringify(listData, null, 2));
+
     if (!listData.ok) {
-      console.error("Slack List API error:", listData);
       throw new Error(`Slack List error: ${listData.error || JSON.stringify(listData)}`);
     }
 
