@@ -28,13 +28,7 @@ serve(async (req) => {
   });
   const data = await resp.json();
 
-  // Return full first item to see column structure
-  return new Response(JSON.stringify({
-    ok: data.ok,
-    first_item: data.items?.[0] || null,
-    response_metadata: data.response_metadata || null,
-    error: data.error || null,
-  }, null, 2), {
+  return new Response(JSON.stringify(data, null, 2), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
