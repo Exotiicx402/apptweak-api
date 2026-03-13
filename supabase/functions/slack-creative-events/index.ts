@@ -179,9 +179,10 @@ serve(async (req) => {
 
       if (parentRequest) {
         const existingContext = parentRequest.thread_context || "";
+        const cleanMessage = messageText.replace(/<@([A-Z0-9]+)>/g, '$1');
         const newContext = existingContext
-          ? `${existingContext}\n---\n<@${userId}>: ${messageText}`
-          : `<@${userId}>: ${messageText}`;
+          ? `${existingContext}\n---\n${userId}: ${cleanMessage}`
+          : `${userId}: ${cleanMessage}`;
 
         // Extract URLs/links from message text
         const linkMatches = messageText.match(/https?:\/\/[^\s>]+/g) || [];
