@@ -255,13 +255,13 @@ For each request found, extract:
           const shortDesc = (r.description || "").slice(0, 60);
           const userIdClean = (r.requester || "").replace(/<@|>/g, "");
           const initialFields = [
-            { key: "name", value: richText(shortDesc) },
-            { key: "Col09RPSC7FTN", value: richText(r.description || "") },
-            { key: "Col07QP76TBQD", value: richText(r.platform || "Not specified") },
-            { key: "Col09RL9S2DNW", value: richText(r.format || "Not specified") },
-            { key: "Col09RDTELGN7", value: priorityRichText },
-            ...(userIdClean ? [{ key: "Col07R4P97PPB", value: userIdClean }] : []),
-            { key: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
+            { column_id: "name", value: richText(shortDesc) },
+            { column_id: "Col09RPSC7FTN", value: richText(r.description || "") },
+            { column_id: "Col07QP76TBQD", value: richText(r.platform || "Not specified") },
+            { column_id: "Col09RL9S2DNW", value: richText(r.format || "Not specified") },
+            { column_id: "Col09RDTELGN7", value: priorityRichText },
+            ...(userIdClean ? [{ column_id: "Col07R4P97PPB", value: userIdClean }] : []),
+            { column_id: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
           ];
 
           try {

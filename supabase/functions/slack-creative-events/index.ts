@@ -319,13 +319,13 @@ Classify the message and extract details if it's a request.`;
 
     const shortDesc = (classification.description || messageText).slice(0, 60);
     const initialFields = [
-      { key: "name", value: richText(shortDesc) },
-      { key: "Col09RPSC7FTN", value: richText(classification.description || messageText) },
-      { key: "Col07QP76TBQD", value: richText(classification.platform || "Not specified") },
-      { key: "Col09RL9S2DNW", value: richText(classification.format || "Not specified") },
-      { key: "Col09RDTELGN7", value: priorityRichText },
-      { key: "Col07R4P97PPB", value: userId },
-      { key: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
+      { column_id: "name", value: richText(shortDesc) },
+      { column_id: "Col09RPSC7FTN", value: richText(classification.description || messageText) },
+      { column_id: "Col07QP76TBQD", value: richText(classification.platform || "Not specified") },
+      { column_id: "Col09RL9S2DNW", value: richText(classification.format || "Not specified") },
+      { column_id: "Col09RDTELGN7", value: priorityRichText },
+      { column_id: "Col07R4P97PPB", value: userId },
+      { column_id: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
     ];
 
     const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {

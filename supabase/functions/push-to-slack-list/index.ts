@@ -72,19 +72,16 @@ serve(async (req) => {
     const shortDesc = (r.description || "").slice(0, 60);
     const userIdClean = (r.requester || "").replace(/<@|>/g, "");
 
-    // Try as object map instead of array
-    const initialFields: Record<string, any> = {
-      name: richText(shortDesc),
-      Col09RPSC7FTN: richText(r.description || ""),
-      Col07QP76TBQD: richText(r.platform || "Not specified"),
-      Col09RL9S2DNW: richText(r.format || "Not specified"),
-      Col09RDTELGN7: priorityRichText,
-      Col07QKEDLLAJ: String(Math.floor(Date.now() / 1000)),
-    };
-
-    if (userIdClean) {
-      initialFields["Col07R4P97PPB"] = userIdClean;
-    }
+    // initial_fields must be array of { column_id, value }
+    const initialFields = [
+      { column_id: "name", value: richText(shortDesc) },
+      { column_id: "Col09RPSC7FTN", value: richText(r.description || "") },
+      { column_id: "Col07QP76TBQD", value: richText(r.platform || "Not specified") },
+      { column_id: "Col09RL9S2DNW", value: richText(r.format || "Not specified") },
+      { column_id: "Col09RDTELGN7", value: priorityRichText },
+      ...(userIdClean ? [{ column_id: "Col07R4P97PPB", value: userIdClean }] : []),
+      { column_id: "Col07QKEDLLAJ", value: String(Math.floor(Date.now() / 1000)) },
+    ];
 
     const requestBody = { list_id: SLACK_LIST_ID, initial_fields: initialFields };
     console.log("Sending to Slack Lists API:", JSON.stringify(requestBody, null, 2));
