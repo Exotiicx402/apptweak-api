@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const SLACK_API = "https://slack.com/api";
-const SOURCE_CHANNEL = "C09HBDKSUGH";
+const SOURCE_CHANNELS = ["C09HBDKSUGH", "C0AL5KYSXQT"];
 const TARGET_CHANNEL = "C0ALEBYFJNQ";
 
 serve(async (req) => {
