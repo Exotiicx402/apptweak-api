@@ -280,12 +280,32 @@ serve(async (req) => {
     const userId = event.user || "unknown";
 
     // Step 1: Download any attached files to storage
-    const storedFileUrls: string[] = [];
-    if (event.files && Array.isArray(event.files)) {
-      for (const file of event.files) {
-        const publicUrl = await downloadAndStoreFile(file, SLACK_BOT_TOKEN, supabase);
-        if (publicUrl) storedFileUrls.push(publicUrl);
+    // Slack Events API sometimes omits files from the payload — fetch full message if needed
+    let files = event.files && Array.isArray(event.files) ? event.files : [];
+    if (files.length === 0) {
+      try {
+        const slackHdrs = {
+          Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+          "Content-Type": "application/json; charset=utf-8",
+        };
+        const histResp = await fetch(
+          `${SLACK_API}/conversations.history?channel=${event.channel}&latest=${messageTs}&inclusive=true&limit=1`,
+          { headers: slackHdrs },
+        );
+        const histData = await histResp.json();
+        if (histData.ok && histData.messages?.[0]?.files) {
+          files = histData.messages[0].files;
+          console.log(`Fetched ${files.length} file(s) via conversations.history fallback`);
+        }
+      } catch (e) {
+        console.error("Error fetching message for files:", e);
       }
+    }
+
+    const storedFileUrls: string[] = [];
+    for (const file of files) {
+      const publicUrl = await downloadAndStoreFile(file, SLACK_BOT_TOKEN, supabase);
+      if (publicUrl) storedFileUrls.push(publicUrl);
     }
 
     // Extract inline links from message text — Slack formats links as <URL|display>
