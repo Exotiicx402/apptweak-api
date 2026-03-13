@@ -473,10 +473,12 @@ serve(async (req) => {
     });
 
     // Step 7: Push to Slack List with ALL extracted fields
-    const title = generateTitle(classification.description || messageText);
+    // Name = AI short title, Description = full original message
+    const title = classification.name || generateTitle(classification.description || messageText);
+    const fullDescription = messageText;
     const slackListItemId = await pushToSlackList(slackHeaders, {
       title,
-      description: classification.description || messageText,
+      description: fullDescription,
       platform: classification.platform || "Not specified",
       format: classification.format || "Not specified",
       priority: classification.priority || "Normal",
@@ -535,6 +537,7 @@ A creative request is when someone asks for:
 NOT requests: status updates, general chat, reactions, questions about metrics/performance, approvals of existing work.
 
 Extract EVERY piece of information you can find:
+- Name: a short, punchy title for this request (max 60 chars). Think ticket title, e.g. "March Madness Email Header" or "TikTok 9:16 Promo Video"
 - Description: comprehensive summary of what's being requested
 - Platform: the target platform or channel (Meta, TikTok, Email, Display, Esports site, etc.)
 - Format: ALL dimensions/sizes/formats mentioned (e.g. "1000x347", "9:16 and 1:1", "300x250 & 320x250")
@@ -575,6 +578,10 @@ ${isThreadReply ? "This is a THREAD REPLY adding info to an existing request. Ex
                   type: "string",
                   enum: ["new_request", "additional_info", "not_a_request"],
                   description: "new_request = fresh creative ask, additional_info = adds detail to an existing thread, not_a_request = unrelated",
+                },
+                name: {
+                  type: "string",
+                  description: "Short punchy title for this request, max 60 chars. e.g. 'March Madness Email Header' or 'TikTok 9:16 Promo Video'",
                 },
                 description: {
                   type: "string",
