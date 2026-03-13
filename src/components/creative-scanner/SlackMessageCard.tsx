@@ -67,7 +67,9 @@ function parseInspirationUrls(url: string | null): string[] {
 }
 
 function isImageUrl(url: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg|bmp)(\?|$)/i.test(url);
+  // Match common image extensions OR Supabase storage URLs in creative-assets/slack-attachments
+  return /\.(png|jpe?g|gif|webp|svg|bmp)(\?|$)/i.test(url) ||
+    /\/storage\/v1\/object\/public\/creative-assets\/slack-attachments\//i.test(url);
 }
 
 function getThreadReplyCount(threadContext: string | null): number {
