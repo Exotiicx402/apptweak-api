@@ -167,7 +167,7 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
                                 >
                                   {req.priority === "High" ? "🔴 High" : "Normal"}
                                 </Badge>
-                                <div className="ml-auto">
+                                <div className="ml-auto flex items-center gap-1.5">
                                   {req.message_ts && (
                                     <a
                                       href={getPermalink(req.message_ts)!}
@@ -179,6 +179,13 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
                                       <ExternalLink className="h-3.5 w-3.5" />
                                     </a>
                                   )}
+                                  <button
+                                    onClick={() => handleDelete(req.id)}
+                                    className="shrink-0 text-muted-foreground/40 hover:text-destructive transition-colors"
+                                    title="Delete request"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
                                 </div>
                               </div>
                               <p className="text-xs font-medium text-foreground mb-2 line-clamp-3">
