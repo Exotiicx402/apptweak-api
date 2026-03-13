@@ -249,6 +249,7 @@ For each request found, extract:
           platform: r.platform,
           format: r.format,
           priority: r.priority,
+          deadline: r.deadline || null,
           message_ts: r.message_ts,
           source_channel: tsToChannel.get(r.message_ts) || SOURCE_CHANNELS[0],
         }));
