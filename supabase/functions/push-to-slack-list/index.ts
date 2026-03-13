@@ -64,7 +64,7 @@ serve(async (req) => {
             headers: slackHeaders,
             body: JSON.stringify({
               list_id: SLACK_LIST_ID,
-              item_id,
+              row_id: item_id,
               cells: [
                 { column_id: COL_STATUS, select: [select_value] },
               ],
