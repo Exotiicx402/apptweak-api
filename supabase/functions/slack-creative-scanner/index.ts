@@ -256,16 +256,14 @@ For each request found, extract:
         }
 
         // Add new requests to Slack List "PM: Creative Tracker"
-        const richText = (text: string) => [{
-          type: "rich_text",
-          elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
-        }];
-
         for (const r of newRequests) {
+          const title = generateTitle(r.description || "");
           const initialFields = [
-            { column_id: "Col09R4RW383Z", rich_text: richText(r.description || "") },
-            { column_id: "Col09RJ7Z6V70", rich_text: richText(r.platform || "Not specified") },
-            { column_id: "Col09RZ6VGHB3", rich_text: richText(r.format || "Not specified") },
+            { column_id: COL_NAME, rich_text: toRichText(title) },
+            { column_id: COL_DESCRIPTION, rich_text: toRichText(r.description || "") },
+            { column_id: COL_PLATFORM, rich_text: toRichText(r.platform || "Not specified") },
+            { column_id: COL_FORMAT, rich_text: toRichText(r.format || "Not specified") },
+            { column_id: COL_STATUS, select: [OPT_NEW] },
           ];
 
           try {
@@ -276,9 +274,32 @@ For each request found, extract:
             });
             const listData = await listResp.json();
             if (!listData.ok) {
-              console.error("Failed to add to Slack List:", listData);
+              // Fallback: create without status, then update
+              console.warn("Create with status failed:", listData.error);
+              const fallbackResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+                method: "POST",
+                headers: slackHeaders,
+                body: JSON.stringify({
+                  list_id: SLACK_LIST_ID,
+                  initial_fields: initialFields.filter(f => f.column_id !== COL_STATUS),
+                }),
+              });
+              const fallbackData = await fallbackResp.json();
+              if (fallbackData.ok && fallbackData.item?.id) {
+                await fetch(`${SLACK_API}/slackLists.items.update`, {
+                  method: "POST",
+                  headers: slackHeaders,
+                  body: JSON.stringify({
+                    list_id: SLACK_LIST_ID,
+                    cells: [{ row_id: fallbackData.item.id, column_id: COL_STATUS, select: [OPT_NEW] }],
+                  }),
+                });
+                console.log("Added to Slack List (fallback):", fallbackData.item.id, "title:", title);
+              } else {
+                console.error("Fallback also failed:", fallbackData);
+              }
             } else {
-              console.log("Added item to Slack List:", listData.item?.id);
+              console.log("Added to Slack List:", listData.item?.id, "title:", title);
             }
           } catch (e) {
             console.error("Error adding to Slack List:", e);
