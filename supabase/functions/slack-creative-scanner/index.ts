@@ -17,6 +17,8 @@ const COL_DESCRIPTION = "Col09R4RW383Z";
 const COL_PLATFORM = "Col09RJ7Z6V70";
 const COL_FORMAT = "Col09RZ6VGHB3";
 const COL_STATUS = "Col09RJ959822";
+const COL_PRIORITY = "Col09RL9W6L5Q";
+const COL_INSPIRATION = "Col09RPSKU48L";
 const OPT_NEW = "Opt1IOIRNGD";
 
 const toRichText = (text: string) => [
