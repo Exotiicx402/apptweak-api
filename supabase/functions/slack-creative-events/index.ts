@@ -11,13 +11,19 @@ const SOURCE_CHANNELS = ["C0AL5KYSXQT"];
 const TARGET_CHANNEL = "C0ALEBYFJNQ";
 const SLACK_LIST_ID = "F09R4RD9G5D";
 
-// Column IDs for PM: Creative Tracker
-const COL_NAME = "Col09RPRVKYUC";
-const COL_DESCRIPTION = "Col09R4RW383Z";
-const COL_PLATFORM = "Col09RJ7Z6V70";
-const COL_FORMAT = "Col09RZ6VGHB3";
-const COL_STATUS = "Col09RJ959822";
-const COL_REFERENCE = "Col09RPSKU48L";
+// Slack List column IDs for PM: Creative Tracker
+const COL = {
+  NAME:        "Col09RPRVKYUC",
+  DESCRIPTION: "Col09R4RW383Z",
+  PLATFORM:    "Col09RJ7Z6V70",
+  FORMAT:      "Col09RZ6VGHB3",
+  STATUS:      "Col09RJ959822",
+  PRIORITY:    "Col09RL9W6L5Q",
+  INSPIRATION: "Col09RPSKU48L",
+  SUBMITTED_BY:"Col09RGRF5DHB",
+  DATE:        "Col09SEJ8H16C",
+  ASSIGNED:    "Col09TE2S3NG0",
+};
 const OPT_NEW = "Opt1IOIRNGD";
 
 const toRichText = (text: string) => [
@@ -34,7 +40,7 @@ const generateTitle = (description: string): string => {
   return firstLine.substring(0, 67) + "...";
 };
 
-// Download a Slack file and upload to Supabase storage, return public URL
+// Download a Slack file → upload to Supabase storage → return public URL
 async function downloadAndStoreFile(
   file: any,
   slackToken: string,
@@ -80,22 +86,50 @@ async function downloadAndStoreFile(
   }
 }
 
-async function addToSlackList(
+// Push a fully-extracted request to the Slack List with all available columns
+async function pushToSlackList(
   slackHeaders: Record<string, string>,
-  title: string,
-  description: string,
-  platform: string,
-  format: string,
-  referenceUrls?: string,
-) {
-  const initialFields = [
-    { column_id: COL_NAME, rich_text: toRichText(title) },
-    { column_id: COL_DESCRIPTION, rich_text: toRichText(description) },
-    { column_id: COL_PLATFORM, rich_text: toRichText(platform) },
-    { column_id: COL_FORMAT, rich_text: toRichText(format) },
-    { column_id: COL_STATUS, select: [OPT_NEW] },
-    ...(referenceUrls ? [{ column_id: COL_REFERENCE, rich_text: toRichText(referenceUrls) }] : []),
+  fields: {
+    title: string;
+    description: string;
+    platform: string;
+    format: string;
+    priority: string;
+    inspirationUrls: string[];
+    submitterUserId?: string;
+    deadline?: string;
+  },
+): Promise<string | null> {
+  // Build description with deadline if present
+  let fullDesc = fields.description;
+  if (fields.deadline) {
+    fullDesc += `\n\n📅 Deadline: ${fields.deadline}`;
+  }
+
+  const initialFields: any[] = [
+    { column_id: COL.NAME, rich_text: toRichText(fields.title) },
+    { column_id: COL.DESCRIPTION, rich_text: toRichText(fullDesc) },
+    { column_id: COL.PLATFORM, rich_text: toRichText(fields.platform) },
+    { column_id: COL.FORMAT, rich_text: toRichText(fields.format) },
+    { column_id: COL.STATUS, select: [OPT_NEW] },
+    { column_id: COL.PRIORITY, rich_text: toRichText(fields.priority) },
   ];
+
+  // Add inspiration/reference URLs
+  if (fields.inspirationUrls.length > 0) {
+    initialFields.push({
+      column_id: COL.INSPIRATION,
+      rich_text: toRichText(fields.inspirationUrls.join("\n")),
+    });
+  }
+
+  // Set submitter
+  if (fields.submitterUserId) {
+    initialFields.push({
+      column_id: COL.SUBMITTED_BY,
+      user: [fields.submitterUserId],
+    });
+  }
 
   const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
     method: "POST",
@@ -105,38 +139,73 @@ async function addToSlackList(
   const listData = await listResp.json();
 
   if (!listData.ok) {
-    console.warn("Create with status failed:", listData.error);
+    // Fallback: try without status and user fields (they can be finicky)
+    console.warn("Create failed:", listData.error, "— trying fallback");
+    const safeFields = initialFields.filter(
+      f => f.column_id !== COL.STATUS && f.column_id !== COL.SUBMITTED_BY
+    );
     const fallbackResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
       method: "POST",
       headers: slackHeaders,
-      body: JSON.stringify({
-        list_id: SLACK_LIST_ID,
-        initial_fields: initialFields.filter(f => f.column_id !== COL_STATUS),
-      }),
+      body: JSON.stringify({ list_id: SLACK_LIST_ID, initial_fields: safeFields }),
     });
     const fallbackData = await fallbackResp.json();
     if (!fallbackData.ok) {
-      console.error("Failed to add to Slack List:", fallbackData);
+      console.error("Fallback also failed:", fallbackData);
       return null;
     }
     const itemId = fallbackData.item?.id;
     if (itemId) {
-      const updateResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+      // Patch status + submitted_by via update
+      const cells: any[] = [
+        { row_id: itemId, column_id: COL.STATUS, select: [OPT_NEW] },
+      ];
+      if (fields.submitterUserId) {
+        cells.push({ row_id: itemId, column_id: COL.SUBMITTED_BY, user: [fields.submitterUserId] });
+      }
+      await fetch(`${SLACK_API}/slackLists.items.update`, {
         method: "POST",
         headers: slackHeaders,
-        body: JSON.stringify({
-          list_id: SLACK_LIST_ID,
-          cells: [{ row_id: itemId, column_id: COL_STATUS, select: [OPT_NEW] }],
-        }),
+        body: JSON.stringify({ list_id: SLACK_LIST_ID, cells }),
       });
-      const updateData = await updateResp.json();
-      console.log("Status update:", updateData.ok ? "success" : JSON.stringify(updateData));
     }
+    console.log("Added to Slack List (fallback):", itemId, "title:", fields.title);
     return itemId;
   }
 
-  console.log("Added to Slack List:", listData.item?.id, "title:", title);
+  console.log("Added to Slack List:", listData.item?.id, "title:", fields.title);
   return listData.item?.id;
+}
+
+// Update an existing Slack List item with new thread info
+async function updateSlackListItem(
+  slackHeaders: Record<string, string>,
+  itemId: string,
+  updatedDescription: string,
+  allReferenceUrls: string[],
+) {
+  const cells: any[] = [
+    {
+      row_id: itemId,
+      column_id: COL.DESCRIPTION,
+      rich_text: toRichText(updatedDescription),
+    },
+  ];
+  if (allReferenceUrls.length > 0) {
+    cells.push({
+      row_id: itemId,
+      column_id: COL.INSPIRATION,
+      rich_text: toRichText(allReferenceUrls.join("\n")),
+    });
+  }
+
+  const resp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+    method: "POST",
+    headers: slackHeaders,
+    body: JSON.stringify({ list_id: SLACK_LIST_ID, cells }),
+  });
+  const data = await resp.json();
+  console.log("Slack List update:", data.ok ? "success" : JSON.stringify(data));
 }
 
 serve(async (req) => {
@@ -147,9 +216,8 @@ serve(async (req) => {
   try {
     const body = await req.json();
 
-    // Handle Slack URL verification challenge
+    // Slack URL verification
     if (body.type === "url_verification") {
-      console.log("Received url_verification challenge");
       return new Response(JSON.stringify({ challenge: body.challenge }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -168,6 +236,7 @@ serve(async (req) => {
       });
     }
 
+    // Ignore bots, edits, deletes, wrong channels
     if (
       event.bot_id ||
       event.subtype === "message_changed" ||
@@ -195,22 +264,20 @@ serve(async (req) => {
     const messageText = event.text || "";
     const userId = event.user || "unknown";
 
-    // Download files from Slack and store in our storage bucket
+    // Step 1: Download any attached files to storage
     const storedFileUrls: string[] = [];
-    const slackFileUrls: string[] = [];
     if (event.files && Array.isArray(event.files)) {
       for (const file of event.files) {
-        slackFileUrls.push(file.url_private || file.permalink || "");
         const publicUrl = await downloadAndStoreFile(file, SLACK_BOT_TOKEN, supabase);
         if (publicUrl) storedFileUrls.push(publicUrl);
       }
     }
 
-    // Extract links from message text
+    // Extract inline links from message text
     const linkMatches = messageText.match(/https?:\/\/[^\s>]+/g) || [];
     const allReferenceUrls = [...storedFileUrls, ...linkMatches];
 
-    // Deduplicate
+    // Step 2: Dedup check
     const { data: existing } = await supabase
       .from("creative_requests")
       .select("id, message_ts")
@@ -224,72 +291,74 @@ serve(async (req) => {
       });
     }
 
-    // Thread reply → update existing request
+    // Step 3: If thread reply, update existing request
     if (threadTs && threadTs !== messageTs) {
       const { data: parentRequest } = await supabase
         .from("creative_requests")
-        .select("id, thread_context, slack_list_item_id, description, inspiration_url")
+        .select("id, thread_context, slack_list_item_id, description, inspiration_url, platform, format, priority, deadline, figma_url")
         .eq("message_ts", threadTs)
         .maybeSingle();
 
       if (parentRequest) {
+        // Use AI to extract any new structured info from the thread reply
+        const updateExtraction = await classifyMessage(
+          LOVABLE_API_KEY, messageText, userId, messageTs, allReferenceUrls, true
+        );
+
         const existingContext = parentRequest.thread_context || "";
         const cleanMessage = messageText.replace(/<@([A-Z0-9]+)>/g, '$1');
         const newContext = existingContext
           ? `${existingContext}\n---\n${userId}: ${cleanMessage}`
           : `${userId}: ${cleanMessage}`;
 
-        // Merge all URLs (existing + new stored files + new links)
+        // Merge URLs
         const existingUrls = parentRequest.inspiration_url
           ? parentRequest.inspiration_url.split(", ").filter(Boolean)
           : [];
-        const mergedUrls = [...existingUrls, ...allReferenceUrls].filter(Boolean);
+        const mergedUrls = [...new Set([...existingUrls, ...allReferenceUrls])].filter(Boolean);
+
+        // Merge fields — thread reply can refine/add to the original request
+        const updates: any = {
+          thread_context: newContext,
+        };
+        if (mergedUrls.length > 0) updates.inspiration_url = mergedUrls.join(", ");
+        // If thread reply mentions a new platform/format/deadline/figma_url, update
+        if (updateExtraction.platform && updateExtraction.platform !== "Not specified" && parentRequest.platform === "Not specified") {
+          updates.platform = updateExtraction.platform;
+        }
+        if (updateExtraction.format && updateExtraction.format !== "Not specified" && parentRequest.format === "Not specified") {
+          updates.format = updateExtraction.format;
+        }
+        if (updateExtraction.deadline && !parentRequest.deadline) {
+          updates.deadline = updateExtraction.deadline;
+        }
+        if (updateExtraction.figma_url && !parentRequest.figma_url) {
+          updates.figma_url = updateExtraction.figma_url;
+        }
 
         await supabase
           .from("creative_requests")
-          .update({
-            thread_context: newContext,
-            ...(mergedUrls.length > 0 ? { inspiration_url: mergedUrls.join(", ") } : {}),
-          })
+          .update(updates)
           .eq("id", parentRequest.id);
 
-        // Update Slack List item
+        // Update Slack List item with enriched description
         if (parentRequest.slack_list_item_id) {
           const slackHdrs = {
             Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
             "Content-Type": "application/json; charset=utf-8",
           };
+
           const updatedDesc = [
             parentRequest.description || "",
+            parentRequest.deadline || updates.deadline
+              ? `\n📅 Deadline: ${updates.deadline || parentRequest.deadline}`
+              : "",
             "\n\n---\nThread updates:",
             newContext,
             ...(allReferenceUrls.length > 0 ? [`\n🔗 ${allReferenceUrls.join("\n🔗 ")}`] : []),
-          ].join("\n");
+          ].filter(Boolean).join("\n");
 
-          const cells: any[] = [
-            {
-              row_id: parentRequest.slack_list_item_id,
-              column_id: COL_DESCRIPTION,
-              rich_text: toRichText(updatedDesc),
-            },
-          ];
-
-          // Also update reference column with all URLs
-          if (mergedUrls.length > 0) {
-            cells.push({
-              row_id: parentRequest.slack_list_item_id,
-              column_id: COL_REFERENCE,
-              rich_text: toRichText(mergedUrls.join("\n")),
-            });
-          }
-
-          const updateResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
-            method: "POST",
-            headers: slackHdrs,
-            body: JSON.stringify({ list_id: SLACK_LIST_ID, cells }),
-          });
-          const updateData = await updateResp.json();
-          console.log("Slack List update:", updateData.ok ? "success" : JSON.stringify(updateData));
+          await updateSlackListItem(slackHdrs, parentRequest.slack_list_item_id, updatedDesc, mergedUrls);
         }
 
         console.log(`Updated thread_context for request ${parentRequest.id}`);
@@ -299,97 +368,10 @@ serve(async (req) => {
       }
     }
 
-    // Classify the message using AI
-    const systemPrompt = `You are a creative request detector for an ad operations team. You analyze a single Slack message to determine if it's a creative request.
-
-A creative request is when someone asks for:
-- New ad creatives (images, videos, banners)
-- Modifications to existing creatives (resize, change copy, update branding)
-- Creatives for specific platforms (Meta, TikTok, Snapchat, Unity, Google, etc.)
-- Specific sizes/formats (1080x1080, 9:16, landscape, etc.)
-- Concepts, themes, or briefs for ad creatives
-- Even casual requests like "can we get a version of X with Y" or "need creatives for Z campaign"
-
-NOT requests: status updates, general chat, reactions, questions about metrics/performance, approvals of existing work, scheduling discussions.
-
-Classify the message and extract details if it's a request. Pay special attention to any deadline or due date mentioned (e.g. "by Friday", "EOD tomorrow", "Deadline: Noon Friday 3/13").`;
-
-    const userContent = `Message from <@${userId}> (ts=${messageTs}):\n${messageText}${slackFileUrls.length > 0 ? `\n\nAttached files: ${slackFileUrls.join(", ")}` : ""}`;
-
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "classify_message",
-              description: "Classify the Slack message",
-              parameters: {
-                type: "object",
-                properties: {
-                  classification: {
-                    type: "string",
-                    enum: ["new_request", "not_a_request"],
-                  },
-                  description: {
-                    type: "string",
-                    description: "What's being requested (1-2 sentences). Only for new_request.",
-                  },
-                  platform: {
-                    type: "string",
-                    description: "Target platform if mentioned, or 'Not specified'",
-                  },
-                  format: {
-                    type: "string",
-                    description: "Size/format if mentioned, or 'Not specified'",
-                  },
-                  priority: {
-                    type: "string",
-                    enum: ["High", "Normal"],
-                    description: "High if urgent language used, otherwise Normal",
-                  },
-                  deadline: {
-                    type: "string",
-                    description: "Deadline or due date if mentioned (e.g. 'Noon Friday 3/13', 'EOD tomorrow'). Null if not mentioned.",
-                  },
-                },
-                required: ["classification"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "classify_message" } },
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errText);
-      throw new Error(`AI gateway error [${aiResponse.status}]: ${errText}`);
-    }
-
-    const aiData = await aiResponse.json();
-    let classification: any = {};
-
-    try {
-      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        classification = JSON.parse(toolCall.function.arguments);
-      }
-    } catch (e) {
-      console.error("Failed to parse AI response:", e);
-    }
+    // Step 4: Classify as new request or not
+    const classification = await classifyMessage(
+      LOVABLE_API_KEY, messageText, userId, messageTs, allReferenceUrls, false
+    );
 
     console.log(`Classification: ${classification.classification}, deadline: ${classification.deadline || "none"}`);
 
@@ -399,13 +381,7 @@ Classify the message and extract details if it's a request. Pay special attentio
       });
     }
 
-    // Build description with deadline if present
-    let fullDescription = classification.description || messageText;
-    if (classification.deadline) {
-      fullDescription += `\n\n📅 Deadline: ${classification.deadline}`;
-    }
-
-    // Insert new creative request
+    // Step 5: Store everything in DB
     const { error: insertError } = await supabase.from("creative_requests").insert({
       description: classification.description || messageText,
       requester: `<@${userId}>`,
@@ -413,6 +389,7 @@ Classify the message and extract details if it's a request. Pay special attentio
       format: classification.format || "Not specified",
       priority: classification.priority || "Normal",
       deadline: classification.deadline || null,
+      figma_url: classification.figma_url || null,
       message_ts: messageTs,
       source_channel: event.channel,
       inspiration_url: allReferenceUrls.length > 0 ? allReferenceUrls.join(", ") : null,
@@ -422,32 +399,26 @@ Classify the message and extract details if it's a request. Pay special attentio
       console.error("Failed to insert creative_request:", insertError);
     }
 
-    // Post to #ad-review-pipeline
+    // Step 6: Post notification to #ad-review-pipeline
     const slackHeaders = {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
       "Content-Type": "application/json; charset=utf-8",
     };
 
     const permalink = `https://slack.com/archives/${event.channel}/p${messageTs.replace(".", "")}`;
-    const priorityEmoji = classification.priority === "High" ? "🔴" : "🟡";
+    const priorityEmoji = classification.priority === "High" ? "🔴" : classification.priority === "Low" ? "🟢" : "🟡";
 
     const blocks = [
       {
         type: "header",
-        text: {
-          type: "plain_text",
-          text: "🎨 New Creative Request Detected",
-          emoji: true,
-        },
+        text: { type: "plain_text", text: "🎨 New Creative Request Detected", emoji: true },
       },
       {
         type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `From <#${event.channel}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
-          },
-        ],
+        elements: [{
+          type: "mrkdwn",
+          text: `From <#${event.channel}> • ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} EST`,
+        }],
       },
       { type: "divider" },
       {
@@ -459,44 +430,40 @@ Classify the message and extract details if it's a request. Pay special attentio
             `👤 Requester: <@${userId}>`,
             `📱 Platform: ${classification.platform || "Not specified"}`,
             `📐 Format: ${classification.format || "Not specified"}`,
+            `⚡ Priority: ${classification.priority || "Normal"}`,
             classification.deadline ? `📅 Deadline: ${classification.deadline}` : "",
-            storedFileUrls.length > 0 ? `🖼️ Reference image attached` : "",
+            classification.figma_url ? `🎨 Figma: ${classification.figma_url}` : "",
+            storedFileUrls.length > 0 ? `🖼️ ${storedFileUrls.length} reference file(s) attached` : "",
             `<${permalink}|View original message>`,
           ].filter(Boolean).join("\n"),
         },
       },
     ];
 
-    const postResp = await fetch(`${SLACK_API}/chat.postMessage`, {
+    await fetch(`${SLACK_API}/chat.postMessage`, {
       method: "POST",
       headers: slackHeaders,
       body: JSON.stringify({
         channel: TARGET_CHANNEL,
-        text: `<!channel> 🎨 New creative request detected from <@${userId}>`,
+        text: `<!channel> 🎨 New creative request from <@${userId}>`,
         blocks,
       }),
     });
 
-    const postData = await postResp.json();
-    if (!postData.ok) {
-      console.error("Failed to post to Slack:", postData);
-    }
-
-    console.log("New creative request processed and posted");
-
-    // Add to Slack List "PM: Creative Tracker"
+    // Step 7: Push to Slack List with ALL extracted fields
     const title = generateTitle(classification.description || messageText);
-    const referenceText = allReferenceUrls.length > 0 ? allReferenceUrls.join("\n") : undefined;
-    const slackListItemId = await addToSlackList(
-      slackHeaders,
+    const slackListItemId = await pushToSlackList(slackHeaders, {
       title,
-      fullDescription,
-      classification.platform || "Not specified",
-      classification.format || "Not specified",
-      referenceText,
-    );
+      description: classification.description || messageText,
+      platform: classification.platform || "Not specified",
+      format: classification.format || "Not specified",
+      priority: classification.priority || "Normal",
+      inspirationUrls: allReferenceUrls,
+      submitterUserId: userId,
+      deadline: classification.deadline,
+    });
 
-    // Store the Slack List item ID back on the creative_requests row
+    // Step 8: Store Slack List item ID
     if (slackListItemId) {
       await supabase
         .from("creative_requests")
@@ -516,3 +483,124 @@ Classify the message and extract details if it's a request. Pay special attentio
     );
   }
 });
+
+// ──────────────────────────────────────────────
+// AI Classification
+// ──────────────────────────────────────────────
+
+async function classifyMessage(
+  apiKey: string,
+  messageText: string,
+  userId: string,
+  messageTs: string,
+  referenceUrls: string[],
+  isThreadReply: boolean,
+): Promise<any> {
+  const systemPrompt = `You are a creative request detector for an ad operations team. You analyze Slack messages to determine if they contain creative requests and extract ALL available information.
+
+A creative request is when someone asks for:
+- New ad creatives (images, videos, banners, email headers)
+- Modifications to existing creatives (resize, change copy, update branding)
+- Creatives for specific platforms (Meta, TikTok, Snapchat, Unity, Google, Email, Display, etc.)
+- Specific sizes/formats (1080x1080, 9:16, 300x250, landscape, etc.)
+- Concepts, themes, or briefs for ad creatives
+- Even casual requests like "can we get a version of X with Y"
+
+NOT requests: status updates, general chat, reactions, questions about metrics/performance, approvals of existing work.
+
+Extract EVERY piece of information you can find:
+- Description: comprehensive summary of what's being requested
+- Platform: the target platform or channel (Meta, TikTok, Email, Display, Esports site, etc.)
+- Format: ALL dimensions/sizes/formats mentioned (e.g. "1000x347", "9:16 and 1:1", "300x250 & 320x250")
+- Priority: "High" if urgent/ASAP language, "Low" if no rush mentioned, otherwise "Normal"
+- Deadline: exact deadline text if mentioned (e.g. "Noon Friday 3/13", "EOD tomorrow", "by next week")
+- Figma URL: any Figma link if present
+- Inspiration notes: any reference to style, competitors, examples, or attached images
+
+${isThreadReply ? "This is a THREAD REPLY adding info to an existing request. Extract any new details being added." : ""}`;
+
+  const userContent = `Message from user ${userId} (ts=${messageTs}):\n${messageText}${referenceUrls.length > 0 ? `\n\nAttached/referenced URLs: ${referenceUrls.join(", ")}` : ""}`;
+
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "classify_message",
+            description: "Classify the Slack message and extract all creative request details",
+            parameters: {
+              type: "object",
+              properties: {
+                classification: {
+                  type: "string",
+                  enum: ["new_request", "additional_info", "not_a_request"],
+                  description: "new_request = fresh creative ask, additional_info = adds detail to an existing thread, not_a_request = unrelated",
+                },
+                description: {
+                  type: "string",
+                  description: "Comprehensive description of what's being requested (include all details about style, copy, branding requirements)",
+                },
+                platform: {
+                  type: "string",
+                  description: "Target platform/channel: Meta, TikTok, Snapchat, Unity, Google, Email, Display, Esports, etc. or 'Not specified'",
+                },
+                format: {
+                  type: "string",
+                  description: "ALL sizes/formats/dimensions mentioned, comma-separated. e.g. '1000x347' or '1920x1080, 1920x180, 300x600' or 'Not specified'",
+                },
+                priority: {
+                  type: "string",
+                  enum: ["High", "Normal", "Low"],
+                  description: "High if urgent/ASAP, Low if 'no rush'/'whenever', otherwise Normal",
+                },
+                deadline: {
+                  type: "string",
+                  description: "Exact deadline text if mentioned (e.g. 'Noon Friday 3/13'). Empty string if none.",
+                },
+                figma_url: {
+                  type: "string",
+                  description: "Figma URL if present in the message. Empty string if none.",
+                },
+                inspiration_notes: {
+                  type: "string",
+                  description: "Any style references, competitor mentions, or notes about attached reference images. Empty string if none.",
+                },
+              },
+              required: ["classification"],
+              additionalProperties: false,
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "classify_message" } },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error("AI gateway error:", response.status, errText);
+    throw new Error(`AI gateway error [${response.status}]: ${errText}`);
+  }
+
+  const data = await response.json();
+  try {
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      return JSON.parse(toolCall.function.arguments);
+    }
+  } catch (e) {
+    console.error("Failed to parse AI response:", e);
+  }
+  return { classification: "not_a_request" };
+}

@@ -17,6 +17,8 @@ const COL_DESCRIPTION = "Col09R4RW383Z";
 const COL_PLATFORM = "Col09RJ7Z6V70";
 const COL_FORMAT = "Col09RZ6VGHB3";
 const COL_STATUS = "Col09RJ959822";
+const COL_PRIORITY = "Col09RL9W6L5Q";
+const COL_INSPIRATION = "Col09RPSKU48L";
 const OPT_NEW = "Opt1IOIRNGD";
 
 const toRichText = (text: string) => [
@@ -142,22 +144,23 @@ serve(async (req) => {
     const systemPrompt = `You are a creative request detector for an ad operations team. You analyze Slack messages from channels where people request new ad creatives or modifications to existing ones.
 
 Your job is to identify messages that are creative requests — even informal ones. Look for:
-- Requests for new ad creatives (images, videos, banners)
+- Requests for new ad creatives (images, videos, banners, email headers)
 - Requests to modify existing creatives (resize, change copy, update branding)
-- Requests mentioning specific platforms (Meta, TikTok, Snapchat, Unity, Google, etc.)
+- Requests mentioning specific platforms (Meta, TikTok, Snapchat, Unity, Google, Email, Display, etc.)
 - Requests mentioning sizes/formats (1080x1080, 9:16, landscape, etc.)
 - Requests referencing concepts, themes, or briefs
-- Even casual messages like "can we get a version of X with Y" or "need creatives for Z campaign"
+- Even casual messages like "can we get a version of X with Y"
 
 Messages that are NOT requests: status updates, general chat, reactions, questions about metrics/performance, approvals of existing work.
 
-For each request found, extract:
-- description: What's being requested (1-2 sentences)
+For each request found, extract ALL available information:
+- description: Comprehensive summary of what's being requested
 - requester: The Slack user ID (format: <@USERID>)
-- platform: Target platform if mentioned (or "Not specified")
-- format: Size/format if mentioned (or "Not specified")  
-- priority: "High" if urgent language used, otherwise "Normal"
-- deadline: Deadline or due date if mentioned (e.g. "Noon Friday 3/13", "EOD tomorrow"). Null if not mentioned.
+- platform: Target platform/channel (Meta, TikTok, Email, Display, Esports, etc.) or "Not specified"
+- format: ALL sizes/formats mentioned, comma-separated, or "Not specified"
+- priority: "High" if urgent/ASAP, "Low" if no rush, otherwise "Normal"
+- deadline: Exact deadline text if mentioned, or empty string
+- figma_url: Figma URL if present, or empty string
 - message_ts: The timestamp of the message`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -190,8 +193,9 @@ For each request found, extract:
                         requester: { type: "string" },
                         platform: { type: "string" },
                         format: { type: "string" },
-                        priority: { type: "string", enum: ["High", "Normal"] },
-                        deadline: { type: "string", description: "Deadline/due date if mentioned, or null" },
+                        priority: { type: "string", enum: ["High", "Normal", "Low"] },
+                        deadline: { type: "string", description: "Deadline/due date if mentioned, or empty string" },
+                        figma_url: { type: "string", description: "Figma URL if present, or empty string" },
                         message_ts: { type: "string" },
                       },
                       required: ["description", "requester", "platform", "format", "priority", "message_ts"],
@@ -250,6 +254,7 @@ For each request found, extract:
           format: r.format,
           priority: r.priority,
           deadline: r.deadline || null,
+          figma_url: r.figma_url || null,
           message_ts: r.message_ts,
           source_channel: tsToChannel.get(r.message_ts) || SOURCE_CHANNELS[0],
         }));
@@ -267,12 +272,16 @@ For each request found, extract:
         // Add new requests to Slack List "PM: Creative Tracker"
         for (const r of newRequests) {
           const title = generateTitle(r.description || "");
-          const initialFields = [
+          let fullDesc = r.description || "";
+          if (r.deadline) fullDesc += `\n\n📅 Deadline: ${r.deadline}`;
+
+          const initialFields: any[] = [
             { column_id: COL_NAME, rich_text: toRichText(title) },
-            { column_id: COL_DESCRIPTION, rich_text: toRichText(r.description || "") },
+            { column_id: COL_DESCRIPTION, rich_text: toRichText(fullDesc) },
             { column_id: COL_PLATFORM, rich_text: toRichText(r.platform || "Not specified") },
             { column_id: COL_FORMAT, rich_text: toRichText(r.format || "Not specified") },
             { column_id: COL_STATUS, select: [OPT_NEW] },
+            { column_id: COL_PRIORITY, rich_text: toRichText(r.priority || "Normal") },
           ];
 
           try {
