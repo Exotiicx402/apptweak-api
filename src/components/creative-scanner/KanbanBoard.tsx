@@ -189,6 +189,18 @@ export default function KanbanBoard({ requests, onStatusChange }: KanbanBoardPro
                                   {req.priority === "High" ? "🔴 High" : "Normal"}
                                 </Badge>
                                 <div className="ml-auto flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handlePushToSlackList(req.id)}
+                                    disabled={pushingIds.has(req.id)}
+                                    className="shrink-0 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                                    title="Push to PM: Creative Tracker"
+                                  >
+                                    {pushingIds.has(req.id) ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Send className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
                                   {req.message_ts && (
                                     <a
                                       href={getPermalink(req.message_ts)!}
