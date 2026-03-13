@@ -6,8 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Campaign name fragment to identify HOURS campaigns
-const FTD_CAMPAIGN_FRAGMENT = "HOURS";
+// Campaign name must contain BOTH fragments to be included
+// This ensures only "Website Adds Payment Info" campaigns are tracked
+const CAMPAIGN_REQUIRED_FRAGMENTS = ["HOURS", "FTD"];
 
 // Primary: Meta standard "Add Payment Info" event
 const FTD_ACTION_TYPE = "add_payment_info";
@@ -126,13 +127,15 @@ async function fetchMetaFTDInsights(
     console.log(`Sample campaign names: ${[...new Set(allRows.slice(0, 5).map((r: any) => r.campaign_name))].join(" | ")}`);
   }
 
-  // Filter client-side to only HOURS campaign rows (case-insensitive)
-  const ftdRows = allRows.filter((row: any) =>
-    typeof row.campaign_name === "string" &&
-    row.campaign_name.toUpperCase().includes(FTD_CAMPAIGN_FRAGMENT.toUpperCase())
-  );
+  // Filter to only campaigns containing ALL required fragments (case-insensitive)
+  // This ensures we only track campaigns with "Website Adds Payment Info" as primary metric
+  const ftdRows = allRows.filter((row: any) => {
+    if (typeof row.campaign_name !== "string") return false;
+    const upper = row.campaign_name.toUpperCase();
+    return CAMPAIGN_REQUIRED_FRAGMENTS.every((frag) => upper.includes(frag.toUpperCase()));
+  });
 
-  console.log(`HOURS campaign rows after filtering: ${ftdRows.length}`);
+  console.log(`Payment Info Adds campaign rows after filtering: ${ftdRows.length} (required: ${CAMPAIGN_REQUIRED_FRAGMENTS.join(" + ")})`);
   return ftdRows;
 }
 
