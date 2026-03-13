@@ -108,3 +108,4 @@ verify_jwt = false
 
 [functions.slack-creative-events]
 verify_jwt = false
+
