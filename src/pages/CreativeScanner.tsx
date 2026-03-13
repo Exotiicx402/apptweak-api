@@ -185,7 +185,7 @@ const CreativeScanner = () => {
                 )}
               </Button>
               <p className="text-sm text-muted-foreground">
-                Scans the channel for new messages and uses AI to identify creative requests. Results are posted to <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">#ad-review-pipeline</code>.
+                Scans the channel for new messages and uses AI to identify creative requests. Results are posted to <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">#pm-internal-creative-notifications</code>.
               </p>
             </div>
 
@@ -223,7 +223,7 @@ const CreativeScanner = () => {
                 { step: "1", title: "Read Messages", desc: "Fetches new messages & threads from #hours-creative-polymarket" },
                 { step: "2", title: "AI Classification", desc: "Gemini Flash analyzes each message to detect creative requests" },
                 { step: "3", title: "Extract Details", desc: "Pulls out platform, format, priority, and description" },
-                { step: "4", title: "Notify Team", desc: "Posts a formatted summary to #ad-review-pipeline" },
+                { step: "4", title: "Notify Team", desc: "Posts a formatted summary to #pm-internal-creative-notifications" },
               ].map((item) => (
                 <div key={item.step} className="flex flex-col items-center text-center p-4 rounded-lg bg-muted/50">
                   <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold mb-3">
