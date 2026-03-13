@@ -97,8 +97,13 @@ export default function SlackMessageCard({ req, actions, className }: SlackMessa
   return (
     <>
       <Card className={`p-3 ${className || ""}`}>
+        {/* Title */}
+        <h4 className="text-sm font-semibold text-foreground mb-1 leading-snug">
+          {req.description?.split('\n')[0]?.substring(0, 80) || "Creative Request"}
+        </h4>
+
         {/* Header: requester + time + priority + actions */}
-        <div className="flex items-center gap-2 mb-1.5">
+        <div className="flex items-center gap-2 mb-2">
           <span className="text-xs font-bold text-foreground truncate flex items-center gap-1">
             <User className="h-3 w-3 text-muted-foreground shrink-0" />
             {req.requester || "Unknown"}
