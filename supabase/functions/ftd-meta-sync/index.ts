@@ -20,12 +20,14 @@ const FTD_ACTION_TYPE_LEGACY_ALT = "offsite_conversion.fb_pixel_custom.FirstTime
 function extractFTDCount(actions: any[]): number {
   if (!actions || !Array.isArray(actions)) return 0;
 
-  // Try specific FirstTimeDeposit action types first
+  // Try Add Payment Info first, then legacy FirstTimeDeposit
   const specific = actions.find(
     (a: any) =>
       a.action_type === FTD_ACTION_TYPE ||
       a.action_type === FTD_ACTION_TYPE_ALT ||
-      (typeof a.action_type === "string" && a.action_type.toLowerCase().includes("firsttimedeposit"))
+      a.action_type === FTD_ACTION_TYPE_LEGACY ||
+      a.action_type === FTD_ACTION_TYPE_LEGACY_ALT ||
+      (typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("firsttimedeposit")))
   );
   if (specific) return parseInt(specific.value) || 0;
 
