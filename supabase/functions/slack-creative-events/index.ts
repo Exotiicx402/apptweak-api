@@ -121,10 +121,15 @@ async function pushToSlackList(
     inspirationUrls: string[];
     submitterUserId?: string;
     deadline?: string;
+    permalink?: string;
   },
 ): Promise<string | null> {
-  // Build description with deadline if present
-  let fullDesc = fields.description;
+  // Build description: permalink at top, then content, then deadline
+  let fullDesc = "";
+  if (fields.permalink) {
+    fullDesc += `🔗 Source: ${fields.permalink}\n\n`;
+  }
+  fullDesc += fields.description;
   if (fields.deadline) {
     fullDesc += `\n\n📅 Deadline: ${fields.deadline}`;
   }
@@ -506,6 +511,7 @@ serve(async (req) => {
       inspirationUrls: allReferenceUrls,
       submitterUserId: userId,
       deadline: classification.deadline,
+      permalink,
     });
 
     // Step 8: Store Slack List item ID
