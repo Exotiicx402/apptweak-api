@@ -82,6 +82,7 @@ serve(async (req) => {
 
     let listData = await listResp.json();
     let fallbackUsed = false;
+    console.log("Create with fields response:", JSON.stringify(listData));
 
     if (!listData.ok) {
       fallbackUsed = true;
@@ -94,6 +95,7 @@ serve(async (req) => {
       });
 
       listData = await listResp.json();
+      console.log("Fallback minimal create response:", JSON.stringify(listData));
     }
 
     if (!listData.ok) {
