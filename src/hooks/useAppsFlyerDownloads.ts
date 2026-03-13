@@ -47,23 +47,22 @@ export const useAppsFlyerDownloads = (points: number = 8) => {
 
       let rawData: DownloadDataPoint[] = [];
 
-      try {
-        const { data, error } = await supabase.functions.invoke<AppsFlyerResponse>("appsflyer-ssot", {
-          body: { startDate, endDate },
-        });
+      const { data, error } = await supabase.functions.invoke<AppsFlyerResponse>("appsflyer-ssot", {
+        body: { startDate, endDate },
+      });
 
-        if (error) {
-          console.error("AppsFlyer function error:", error);
-          rawData = await fetchCachedDownloads(startDate, endDate);
-        } else if (data?.error) {
-          console.error("AppsFlyer API error:", data.error);
-          rawData = await fetchCachedDownloads(startDate, endDate);
-        } else {
-          rawData = data?.downloads || [];
-        }
-      } catch (err) {
-        console.error("AppsFlyer request failed:", err);
+      // If disabled, just return empty data
+      if (data?.disabled) {
+        console.log('AppsFlyer API is disabled');
+        rawData = [];
+      } else if (error) {
+        console.error("AppsFlyer function error:", error);
         rawData = await fetchCachedDownloads(startDate, endDate);
+      } else if (data?.error) {
+        console.error("AppsFlyer API error:", data.error);
+        rawData = await fetchCachedDownloads(startDate, endDate);
+      } else {
+        rawData = data?.downloads || [];
       }
 
       // Normalize to exactly `points` data points
