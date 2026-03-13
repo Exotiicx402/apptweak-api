@@ -146,6 +146,14 @@ serve(async (req) => {
     const itemId = listData.item?.id;
     console.log("Item created:", itemId, "title:", title);
 
+    // Store the Slack List item ID back on the creative_requests row
+    if (itemId) {
+      await supabase
+        .from("creative_requests")
+        .update({ slack_list_item_id: itemId })
+        .eq("id", request_id);
+    }
+
     return new Response(
       JSON.stringify({ success: true, item_id: itemId, title }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
