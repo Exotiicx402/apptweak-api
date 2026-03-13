@@ -11,6 +11,80 @@ const SOURCE_CHANNELS = ["C0AL5KYSXQT"];
 const TARGET_CHANNEL = "C0ALEBYFJNQ";
 const SLACK_LIST_ID = "F09R4RD9G5D";
 
+// Column IDs for PM: Creative Tracker
+const COL_NAME = "Col09RPRVKYUC";
+const COL_DESCRIPTION = "Col09R4RW383Z";
+const COL_PLATFORM = "Col09RJ7Z6V70";
+const COL_FORMAT = "Col09RZ6VGHB3";
+const COL_STATUS = "Col09RJ959822";
+const OPT_NEW = "Opt1IOIRNGD";
+
+const toRichText = (text: string) => [
+  {
+    type: "rich_text",
+    elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
+  },
+];
+
+const generateTitle = (description: string): string => {
+  if (!description) return "Creative Request";
+  const firstLine = description.split("\n")[0].trim();
+  if (firstLine.length <= 70) return firstLine;
+  return firstLine.substring(0, 67) + "...";
+};
+
+async function addToSlackList(slackHeaders: Record<string, string>, title: string, description: string, platform: string, format: string) {
+  const initialFields = [
+    { column_id: COL_NAME, rich_text: toRichText(title) },
+    { column_id: COL_DESCRIPTION, rich_text: toRichText(description) },
+    { column_id: COL_PLATFORM, rich_text: toRichText(platform) },
+    { column_id: COL_FORMAT, rich_text: toRichText(format) },
+    { column_id: COL_STATUS, select: [OPT_NEW] },
+  ];
+
+  const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+    method: "POST",
+    headers: slackHeaders,
+    body: JSON.stringify({ list_id: SLACK_LIST_ID, initial_fields: initialFields }),
+  });
+  const listData = await listResp.json();
+
+  if (!listData.ok) {
+    // Fallback: create without status, then update via cells API
+    console.warn("Create with status failed:", listData.error);
+    const fallbackResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+      method: "POST",
+      headers: slackHeaders,
+      body: JSON.stringify({
+        list_id: SLACK_LIST_ID,
+        initial_fields: initialFields.filter(f => f.column_id !== COL_STATUS),
+      }),
+    });
+    const fallbackData = await fallbackResp.json();
+    if (!fallbackData.ok) {
+      console.error("Failed to add to Slack List:", fallbackData);
+      return null;
+    }
+    const itemId = fallbackData.item?.id;
+    if (itemId) {
+      const updateResp = await fetch(`${SLACK_API}/slackLists.items.update`, {
+        method: "POST",
+        headers: slackHeaders,
+        body: JSON.stringify({
+          list_id: SLACK_LIST_ID,
+          cells: [{ row_id: itemId, column_id: COL_STATUS, select: [OPT_NEW] }],
+        }),
+      });
+      const updateData = await updateResp.json();
+      console.log("Status update:", updateData.ok ? "success" : JSON.stringify(updateData));
+    }
+    return itemId;
+  }
+
+  console.log("Added to Slack List:", listData.item?.id, "title:", title);
+  return listData.item?.id;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -104,7 +178,6 @@ serve(async (req) => {
         .maybeSingle();
 
       if (parentRequest) {
-        // This is a comment on an existing request — update thread_context
         const existingContext = parentRequest.thread_context || "";
         const newContext = existingContext
           ? `${existingContext}\n---\n<@${userId}>: ${messageText}`
@@ -123,7 +196,6 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // Thread reply but parent isn't a known request — fall through to classify
     }
 
     // Classify the message using AI
@@ -300,32 +372,14 @@ Classify the message and extract details if it's a request.`;
     console.log("New creative request processed and posted");
 
     // Add to Slack List "PM: Creative Tracker"
-    const richText = (text: string) => [{
-      type: "rich_text",
-      elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
-    }];
-
-    const initialFields = [
-      { column_id: "Col09R4RW383Z", rich_text: richText(classification.description || messageText) },
-      { column_id: "Col09RJ7Z6V70", rich_text: richText(classification.platform || "Not specified") },
-      { column_id: "Col09RZ6VGHB3", rich_text: richText(classification.format || "Not specified") },
-    ];
-
-    const listResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
-      method: "POST",
-      headers: slackHeaders,
-      body: JSON.stringify({
-        list_id: SLACK_LIST_ID,
-        initial_fields: initialFields,
-      }),
-    });
-
-    const listData = await listResp.json();
-    if (!listData.ok) {
-      console.error("Failed to add to Slack List:", listData);
-    } else {
-      console.log("Added item to Slack List:", listData.item?.id);
-    }
+    const title = generateTitle(classification.description || messageText);
+    await addToSlackList(
+      slackHeaders,
+      title,
+      classification.description || messageText,
+      classification.platform || "Not specified",
+      classification.format || "Not specified",
+    );
 
     return new Response(
       JSON.stringify({ ok: true, action: "new_request", description: classification.description }),

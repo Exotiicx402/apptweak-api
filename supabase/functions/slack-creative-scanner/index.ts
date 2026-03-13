@@ -11,6 +11,28 @@ const SOURCE_CHANNELS = ["C0AL5KYSXQT"];
 const TARGET_CHANNEL = "C0ALEBYFJNQ";
 const SLACK_LIST_ID = "F09R4RD9G5D";
 
+// Column IDs for PM: Creative Tracker
+const COL_NAME = "Col09RPRVKYUC";
+const COL_DESCRIPTION = "Col09R4RW383Z";
+const COL_PLATFORM = "Col09RJ7Z6V70";
+const COL_FORMAT = "Col09RZ6VGHB3";
+const COL_STATUS = "Col09RJ959822";
+const OPT_NEW = "Opt1IOIRNGD";
+
+const toRichText = (text: string) => [
+  {
+    type: "rich_text",
+    elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
+  },
+];
+
+const generateTitle = (description: string): string => {
+  if (!description) return "Creative Request";
+  const firstLine = description.split("\n")[0].trim();
+  if (firstLine.length <= 70) return firstLine;
+  return firstLine.substring(0, 67) + "...";
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -234,16 +256,14 @@ For each request found, extract:
         }
 
         // Add new requests to Slack List "PM: Creative Tracker"
-        const richText = (text: string) => [{
-          type: "rich_text",
-          elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
-        }];
-
         for (const r of newRequests) {
+          const title = generateTitle(r.description || "");
           const initialFields = [
-            { column_id: "Col09R4RW383Z", rich_text: richText(r.description || "") },
-            { column_id: "Col09RJ7Z6V70", rich_text: richText(r.platform || "Not specified") },
-            { column_id: "Col09RZ6VGHB3", rich_text: richText(r.format || "Not specified") },
+            { column_id: COL_NAME, rich_text: toRichText(title) },
+            { column_id: COL_DESCRIPTION, rich_text: toRichText(r.description || "") },
+            { column_id: COL_PLATFORM, rich_text: toRichText(r.platform || "Not specified") },
+            { column_id: COL_FORMAT, rich_text: toRichText(r.format || "Not specified") },
+            { column_id: COL_STATUS, select: [OPT_NEW] },
           ];
 
           try {
@@ -254,9 +274,32 @@ For each request found, extract:
             });
             const listData = await listResp.json();
             if (!listData.ok) {
-              console.error("Failed to add to Slack List:", listData);
+              // Fallback: create without status, then update
+              console.warn("Create with status failed:", listData.error);
+              const fallbackResp = await fetch(`${SLACK_API}/slackLists.items.create`, {
+                method: "POST",
+                headers: slackHeaders,
+                body: JSON.stringify({
+                  list_id: SLACK_LIST_ID,
+                  initial_fields: initialFields.filter(f => f.column_id !== COL_STATUS),
+                }),
+              });
+              const fallbackData = await fallbackResp.json();
+              if (fallbackData.ok && fallbackData.item?.id) {
+                await fetch(`${SLACK_API}/slackLists.items.update`, {
+                  method: "POST",
+                  headers: slackHeaders,
+                  body: JSON.stringify({
+                    list_id: SLACK_LIST_ID,
+                    cells: [{ row_id: fallbackData.item.id, column_id: COL_STATUS, select: [OPT_NEW] }],
+                  }),
+                });
+                console.log("Added to Slack List (fallback):", fallbackData.item.id, "title:", title);
+              } else {
+                console.error("Fallback also failed:", fallbackData);
+              }
             } else {
-              console.log("Added item to Slack List:", listData.item?.id);
+              console.log("Added to Slack List:", listData.item?.id, "title:", title);
             }
           } catch (e) {
             console.error("Error adding to Slack List:", e);
