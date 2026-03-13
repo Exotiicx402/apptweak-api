@@ -1,57 +1,37 @@
 
-Goal
-- Ensure every pushed Slack List item gets a real Name (from the request summary/description) and lands in the New group instead of Ungrouped.
 
-What I found
-- The current list-create payload only sets Description/Platform/Format.
-- It does not set:
-  1) the Name column, so Slack shows “Untitled item”
-  2) the Select/Status column used for grouping, so rows fall into “Ungrouped”.
-- This affects manual push (`push-to-slack-list`) and the auto-push paths (`slack-creative-scanner`, `slack-creative-events`).
+# Fix: Only 1/126 Ads Has High-Res Image — Root Cause and Solution
 
-Implementation plan
-1) Add explicit Name + New-group fields to list creation payloads
-- Update all 3 edge functions to include:
-  - Name column (rich_text) built from the request summary/description
-  - Status/Select column with the New option id
-- Keep existing Description/Platform/Format mappings.
+## What's Actually Happening
 
-2) Add a deterministic title generator
-- Build a small helper in each function:
-  - Use request description as source
-  - Trim whitespace/newlines
-  - Prefer first sentence / short phrase
-  - Cap length (e.g., ~70 chars) with ellipsis
-  - Fallback: “Creative Request”
-- This guarantees “Untitled item” is never created.
+The logs prove it:
+```
+Found 1 image hashes out of 126 ads
+1/126 ads now have high-res image URLs
+```
 
-3) Add a safety fallback after create
-- If create succeeds but returned fields are missing Name or Select:
-  - Immediately call `slackLists.items.update` for that new row id
-  - Patch Name and Select(New)
-- This protects against partial field acceptance.
+The current approach queries `/?ids={ad_ids}&fields=creative{image_hash}`. But **125 out of 126 ads are dark posts or link ads** — their images are stored inside `object_story_spec` (as `link_data.picture` or `photo_data.url`), NOT as a top-level `image_hash`. Only 1 ad has a direct `image_hash`, which is why only that one works.
 
-4) Keep logs actionable
-- Log the exact `initial_fields` being sent for Name + Select.
-- Log Slack errors with response body when New option/column mapping fails.
+## Solution: Fetch Creative Image URLs via `object_story_spec` in Small Batches
 
-Technical details
-- Use Slack field formats exactly as required:
-  - Text fields: `rich_text`
-  - Grouping field: `select: ["<NewOptionId>"]`
-- Use the discovered list mappings (already visible in logs/debug item payload):
-  - Name column id
-  - Select/status column id
-  - New option id
-- Apply the same field map across:
-  - `supabase/functions/push-to-slack-list/index.ts`
-  - `supabase/functions/slack-creative-scanner/index.ts`
-  - `supabase/functions/slack-creative-events/index.ts`
+Instead of relying solely on `image_hash`, we need to query each ad's creative for the actual image source from `object_story_spec`. The key is doing this in **very small batches** (10-15 at a time) to avoid the "reduce data" error that killed previous attempts.
 
-Validation plan
-1) From `/creative-scanner`, click Send on one New card.
-2) Confirm in Slack List:
-- Item title is populated (not “Untitled item”)
-- Item appears under New (not Ungrouped).
-3) Trigger scanner/event auto-push once and confirm same behavior.
-4) Check edge-function logs for create/update success and no `invalid_arguments`.
+### Changes to `meta-hours-creatives/index.ts`
+
+Rewrite `resolveHighResImages` to:
+
+1. **Batch-query ad IDs** (batches of 10) with fields: `creative{id,image_hash,image_url,object_story_spec{link_data{picture,image_hash},photo_data{url,image_hash}}}`
+2. **Extract image URL** using this priority:
+   - `object_story_spec.link_data.picture` (most common for dark posts — returns full-res)
+   - `object_story_spec.photo_data.url` (full-res photo post URL)
+   - If only `image_hash` found (from any level), batch-resolve via `/adimages` API as before
+   - `creative.image_url` as last resort (may still be low-res but better than nothing)
+3. **For any remaining hashes**, do the existing `/adimages?hashes=[...]` batch resolution
+
+The small batch size (10) is critical — previous attempts with 500 and even 100 caused Meta API errors. With 126 ads, that's only 13 API calls.
+
+### Files to edit
+- **`supabase/functions/meta-hours-creatives/index.ts`** — Rewrite `resolveHighResImages` to extract URLs from `object_story_spec` in small batches, falling back to `image_hash` → `/adimages` resolution
+
+No frontend changes needed — the hook already maps `ad.image_url` to `assetUrl`.
+
