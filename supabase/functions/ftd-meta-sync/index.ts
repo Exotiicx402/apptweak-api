@@ -6,8 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Campaign name fragment to identify the FTD campaign
-const FTD_CAMPAIGN_FRAGMENT = "FTD";
+// Campaign name fragment to identify HOURS campaigns
+const FTD_CAMPAIGN_FRAGMENT = "HOURS";
 
 // Primary: Meta standard "Add Payment Info" event
 const FTD_ACTION_TYPE = "add_payment_info";
