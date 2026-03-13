@@ -197,6 +197,7 @@ export type Database = {
           deadline: string | null
           description: string
           figma_url: string | null
+          followup_sent: boolean
           format: string | null
           id: string
           inspiration_url: string | null
@@ -216,6 +217,7 @@ export type Database = {
           deadline?: string | null
           description: string
           figma_url?: string | null
+          followup_sent?: boolean
           format?: string | null
           id?: string
           inspiration_url?: string | null
@@ -235,6 +237,7 @@ export type Database = {
           deadline?: string | null
           description?: string
           figma_url?: string | null
+          followup_sent?: boolean
           format?: string | null
           id?: string
           inspiration_url?: string | null

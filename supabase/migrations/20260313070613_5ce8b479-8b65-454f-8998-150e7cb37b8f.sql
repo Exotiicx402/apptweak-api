@@ -1,0 +1,1 @@
+ALTER TABLE public.creative_requests ADD COLUMN IF NOT EXISTS followup_sent boolean NOT NULL DEFAULT false;
