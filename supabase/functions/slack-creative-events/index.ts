@@ -173,7 +173,7 @@ serve(async (req) => {
     if (threadTs && threadTs !== messageTs) {
       const { data: parentRequest } = await supabase
         .from("creative_requests")
-        .select("id, thread_context")
+        .select("id, thread_context, slack_list_item_id, description, inspiration_url")
         .eq("message_ts", threadTs)
         .maybeSingle();
 
