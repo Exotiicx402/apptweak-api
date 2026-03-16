@@ -148,7 +148,7 @@ function buildCumulativeSlackMessage(
       row('Cost per Add',    t.ftd_count > 0 ? formatCurrency(t.cost_per_ftd, 2) : '-'),
       row('Results Value',   t.results_value > 0 ? formatCurrency(t.results_value) : '-'),
       row('Results ROAS',    t.roas > 0 ? `${t.roas.toFixed(2)}x` : '-'),
-      row('Avg. FTD Value',  t.avg_ftd_value > 0 ? formatCurrency(t.avg_ftd_value, 2) : '-'),
+      row('Avg. Result Value', t.avg_ftd_value > 0 ? formatCurrency(t.avg_ftd_value, 2) : '-'),
     ];
   }
 
