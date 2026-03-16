@@ -144,8 +144,8 @@ function buildCumulativeSlackMessage(
   function metricsBlock(t: FTDTotals): string[] {
     return [
       row('Amount Spent',    formatCurrency(t.spend)),
-      row('Results (FTDs)',  formatNumber(t.ftd_count)),
-      row('Cost per Result', t.ftd_count > 0 ? formatCurrency(t.cost_per_ftd, 2) : '-'),
+      row('Payment Info Adds', formatNumber(t.ftd_count)),
+      row('Cost per Add',    t.ftd_count > 0 ? formatCurrency(t.cost_per_ftd, 2) : '-'),
       row('Results Value',   t.results_value > 0 ? formatCurrency(t.results_value) : '-'),
       row('Results ROAS',    t.roas > 0 ? `${t.roas.toFixed(2)}x` : '-'),
       row('Avg. FTD Value',  t.avg_ftd_value > 0 ? formatCurrency(t.avg_ftd_value, 2) : '-'),
