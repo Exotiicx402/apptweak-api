@@ -29,6 +29,7 @@ interface CreativePerformanceGridProps {
   startDate: string;
   endDate: string;
   dataFetched: boolean;
+  refreshKey: number;
 }
 
 function formatCurrency(value: number): string {

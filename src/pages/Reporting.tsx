@@ -20,11 +20,13 @@ export default function Reporting() {
   const [appliedStartDate, setAppliedStartDate] = useState("");
   const [appliedEndDate, setAppliedEndDate] = useState("");
   const { data, isLoading, fetchAllPlatforms } = useReportingData();
+  const [creativeRefreshKey, setCreativeRefreshKey] = useState(0);
 
   const handleApply = () => {
     fetchAllPlatforms(startDate, endDate);
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
+    setCreativeRefreshKey((prev) => prev + 1);
   };
 
   const anyPlatformLoading = 
