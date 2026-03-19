@@ -363,7 +363,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
         >
           <ToggleGroupItem value="all" aria-label="All types" className="px-3 text-xs gap-1">
             <LayoutGrid className="h-3.5 w-3.5" />
-            All ({data.length})
+          All ({attributeFilteredData.length})
           </ToggleGroupItem>
           <ToggleGroupItem value="image" aria-label="Images only" className="px-3 text-xs gap-1">
             <ImageIcon className="h-3.5 w-3.5" />
