@@ -287,15 +287,24 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
     }
   }, [startDate, endDate, dataFetched, refreshKey, fetchAllPlatforms]);
 
-  // Filter data by asset type
-  const filteredData = data.filter((creative) => {
-    if (assetTypeFilter === "all") return true;
-    if (assetTypeFilter === "video") return isVideoCreative(creative);
-    return !isVideoCreative(creative); // "image" includes static + carousel
+  // Apply attribute filters first, then asset type filter
+  const attributeFilteredData = data.filter((creative) => {
+    return Object.entries(attributeFilters).every(([key, values]) => {
+      if (!values || values.length === 0) return true;
+      const parsedValue = creative.parsed[key as keyof typeof creative.parsed];
+      return parsedValue && values.includes(parsedValue.trim());
+    });
   });
 
-  const videoCount = data.filter(isVideoCreative).length;
-  const imageCount = data.length - videoCount;
+  // Filter by asset type
+  const filteredData = attributeFilteredData.filter((creative) => {
+    if (assetTypeFilter === "all") return true;
+    if (assetTypeFilter === "video") return isVideoCreative(creative);
+    return !isVideoCreative(creative);
+  });
+
+  const videoCount = attributeFilteredData.filter(isVideoCreative).length;
+  const imageCount = attributeFilteredData.length - videoCount;
 
   if (!dataFetched) {
     return null;
