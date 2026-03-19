@@ -1,37 +1,45 @@
 
 
-# Fix: Only 1/126 Ads Has High-Res Image — Root Cause and Solution
+## Fix: Meta Creatives Not Showing in /reporting
 
-## What's Actually Happening
+### Root Cause
 
-The logs prove it:
+The `fetchMetaAdInsights` function in `meta-history/index.ts` fetches ad-level data from the live Meta API **without pagination**. Meta's default API limit is 25 records. With 25 ads returned, none happen to be from "APP INSTALLS" campaigns, so the `filterAppInstallCampaigns` filter drops all of them.
+
+The campaign-level fetch works fine (2 out of 9 campaigns match), but the ad-level fetch misses the relevant ads because they fall outside the first page.
+
+### Evidence from logs
 ```
-Found 1 image hashes out of 126 ads
-1/126 ads now have high-res image URLs
+Live ad fallback for 2026-03-18: filtered to 0 ads from 25 total
+Live ad fallback aggregated 0 unique ads
 ```
+25 is exactly Meta's default page size — confirming the pagination gap.
 
-The current approach queries `/?ids={ad_ids}&fields=creative{image_hash}`. But **125 out of 126 ads are dark posts or link ads** — their images are stored inside `object_story_spec` (as `link_data.picture` or `photo_data.url`), NOT as a top-level `image_hash`. Only 1 ad has a direct `image_hash`, which is why only that one works.
+### Fix
 
-## Solution: Fetch Creative Image URLs via `object_story_spec` in Small Batches
+**File: `supabase/functions/meta-history/index.ts`**
 
-Instead of relying solely on `image_hash`, we need to query each ad's creative for the actual image source from `object_story_spec`. The key is doing this in **very small batches** (10-15 at a time) to avoid the "reduce data" error that killed previous attempts.
+Update `fetchMetaAdInsights` to:
+1. Add `limit=500` to the API request params
+2. Add cursor-based pagination (follow `data.paging.next`) to fetch all ads, not just the first 25
+3. This matches the pattern already used in `meta-hours-creatives/index.ts` which paginates correctly
 
-### Changes to `meta-hours-creatives/index.ts`
+The fix is isolated to the `fetchMetaAdInsights` function (~lines 172-222). No frontend changes needed.
 
-Rewrite `resolveHighResImages` to:
+### Technical Detail
 
-1. **Batch-query ad IDs** (batches of 10) with fields: `creative{id,image_hash,image_url,object_story_spec{link_data{picture,image_hash},photo_data{url,image_hash}}}`
-2. **Extract image URL** using this priority:
-   - `object_story_spec.link_data.picture` (most common for dark posts — returns full-res)
-   - `object_story_spec.photo_data.url` (full-res photo post URL)
-   - If only `image_hash` found (from any level), batch-resolve via `/adimages` API as before
-   - `creative.image_url` as last resort (may still be low-res but better than nothing)
-3. **For any remaining hashes**, do the existing `/adimages?hashes=[...]` batch resolution
+```text
+Current flow:
+  fetchMetaAdInsights(date)
+    → single API call, default limit=25
+    → returns 25 ads (none from APP INSTALLS campaigns)
+    → filterAppInstallCampaigns → 0 results
 
-The small batch size (10) is critical — previous attempts with 500 and even 100 caused Meta API errors. With 126 ads, that's only 13 API calls.
-
-### Files to edit
-- **`supabase/functions/meta-hours-creatives/index.ts`** — Rewrite `resolveHighResImages` to extract URLs from `object_story_spec` in small batches, falling back to `image_hash` → `/adimages` resolution
-
-No frontend changes needed — the hook already maps `ad.image_url` to `assetUrl`.
+Fixed flow:
+  fetchMetaAdInsights(date)
+    → API call with limit=500
+    → paginate via paging.next until all ads fetched
+    → returns ALL ads
+    → filterAppInstallCampaigns → correct results
+```
 
