@@ -270,6 +270,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   const [columnConfig, setColumnConfig] = useState<ColumnConfig>(defaultColumnConfig);
   const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [attributeFilters, setAttributeFilters] = useState<AttributeFilters>({});
 
   const handleCreativeClick = (creative: EnrichedCreative) => {
     setSelectedCreative(creative);
