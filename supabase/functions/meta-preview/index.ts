@@ -65,9 +65,12 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   return data.data || [];
 }
 
-function filterMarchMadnessCampaigns(campaigns: any[]): any[] {
+function filterHoursAppCampaigns(campaigns: any[]): any[] {
   return campaigns.filter(
-    (c) => c.campaign_name?.toUpperCase().includes("MARCH MADNESS")
+    (c) => {
+      const name = c.campaign_name?.toUpperCase() || "";
+      return name.includes("HOURS") && name.includes("APP");
+    }
   );
 }
 
@@ -91,8 +94,8 @@ serve(async (req) => {
     console.log(`Fetching Meta preview for date: ${targetDate}`);
 
     const rawData = await fetchMetaInsights(targetDate);
-    const data = filterMarchMadnessCampaigns(rawData);
-    console.log(`Filtered to ${data.length} MARCH MADNESS campaigns from ${rawData.length} total`);
+    const data = filterHoursAppCampaigns(rawData);
+    console.log(`Filtered to ${data.length} HOURS APP campaigns from ${rawData.length} total`);
     const durationMs = Date.now() - startTime;
 
     return new Response(
