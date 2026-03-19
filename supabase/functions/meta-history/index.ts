@@ -235,9 +235,9 @@ async function fetchMetaAdInsights(date: string): Promise<any[]> {
   return allAds;
 }
 
-function filterAppInstallCampaigns(campaigns: any[]): any[] {
+function filterMarchMadnessCampaigns(campaigns: any[]): any[] {
   return campaigns.filter(
-    (c) => c.campaign_name?.toUpperCase().includes("APP INSTALLS")
+    (c) => c.campaign_name?.toUpperCase().includes("MARCH MADNESS")
   );
 }
 
@@ -351,8 +351,8 @@ serve(async (req) => {
 
     const campaignFilter = campaignId ? `AND campaign_id = '${campaignId}'` : "";
 
-    // Build queries - only include APP INSTALLS campaigns
-    const appInstallsFilter = "AND UPPER(campaign_name) LIKE '%APP INSTALLS%'";
+    // Build queries - only include MARCH MADNESS campaigns
+    const marchMadnessFilter = "AND UPPER(campaign_name) LIKE '%MARCH MADNESS%'";
     
     const dailyQuery = shouldQueryBigQuery ? `
       SELECT 
@@ -376,7 +376,7 @@ serve(async (req) => {
         ) as installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
-      ${appInstallsFilter}
+      ${marchMadnessFilter}
       ${campaignFilter}
       GROUP BY date
       ORDER BY date
@@ -405,7 +405,7 @@ serve(async (req) => {
         ) as installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
-      ${appInstallsFilter}
+      ${marchMadnessFilter}
       GROUP BY campaign_id, campaign_name
       ORDER BY spend DESC
     ` : null;
@@ -432,7 +432,7 @@ serve(async (req) => {
         ) as total_installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
-      ${appInstallsFilter}
+      ${marchMadnessFilter}
       ${campaignFilter}
     ` : null;
 
@@ -457,7 +457,7 @@ serve(async (req) => {
         ) as installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
-      ${appInstallsFilter}
+      ${marchMadnessFilter}
       AND ad_id IS NOT NULL AND ad_id != ''
       GROUP BY ad_id, ad_name
       ORDER BY spend DESC
@@ -485,7 +485,7 @@ serve(async (req) => {
         ) as total_installs
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
-      ${appInstallsFilter}
+      ${marchMadnessFilter}
       ${campaignFilter}
     `;
 
@@ -494,7 +494,7 @@ serve(async (req) => {
       SELECT DISTINCT DATE(timestamp) as date
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
-      ${appInstallsFilter}
+      ${marchMadnessFilter}
     `;
 
     // Execute critical queries in parallel (excluding ads query which may fail if schema is outdated)
@@ -550,8 +550,8 @@ serve(async (req) => {
       const prevMissingDataPromises = prevMissingDates.map(async (date) => {
         try {
           const rawLiveData = await fetchMetaInsights(date);
-          const liveDayData = filterAppInstallCampaigns(rawLiveData);
-          console.log(`Previous period live fallback for ${date}: filtered to ${liveDayData.length} APP INSTALLS from ${rawLiveData.length} total`);
+          const liveDayData = filterMarchMadnessCampaigns(rawLiveData);
+          console.log(`Previous period live fallback for ${date}: filtered to ${liveDayData.length} MARCH MADNESS from ${rawLiveData.length} total`);
           return { date, data: liveDayData };
         } catch (err) {
           console.error(`Failed to fetch live data for previous period ${date}:`, err);
@@ -603,8 +603,8 @@ serve(async (req) => {
       const missingDataPromises = missingDates.map(async (date) => {
         try {
           const rawLiveData = await fetchMetaInsights(date);
-          const liveDayData = filterAppInstallCampaigns(rawLiveData);
-          console.log(`Live fallback for ${date}: filtered to ${liveDayData.length} APP INSTALLS from ${rawLiveData.length} total`);
+          const liveDayData = filterMarchMadnessCampaigns(rawLiveData);
+          console.log(`Live fallback for ${date}: filtered to ${liveDayData.length} MARCH MADNESS from ${rawLiveData.length} total`);
           return { date, data: liveDayData };
         } catch (err) {
           console.error(`Failed to fetch live data for ${date}:`, err);
@@ -616,7 +616,7 @@ serve(async (req) => {
       const missingAdDataPromises = missingDates.map(async (date) => {
         try {
           const rawAdData = await fetchMetaAdInsights(date);
-          const filteredAdData = filterAppInstallCampaigns(rawAdData);
+          const filteredAdData = filterMarchMadnessCampaigns(rawAdData);
           console.log(`Live ad fallback for ${date}: filtered to ${filteredAdData.length} ads from ${rawAdData.length} total`);
           return { date, data: filteredAdData };
         } catch (err) {
@@ -790,10 +790,10 @@ serve(async (req) => {
     };
     totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
 
-    // Merge live data for today (filter to APP INSTALLS campaigns)
-    const filteredLiveData = filterAppInstallCampaigns(liveData);
+    // Merge live data for today (filter to MARCH MADNESS campaigns)
+    const filteredLiveData = filterMarchMadnessCampaigns(liveData);
     if (includestoday && filteredLiveData.length > 0) {
-      console.log(`Live today: filtered to ${filteredLiveData.length} APP INSTALLS from ${liveData.length} total`);
+      console.log(`Live today: filtered to ${filteredLiveData.length} MARCH MADNESS from ${liveData.length} total`);
       const liveTransformed = transformLiveData(filteredLiveData, today);
       
       // Add today's daily data
