@@ -29,6 +29,7 @@ interface CreativePerformanceGridProps {
   startDate: string;
   endDate: string;
   dataFetched: boolean;
+  refreshKey: number;
 }
 
 function formatCurrency(value: number): string {
@@ -251,7 +252,7 @@ function CreativeCardSkeleton() {
   );
 }
 
-export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: CreativePerformanceGridProps) {
+export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refreshKey }: CreativePerformanceGridProps) {
   const { 
     data, 
     isLoading, 
@@ -282,7 +283,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched }: Cre
     if (dataFetched && startDate && endDate) {
       fetchAllPlatforms(startDate, endDate);
     }
-  }, [startDate, endDate, dataFetched, fetchAllPlatforms]);
+  }, [startDate, endDate, dataFetched, refreshKey, fetchAllPlatforms]);
 
   // Filter data by asset type
   const filteredData = data.filter((creative) => {
