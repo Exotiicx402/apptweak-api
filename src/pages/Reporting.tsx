@@ -150,6 +150,7 @@ export default function Reporting() {
               startDate={appliedStartDate}
               endDate={appliedEndDate}
               dataFetched={data.totals.spend > 0 || anyPlatformLoading}
+              refreshKey={creativeRefreshKey}
             />
           </>
         )}
