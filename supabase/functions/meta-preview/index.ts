@@ -65,9 +65,9 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   return data.data || [];
 }
 
-function filterAppInstallCampaigns(campaigns: any[]): any[] {
+function filterMarchMadnessCampaigns(campaigns: any[]): any[] {
   return campaigns.filter(
-    (c) => c.campaign_name?.toUpperCase().includes("APP INSTALLS")
+    (c) => c.campaign_name?.toUpperCase().includes("MARCH MADNESS")
   );
 }
 
@@ -91,8 +91,8 @@ serve(async (req) => {
     console.log(`Fetching Meta preview for date: ${targetDate}`);
 
     const rawData = await fetchMetaInsights(targetDate);
-    const data = filterAppInstallCampaigns(rawData);
-    console.log(`Filtered to ${data.length} APP INSTALLS campaigns from ${rawData.length} total`);
+    const data = filterMarchMadnessCampaigns(rawData);
+    console.log(`Filtered to ${data.length} MARCH MADNESS campaigns from ${rawData.length} total`);
     const durationMs = Date.now() - startTime;
 
     return new Response(
