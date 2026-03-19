@@ -113,7 +113,7 @@ export function AttributeFilterBar({ data, activeFilters, onFiltersChange }: Att
                   </button>
                 )}
               </div>
-              <ScrollArea className="max-h-52">
+              <ScrollArea className="h-auto max-h-[220px] overflow-y-auto">
                 <div className="p-2 space-y-1">
                   {options.map((value) => (
                     <label
