@@ -94,8 +94,8 @@ serve(async (req) => {
     console.log(`Fetching Meta preview for date: ${targetDate}`);
 
     const rawData = await fetchMetaInsights(targetDate);
-    const data = filterMarchMadnessCampaigns(rawData);
-    console.log(`Filtered to ${data.length} MARCH MADNESS campaigns from ${rawData.length} total`);
+    const data = filterHoursAppCampaigns(rawData);
+    console.log(`Filtered to ${data.length} HOURS APP campaigns from ${rawData.length} total`);
     const durationMs = Date.now() - startTime;
 
     return new Response(
