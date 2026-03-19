@@ -499,7 +499,7 @@ serve(async (req) => {
 
     // Execute critical queries in parallel (excluding ads query which may fail if schema is outdated)
     const promises: Promise<any>[] = [];
-    
+
     if (shouldQueryBigQuery) {
       promises.push(
         queryBigQuery(dailyQuery!, googleAccessToken),
@@ -513,18 +513,18 @@ serve(async (req) => {
         Promise.resolve([])
       );
     }
-    
+
     promises.push(queryBigQuery(prevTotalsQuery, googleAccessToken));
     promises.push(queryBigQuery(prevDatesQuery, googleAccessToken));
-    
-    // Fetch live data for today if needed
+
+    // Fetch live campaign + ad-level data for today if needed
     if (includestoday) {
-      promises.push(fetchMetaInsights(today));
+      promises.push(fetchMetaInsights(today), fetchMetaAdInsights(today));
     } else {
-      promises.push(Promise.resolve([]));
+      promises.push(Promise.resolve([]), Promise.resolve([]));
     }
 
-    let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, prevDatesData, liveData] = await Promise.all(promises);
+    let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, prevDatesData, liveData, liveAdData] = await Promise.all(promises);
 
     // Try ads query separately - non-blocking if schema doesn't support ad_id/ad_name yet
     let bqAdsData: any[] = [];
@@ -538,6 +538,49 @@ serve(async (req) => {
       }
     }
 
+    const mergeLiveAdsIntoBq = (ads: any[]) => {
+      for (const ad of ads) {
+        const adId = ad.ad_id || ad.ad_name;
+        if (!adId || !ad.ad_name) continue;
+
+        const spend = parseFloat(ad.spend) || 0;
+        const impressions = parseInt(ad.impressions) || 0;
+        const clicks = parseInt(ad.clicks) || 0;
+
+        // Extract installs from actions array
+        let installs = 0;
+        if (ad.actions && Array.isArray(ad.actions)) {
+          const installAction = ad.actions.find((a: any) => a.action_type === "mobile_app_install");
+          if (installAction) {
+            installs = parseInt(installAction.value) || 0;
+          }
+        }
+
+        const existing = bqAdsData.find((a: any) => a.ad_id === adId);
+        if (existing) {
+          existing.spend = (parseFloat(existing.spend) || 0) + spend;
+          existing.impressions = (parseInt(existing.impressions) || 0) + impressions;
+          existing.clicks = (parseInt(existing.clicks) || 0) + clicks;
+          existing.installs = (parseInt(existing.installs) || 0) + installs;
+          existing.ctr = existing.impressions > 0 ? existing.clicks / existing.impressions : 0;
+          existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
+        } else {
+          const ctr = impressions > 0 ? clicks / impressions : 0;
+          const cpi = installs > 0 ? spend / installs : 0;
+          bqAdsData.push({
+            ad_id: adId,
+            ad_name: ad.ad_name,
+            spend,
+            impressions,
+            clicks,
+            ctr,
+            installs,
+            cpi,
+          });
+        }
+      }
+    };
+
     // Check if BigQuery is missing previous period data - fall back to live API
     const prevRequestedDates = getDatesBetween(prevStartStr, prevEndStr);
     const prevBqDatesFound = new Set((prevDatesData || []).map((row: any) => row.date?.split("T")[0] || row.date));
@@ -545,7 +588,7 @@ serve(async (req) => {
 
     if (prevMissingDates.length > 0) {
       console.log(`BigQuery missing previous period data for ${prevMissingDates.length} dates: ${prevMissingDates.join(", ")}. Fetching from live API...`);
-      
+
       // Fetch missing previous dates from live Meta API
       const prevMissingDataPromises = prevMissingDates.map(async (date) => {
         try {
@@ -558,14 +601,14 @@ serve(async (req) => {
           return { date, data: [] };
         }
       });
-      
+
       const prevMissingResults = await Promise.all(prevMissingDataPromises);
-      
+
       // Aggregate the previous period live data into totals
       for (const { date, data } of prevMissingResults) {
         if (data.length > 0) {
           const transformed = transformLiveData(data, date);
-          
+
           // Initialize prevTotalsData if empty
           if (!prevTotalsData[0]) {
             prevTotalsData[0] = {
@@ -579,13 +622,13 @@ serve(async (req) => {
               avg_ctr: 0,
             };
           }
-          
+
           prevTotalsData[0].total_spend = (parseFloat(prevTotalsData[0].total_spend) || 0) + transformed.daily.spend;
           prevTotalsData[0].total_impressions = (parseInt(prevTotalsData[0].total_impressions) || 0) + transformed.daily.impressions;
           prevTotalsData[0].total_clicks = (parseInt(prevTotalsData[0].total_clicks) || 0) + transformed.daily.clicks;
           prevTotalsData[0].total_reach = (parseInt(prevTotalsData[0].total_reach) || 0) + transformed.daily.reach;
           prevTotalsData[0].total_installs = (parseInt(prevTotalsData[0].total_installs) || 0) + transformed.daily.installs;
-          
+
           console.log(`Added previous period live data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
         }
       }
@@ -598,7 +641,7 @@ serve(async (req) => {
 
     if (missingDates.length > 0 && shouldQueryBigQuery) {
       console.log(`BigQuery missing data for ${missingDates.length} recent dates: ${missingDates.join(", ")}. Fetching from live API...`);
-      
+
       // Fetch missing dates from live Meta API (campaign-level for totals)
       const missingDataPromises = missingDates.map(async (date) => {
         try {
@@ -611,30 +654,30 @@ serve(async (req) => {
           return { date, data: [] };
         }
       });
-      
+
       // Also fetch ad-level data for creatives
       const missingAdDataPromises = missingDates.map(async (date) => {
         try {
           const rawAdData = await fetchMetaAdInsights(date);
           const filteredAdData = filterMarchMadnessCampaigns(rawAdData);
           console.log(`Live ad fallback for ${date}: filtered to ${filteredAdData.length} ads from ${rawAdData.length} total`);
-          return { date, data: filteredAdData };
+          return { data: filteredAdData };
         } catch (err) {
           console.error(`Failed to fetch live ad data for ${date}:`, err);
-          return { date, data: [] };
+          return { data: [] };
         }
       });
-      
+
       const [missingResults, missingAdResults] = await Promise.all([
         Promise.all(missingDataPromises),
         Promise.all(missingAdDataPromises),
       ]);
-      
+
       // Transform and merge missing campaign data
       for (const { date, data } of missingResults) {
         if (data.length > 0) {
           const transformed = transformLiveData(data, date);
-          
+
           // Add to daily data
           bqDailyData.push({
             date,
@@ -647,7 +690,7 @@ serve(async (req) => {
             ctr: transformed.daily.ctr,
             installs: transformed.daily.installs,
           });
-          
+
           // Add to campaign data
           for (const camp of transformed.campaigns) {
             const existing = bqCampaignData.find((c: any) => c.campaign_id === camp.campaign_id);
@@ -672,7 +715,7 @@ serve(async (req) => {
               });
             }
           }
-          
+
           // Update totals
           if (!bqTotalsData[0]) {
             bqTotalsData[0] = {
@@ -688,56 +731,22 @@ serve(async (req) => {
           bqTotalsData[0].total_clicks = (parseInt(bqTotalsData[0].total_clicks) || 0) + transformed.daily.clicks;
           bqTotalsData[0].total_reach = (parseInt(bqTotalsData[0].total_reach) || 0) + transformed.daily.reach;
           bqTotalsData[0].total_installs = (parseInt(bqTotalsData[0].total_installs) || 0) + transformed.daily.installs;
-          
+
           console.log(`Added live fallback data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
         }
       }
-      
-      // Aggregate ad-level data from live API
-      for (const { date, data } of missingAdResults) {
-        for (const ad of data) {
-          const spend = parseFloat(ad.spend) || 0;
-          const impressions = parseInt(ad.impressions) || 0;
-          const clicks = parseInt(ad.clicks) || 0;
-          
-          // Extract installs from actions array
-          let installs = 0;
-          if (ad.actions && Array.isArray(ad.actions)) {
-            const installAction = ad.actions.find((a: any) => a.action_type === "mobile_app_install");
-            if (installAction) {
-              installs = parseInt(installAction.value) || 0;
-            }
-          }
-          
-          const ctr = impressions > 0 ? clicks / impressions : 0;
-          const cpi = installs > 0 ? spend / installs : 0;
-          
-          // Aggregate by ad_id across dates
-          const existing = bqAdsData.find((a: any) => a.ad_id === ad.ad_id);
-          if (existing) {
-            existing.spend = (parseFloat(existing.spend) || 0) + spend;
-            existing.impressions = (parseInt(existing.impressions) || 0) + impressions;
-            existing.clicks = (parseInt(existing.clicks) || 0) + clicks;
-            existing.installs = (parseInt(existing.installs) || 0) + installs;
-            // Recalculate CTR and CPI after aggregation
-            existing.ctr = existing.impressions > 0 ? existing.clicks / existing.impressions : 0;
-            existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
-          } else {
-            bqAdsData.push({
-              ad_id: ad.ad_id,
-              ad_name: ad.ad_name,
-              spend,
-              impressions,
-              clicks,
-              ctr,
-              installs,
-              cpi,
-            });
-          }
-        }
+
+      for (const { data } of missingAdResults) {
+        mergeLiveAdsIntoBq(data);
       }
-      
+
       console.log(`Live ad fallback aggregated ${bqAdsData.length} unique ads`);
+    }
+
+    if (includestoday) {
+      const filteredTodayAds = filterMarchMadnessCampaigns(liveAdData || []);
+      console.log(`Live today ad merge: filtered to ${filteredTodayAds.length} ads from ${(liveAdData || []).length} total`);
+      mergeLiveAdsIntoBq(filteredTodayAds);
     }
 
     // Process BigQuery data
