@@ -293,12 +293,39 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
                   </Badge>
                 </TableCell>
               )}
+              {attributes.product && (
+                <TableCell>
+                  {creative.parsed.product ? (
+                    <Badge variant="outline">{creative.parsed.product}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
               {attributes.assetType && (
                 <TableCell>
                   <Badge variant="secondary" className="gap-1">
                     {getAssetTypeIcon(creative.parsed.assetType || "IMG")}
                     {getAssetTypeLabel(creative.parsed.assetType || "IMG")}
                   </Badge>
+                </TableCell>
+              )}
+              {attributes.conceptId && (
+                <TableCell>
+                  {creative.parsed.conceptId ? (
+                    <span className="text-sm font-mono">{creative.parsed.conceptId}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {attributes.uniqueIdentifier && (
+                <TableCell>
+                  {creative.parsed.uniqueIdentifier ? (
+                    <span className="text-sm font-mono">{creative.parsed.uniqueIdentifier}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
               )}
               {attributes.category && (
@@ -328,6 +355,15 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
                   )}
                 </TableCell>
               )}
+              {attributes.hook && (
+                <TableCell>
+                  {creative.parsed.hook ? (
+                    <Badge variant="outline">{creative.parsed.hook}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
               {attributes.contentType && (
                 <TableCell>
                   {creative.parsed.contentType ? (
@@ -337,10 +373,28 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
                   )}
                 </TableCell>
               )}
-              {attributes.conceptId && (
+              {attributes.language && (
                 <TableCell>
-                  {creative.parsed.conceptId ? (
-                    <span className="text-sm font-mono">{creative.parsed.conceptId}</span>
+                  {creative.parsed.language ? (
+                    <Badge variant="outline">{creative.parsed.language}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {attributes.creativeOwner && (
+                <TableCell>
+                  {creative.parsed.creativeOwner ? (
+                    <span className="text-sm">{creative.parsed.creativeOwner}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              )}
+              {attributes.objective && (
+                <TableCell>
+                  {creative.parsed.objective ? (
+                    <Badge variant="outline">{creative.parsed.objective}</Badge>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
