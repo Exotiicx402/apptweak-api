@@ -375,6 +375,11 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+      <AttributeFilterBar
+        data={data}
+        activeFilters={attributeFilters}
+        onFiltersChange={setAttributeFilters}
+      />
     </div>
   );
 
