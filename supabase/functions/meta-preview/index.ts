@@ -65,9 +65,12 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   return data.data || [];
 }
 
-function filterMarchMadnessCampaigns(campaigns: any[]): any[] {
+function filterHoursAppCampaigns(campaigns: any[]): any[] {
   return campaigns.filter(
-    (c) => c.campaign_name?.toUpperCase().includes("MARCH MADNESS")
+    (c) => {
+      const name = c.campaign_name?.toUpperCase() || "";
+      return name.includes("HOURS") && name.includes("APP");
+    }
   );
 }
 
