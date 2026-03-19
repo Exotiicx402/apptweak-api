@@ -65,9 +65,9 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
   return data.data || [];
 }
 
-function filterAppInstallCampaigns(campaigns: any[]): any[] {
+function filterMarchMadnessCampaigns(campaigns: any[]): any[] {
   return campaigns.filter(
-    (c) => c.campaign_name?.toUpperCase().includes("APP INSTALLS")
+    (c) => c.campaign_name?.toUpperCase().includes("MARCH MADNESS")
   );
 }
 
