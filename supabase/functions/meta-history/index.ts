@@ -200,25 +200,39 @@ async function fetchMetaAdInsights(date: string): Promise<any[]> {
     until: date,
   });
 
-  const url = new URL(`https://graph.facebook.com/v19.0/${adAccountId}/insights`);
-  url.searchParams.set("fields", fields);
-  url.searchParams.set("time_range", timeRange);
-  url.searchParams.set("level", "ad");
-  url.searchParams.set("action_attribution_windows", '["7d_click","1d_view"]');
-  url.searchParams.set("access_token", accessToken);
+  const baseUrl = `https://graph.facebook.com/v19.0/${adAccountId}/insights`;
+  const params = new URLSearchParams({
+    fields,
+    time_range: timeRange,
+    level: "ad",
+    action_attribution_windows: '["7d_click","1d_view"]',
+    access_token: accessToken,
+    limit: "500",
+  });
 
   console.log(`Fetching live Meta ad-level data for date: ${date}`);
 
-  const response = await fetch(url.toString());
+  const allAds: any[] = [];
+  let fetchUrl: string | null = `${baseUrl}?${params.toString()}`;
+  let pageCount = 0;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Meta API error:", errorText);
-    throw new Error(`Meta API error: ${errorText}`);
+  while (fetchUrl) {
+    pageCount++;
+    const response = await fetch(fetchUrl);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Meta API error:", errorText);
+      throw new Error(`Meta API error: ${errorText}`);
+    }
+
+    const data = await response.json();
+    allAds.push(...(data.data || []));
+    fetchUrl = data.paging?.next || null;
   }
 
-  const data = await response.json();
-  return data.data || [];
+  console.log(`Fetched ${pageCount} page(s), ${allAds.length} total ads`);
+  return allAds;
 }
 
 function filterAppInstallCampaigns(campaigns: any[]): any[] {
