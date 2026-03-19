@@ -1,21 +1,24 @@
 Field Position,Field Name,Description,Example Values
 1,Page,Facebook page or brand name,"Polymarket"
-2,ContentType,Media format of the creative,"Video, Static, Carousel"
+2,Product,Product or app being advertised,"Hours App, Polymarket"
 3,AssetType,Aspect ratio or placement type,"9x16, 1x1, 4x5"
 4,ConceptID,Unique concept identifier,"C001, C042"
-5,Category,Thematic category of the ad,"Sports, Politics, Crypto"
-6,Angle,Messaging angle or hook,"FOMO, Social Proof, Education"
-7,UNIQUEIDENTIFIER,All-caps unique string for the specific asset (primary matching key across platforms),"LEBRON-SLAM-V2, SUPERBOWL-ODDS-V1"
+5,UniqueIdentifier,All-caps unique string for the specific asset (primary matching key across platforms),"LEBRON-SLAM-V2, SUPERBOWL-ODDS-V1"
+6,Category,Thematic category of the ad,"Sports, Politics, Crypto"
+7,Angle,Messaging angle or positioning,"FOMO, Social Proof, Education"
 8,Tactic,Campaign tactic,"Prospecting, Retargeting"
-9,CreativeOwner,Person or team who created the asset,"JSmith, Design Team"
-10,Objective,Campaign objective,"Installs, App Events"
-11,LandingPage,Destination URL or deeplink,"polymarket.com/sports"
-12,LaunchDate,Date the creative launched,"2026-02-18"
+9,Hook,Opening hook or attention grabber,"Question, Stat, Testimonial"
+10,ContentType,Media format of the creative,"Video, Static, Carousel"
+11,Language,Language of the creative,"EN, ES, FR"
+12,CreativeOwner,Person or team who created the asset,"JSmith, Design Team"
+13,Objective,Campaign objective,"Installs, App Events"
+14,LandingPage,Destination URL or deeplink,"polymarket.com/sports"
+15,Date,Date the creative launched,"2026-02-18"
 
 Delimiter Notes:
 - Fields are separated by: space pipe space ( | )
-- A valid name has at least 6 fields (through Angle)
+- A valid name has at least 7 fields (through Angle)
 - The full ad_name string is used as the primary key for cross-platform blending (Meta / Snapchat / TikTok / Google)
 
 Example Full Ad Name:
-"Polymarket | Video | 9x16 | C012 | Sports | FOMO | SUPERBOWL-ODDS-V1 | Prospecting | JSmith | Installs | polymarket.com/sports | 2026-02-18"
+"Polymarket | Hours App | 9x16 | C012 | SUPERBOWL-ODDS-V1 | Sports | FOMO | Prospecting | Question | Video | EN | JSmith | Installs | polymarket.com/sports | 2026-02-18"

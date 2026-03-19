@@ -1,12 +1,15 @@
 export interface ParsedCreativeName {
   page: string;
-  contentType: string;
+  product: string;
   assetType: string;
   conceptId: string;
+  uniqueIdentifier: string;
   category: string;
   angle: string;
-  uniqueIdentifier: string;
   tactic: string;
+  hook: string;
+  contentType: string;
+  language: string;
   creativeOwner: string;
   objective: string;
   landingPage: string;
@@ -14,25 +17,28 @@ export interface ParsedCreativeName {
 }
 
 /**
- * Parses ad names following the 12-part pipe-delimited naming convention:
- * Page | ContentType | AssetType | ConceptID | Category | Angle | UNIQUEIDENTIFIER | Tactic | CreativeOwner | Objective | INPUT-LP-HERE | LaunchDate
+ * Parses ad names following the 15-part pipe-delimited naming convention:
+ * Page | Product | Asset Type | Concept ID | Unique Identifier | Category | Angle | Tactic | Hook | Content Type | Language | Creative Owner | Objective | Landing Page | Date
  */
 export function parseCreativeName(adName: string): ParsedCreativeName {
   const parts = adName.split(' | ').map((part) => part.trim());
 
   return {
     page: parts[0] || '',
-    contentType: parts[1] || '',
+    product: parts[1] || '',
     assetType: parts[2] || '',
     conceptId: parts[3] || '',
-    category: parts[4] || '',
-    angle: parts[5] || '',
-    uniqueIdentifier: parts[6] || '',
+    uniqueIdentifier: parts[4] || '',
+    category: parts[5] || '',
+    angle: parts[6] || '',
     tactic: parts[7] || '',
-    creativeOwner: parts[8] || '',
-    objective: parts[9] || '',
-    landingPage: parts[10] || '',
-    launchDate: parts[11] || '',
+    hook: parts[8] || '',
+    contentType: parts[9] || '',
+    language: parts[10] || '',
+    creativeOwner: parts[11] || '',
+    objective: parts[12] || '',
+    landingPage: parts[13] || '',
+    launchDate: parts[14] || '',
   };
 }
 
@@ -41,5 +47,5 @@ export function parseCreativeName(adName: string): ParsedCreativeName {
  */
 export function isValidCreativeName(adName: string): boolean {
   const parts = adName.split(' | ');
-  return parts.length >= 6; // At minimum should have through Angle
+  return parts.length >= 7; // At minimum should have through Angle
 }
