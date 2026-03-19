@@ -198,12 +198,18 @@ export function CreativePerformanceTable({ data, showPlatform = false, columnCon
           <TableRow>
             <TableHead className="min-w-[280px]">Creative Name</TableHead>
             {showPlatform && <TableHead>Platform</TableHead>}
+            {attributes.product && <TableHead>Product</TableHead>}
             {attributes.assetType && <TableHead>Asset Type</TableHead>}
-            {attributes.category && <TableHead>Category</TableHead>}
-            {attributes.angle && <TableHead>Messaging Angle</TableHead>}
-            {attributes.tactic && <TableHead>Hook Tactic</TableHead>}
-            {attributes.contentType && <TableHead>Content Type</TableHead>}
             {attributes.conceptId && <TableHead>Concept ID</TableHead>}
+            {attributes.uniqueIdentifier && <TableHead>Unique ID</TableHead>}
+            {attributes.category && <TableHead>Category</TableHead>}
+            {attributes.angle && <TableHead>Angle</TableHead>}
+            {attributes.tactic && <TableHead>Tactic</TableHead>}
+            {attributes.hook && <TableHead>Hook</TableHead>}
+            {attributes.contentType && <TableHead>Content Type</TableHead>}
+            {attributes.language && <TableHead>Language</TableHead>}
+            {attributes.creativeOwner && <TableHead>Creative Owner</TableHead>}
+            {attributes.objective && <TableHead>Objective</TableHead>}
             {attributes.launchDate && <TableHead>Launch Date</TableHead>}
             {metrics.spend && (
               <TableHead className="text-right">
