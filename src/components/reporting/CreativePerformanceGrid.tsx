@@ -11,6 +11,7 @@ import { PlatformFilterBar } from "./PlatformFilterBar";
 import { ColumnSettingsPopover, ColumnConfig, defaultColumnConfig } from "./ColumnSettingsPopover";
 import { CreativeBreakdownDialog } from "./CreativeBreakdownDialog";
 import { CreativePreviewDialog } from "./CreativePreviewDialog";
+import { AttributeFilterBar, AttributeFilters } from "./AttributeFilterBar";
 
 type ViewMode = "cards" | "table";
 type AssetTypeFilter = "all" | "image" | "video";
@@ -269,6 +270,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   const [columnConfig, setColumnConfig] = useState<ColumnConfig>(defaultColumnConfig);
   const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [attributeFilters, setAttributeFilters] = useState<AttributeFilters>({});
 
   const handleCreativeClick = (creative: EnrichedCreative) => {
     setSelectedCreative(creative);
@@ -285,15 +287,24 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
     }
   }, [startDate, endDate, dataFetched, refreshKey, fetchAllPlatforms]);
 
-  // Filter data by asset type
-  const filteredData = data.filter((creative) => {
-    if (assetTypeFilter === "all") return true;
-    if (assetTypeFilter === "video") return isVideoCreative(creative);
-    return !isVideoCreative(creative); // "image" includes static + carousel
+  // Apply attribute filters first, then asset type filter
+  const attributeFilteredData = data.filter((creative) => {
+    return Object.entries(attributeFilters).every(([key, values]) => {
+      if (!values || values.length === 0) return true;
+      const parsedValue = creative.parsed[key as keyof typeof creative.parsed];
+      return parsedValue && values.includes(parsedValue.trim());
+    });
   });
 
-  const videoCount = data.filter(isVideoCreative).length;
-  const imageCount = data.length - videoCount;
+  // Filter by asset type
+  const filteredData = attributeFilteredData.filter((creative) => {
+    if (assetTypeFilter === "all") return true;
+    if (assetTypeFilter === "video") return isVideoCreative(creative);
+    return !isVideoCreative(creative);
+  });
+
+  const videoCount = attributeFilteredData.filter(isVideoCreative).length;
+  const imageCount = attributeFilteredData.length - videoCount;
 
   if (!dataFetched) {
     return null;
@@ -352,7 +363,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
         >
           <ToggleGroupItem value="all" aria-label="All types" className="px-3 text-xs gap-1">
             <LayoutGrid className="h-3.5 w-3.5" />
-            All ({data.length})
+          All ({attributeFilteredData.length})
           </ToggleGroupItem>
           <ToggleGroupItem value="image" aria-label="Images only" className="px-3 text-xs gap-1">
             <ImageIcon className="h-3.5 w-3.5" />
@@ -364,6 +375,11 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+      <AttributeFilterBar
+        data={data}
+        activeFilters={attributeFilters}
+        onFiltersChange={setAttributeFilters}
+      />
     </div>
   );
 
