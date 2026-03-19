@@ -6,22 +6,26 @@
  import { Separator } from "@/components/ui/separator";
  
  export interface ColumnConfig {
-   // Metrics (always available)
    metrics: {
      spend: boolean;
      installs: boolean;
      ctr: boolean;
      cpi: boolean;
    };
-   // Attributes (parsed from naming convention)
    attributes: {
+     product: boolean;
      assetType: boolean;
+     conceptId: boolean;
+     uniqueIdentifier: boolean;
+     category: boolean;
      angle: boolean;
      tactic: boolean;
-     category: boolean;
-     launchDate: boolean;
+     hook: boolean;
      contentType: boolean;
-     conceptId: boolean;
+     language: boolean;
+     creativeOwner: boolean;
+     objective: boolean;
+     launchDate: boolean;
    };
  }
  
@@ -33,13 +37,19 @@
      cpi: true,
    },
    attributes: {
+     product: false,
      assetType: true,
+     conceptId: false,
+     uniqueIdentifier: false,
+     category: true,
      angle: true,
      tactic: true,
-     category: true,
-     launchDate: false,
+     hook: true,
      contentType: false,
-     conceptId: false,
+     language: false,
+     creativeOwner: false,
+     objective: false,
+     launchDate: false,
    },
  };
  
@@ -51,13 +61,19 @@
  };
  
  const attributeLabels: Record<keyof ColumnConfig["attributes"], string> = {
+   product: "Product",
    assetType: "Asset Type",
-   angle: "Messaging Angle",
-   tactic: "Hook Tactic",
-   category: "Category",
-   launchDate: "Launch Date",
-   contentType: "Content Type",
    conceptId: "Concept ID",
+   uniqueIdentifier: "Unique ID",
+   category: "Category",
+   angle: "Angle",
+   tactic: "Tactic",
+   hook: "Hook",
+   contentType: "Content Type",
+   language: "Language",
+   creativeOwner: "Creative Owner",
+   objective: "Objective",
+   launchDate: "Launch Date",
  };
  
  interface ColumnSettingsPopoverProps {
@@ -95,9 +111,8 @@
            <span className="text-muted-foreground text-xs">({activeCount})</span>
          </Button>
        </PopoverTrigger>
-       <PopoverContent className="w-72 p-4" align="start">
+       <PopoverContent className="w-72 p-4 max-h-[420px] overflow-y-auto" align="start">
          <div className="space-y-4">
-           {/* Metrics Section */}
            <div>
              <div className="flex items-center gap-2 mb-2">
                <Plus className="h-4 w-4 text-muted-foreground" />
@@ -118,7 +133,6 @@
  
            <Separator />
  
-           {/* Attributes Section */}
            <div>
              <div className="flex items-center gap-2 mb-2">
                <Plus className="h-4 w-4 text-muted-foreground" />

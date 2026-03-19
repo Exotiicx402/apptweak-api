@@ -11,7 +11,7 @@ function parseCreativeName(name: string): { conceptId: string; uniqueId: string;
   const parts = name.split('|').map(p => p.trim());
   return {
     conceptId: parts[3] || '',
-    uniqueId: parts[6] || '',
+    uniqueId: parts[4] || '',
     assetType: parts[2] || '',
   };
 }

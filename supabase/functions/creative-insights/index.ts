@@ -6,16 +6,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
  };
  
- // ============ CREATIVE NAMING PARSER ============
+// ============ CREATIVE NAMING PARSER ============
  interface ParsedCreativeName {
    page: string;
-   contentType: string;
+   product: string;
    assetType: string;
    conceptId: string;
+   uniqueIdentifier: string;
    category: string;
    angle: string;
-   uniqueIdentifier: string;
    tactic: string;
+   hook: string;
+   contentType: string;
+   language: string;
    creativeOwner: string;
    objective: string;
    landingPage: string;
@@ -26,17 +29,20 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
    const parts = adName.split(' | ').map((part) => part.trim());
    return {
      page: parts[0] || '',
-     contentType: parts[1] || '',
+     product: parts[1] || '',
      assetType: parts[2] || '',
      conceptId: parts[3] || '',
-     category: parts[4] || '',
-     angle: parts[5] || '',
-     uniqueIdentifier: parts[6] || '',
+     uniqueIdentifier: parts[4] || '',
+     category: parts[5] || '',
+     angle: parts[6] || '',
      tactic: parts[7] || '',
-     creativeOwner: parts[8] || '',
-     objective: parts[9] || '',
-     landingPage: parts[10] || '',
-     launchDate: parts[11] || '',
+     hook: parts[8] || '',
+     contentType: parts[9] || '',
+     language: parts[10] || '',
+     creativeOwner: parts[11] || '',
+     objective: parts[12] || '',
+     landingPage: parts[13] || '',
+     launchDate: parts[14] || '',
    };
  }
  
