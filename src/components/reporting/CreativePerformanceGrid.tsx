@@ -11,6 +11,7 @@ import { PlatformFilterBar } from "./PlatformFilterBar";
 import { ColumnSettingsPopover, ColumnConfig, defaultColumnConfig } from "./ColumnSettingsPopover";
 import { CreativeBreakdownDialog } from "./CreativeBreakdownDialog";
 import { CreativePreviewDialog } from "./CreativePreviewDialog";
+import { AttributeFilterBar, AttributeFilters } from "./AttributeFilterBar";
 
 type ViewMode = "cards" | "table";
 type AssetTypeFilter = "all" | "image" | "video";
