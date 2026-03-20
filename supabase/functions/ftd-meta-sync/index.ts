@@ -10,13 +10,13 @@ const corsHeaders = {
 // This ensures only "Website Adds Payment Info" campaigns are tracked
 const CAMPAIGN_REQUIRED_FRAGMENTS = ["HOURS", "APP"];
 
-// Primary: Meta standard "Add Payment Info" event
-const FTD_ACTION_TYPE = "add_payment_info";
-// Fallback: pixel custom variant
-const FTD_ACTION_TYPE_ALT = "offsite_conversion.fb_pixel_custom.AddPaymentInfo";
-// Legacy fallbacks for historical data
-const FTD_ACTION_TYPE_LEGACY = "offsite_conversion.custom.FirstTimeDeposit";
-const FTD_ACTION_TYPE_LEGACY_ALT = "offsite_conversion.fb_pixel_custom.FirstTimeDeposit";
+// Primary: Meta standard "Complete Registration" event (in-app registrations)
+const REG_ACTION_TYPE = "app_custom_event.fb_mobile_complete_registration";
+// Fallback: standard complete_registration
+const REG_ACTION_TYPE_ALT = "complete_registration";
+// Additional fallback variants
+const REG_ACTION_TYPE_OFFSITE = "offsite_conversion.fb_pixel_custom.CompleteRegistration";
+const REG_ACTION_TYPE_MOBILE = "fb_mobile_complete_registration";
 
 function extractFTDCount(actions: any[]): number {
   if (!actions || !Array.isArray(actions)) return 0;
