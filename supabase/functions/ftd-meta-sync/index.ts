@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 // Campaign name must contain BOTH fragments to be included
-// This ensures only "Website Adds Payment Info" campaigns are tracked
+// This ensures only app install/registration campaigns are tracked
 const CAMPAIGN_REQUIRED_FRAGMENTS = ["HOURS", "APP"];
 
 // Primary: Meta standard "Complete Registration" event (in-app registrations)
