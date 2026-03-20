@@ -172,18 +172,18 @@ serve(async (req) => {
 
     // Log FTD extraction for verification
     rawRows.forEach((row: any) => {
-      const ftdConv = (row.conversions || []).find((a: any) => 
-        typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("add_payment_info") || a.action_type.toLowerCase().includes("firsttimedeposit"))
+      const regConv = (row.conversions || []).find((a: any) => 
+        typeof a.action_type === "string" && a.action_type.toLowerCase().includes("completeregistration")
       );
-      console.log(`Campaign: ${row.campaign_name} | Date: ${row.date_start} | FTD/AddPaymentInfo conversions: ${JSON.stringify(ftdConv || 'none')}`);
+      console.log(`Campaign: ${row.campaign_name} | Date: ${row.date_start} | Registration conversions: ${JSON.stringify(regConv || 'none')}`);
     });
 
     // Transform rows (campaign-level)
     const rows = rawRows.map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
       // Use conversions field which provides granular custom event breakdown
-      const ftdCount = extractFTDCount(row.conversions || row.actions);
-      const resultsValue = extractFTDValue(row.conversion_values || row.action_values);
+      const ftdCount = extractRegistrationCount(row.conversions || row.actions);
+      const resultsValue = extractRegistrationValue(row.conversion_values || row.action_values);
       const roas = spend > 0 ? resultsValue / spend : 0;
       return {
         date: row.date_start,
