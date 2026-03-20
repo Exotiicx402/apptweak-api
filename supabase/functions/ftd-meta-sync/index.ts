@@ -127,15 +127,14 @@ async function fetchMetaFTDInsights(
   }
 
   // Filter to only campaigns containing ALL required fragments (case-insensitive)
-  // This ensures we only track campaigns with "Website Adds Payment Info" as primary metric
-  const ftdRows = allRows.filter((row: any) => {
+  const regRows = allRows.filter((row: any) => {
     if (typeof row.campaign_name !== "string") return false;
     const upper = row.campaign_name.toUpperCase();
     return CAMPAIGN_REQUIRED_FRAGMENTS.every((frag) => upper.includes(frag.toUpperCase()));
   });
 
-  console.log(`Payment Info Adds campaign rows after filtering: ${ftdRows.length} (required: ${CAMPAIGN_REQUIRED_FRAGMENTS.join(" + ")})`);
-  return ftdRows;
+  console.log(`Registration campaign rows after filtering: ${regRows.length} (required: ${CAMPAIGN_REQUIRED_FRAGMENTS.join(" + ")})`);
+  return regRows;
 }
 
 serve(async (req) => {
