@@ -258,7 +258,7 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <TimeSeriesChart
-                title="Cost / Add"
+                title="Cost / Reg"
                 data={(data?.daily ?? []).map((d) => ({ date: d.date, value: d.cost_per_ftd }))}
                 format="currency"
                 color="hsl(280, 67%, 50%)"
