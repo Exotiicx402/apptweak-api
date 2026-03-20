@@ -18,17 +18,16 @@ const REG_ACTION_TYPE_ALT = "complete_registration";
 const REG_ACTION_TYPE_OFFSITE = "offsite_conversion.fb_pixel_custom.CompleteRegistration";
 const REG_ACTION_TYPE_MOBILE = "fb_mobile_complete_registration";
 
-function extractFTDCount(actions: any[]): number {
+function extractRegistrationCount(actions: any[]): number {
   if (!actions || !Array.isArray(actions)) return 0;
 
-  // Try Add Payment Info first, then legacy FirstTimeDeposit
   const specific = actions.find(
     (a: any) =>
-      a.action_type === FTD_ACTION_TYPE ||
-      a.action_type === FTD_ACTION_TYPE_ALT ||
-      a.action_type === FTD_ACTION_TYPE_LEGACY ||
-      a.action_type === FTD_ACTION_TYPE_LEGACY_ALT ||
-      (typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("firsttimedeposit")))
+      a.action_type === REG_ACTION_TYPE ||
+      a.action_type === REG_ACTION_TYPE_ALT ||
+      a.action_type === REG_ACTION_TYPE_OFFSITE ||
+      a.action_type === REG_ACTION_TYPE_MOBILE ||
+      (typeof a.action_type === "string" && a.action_type.toLowerCase().includes("completeregistration"))
   );
   if (specific) return parseInt(specific.value) || 0;
 
