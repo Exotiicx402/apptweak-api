@@ -137,7 +137,7 @@ export default function FTDReporting() {
                 loading={isLoading}
               />
               <MetricKpiCard
-                title="Cost / Add"
+                title="Cost / Reg"
                 value={totals?.cost_per_ftd ?? 0}
                 currentValue={totals?.cost_per_ftd ?? 0}
                 previousValue={0}
