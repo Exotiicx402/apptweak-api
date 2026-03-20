@@ -34,16 +34,16 @@ function extractRegistrationCount(actions: any[]): number {
   return 0;
 }
 
-function extractFTDValue(actionValues: any[]): number {
+function extractRegistrationValue(actionValues: any[]): number {
   if (!actionValues || !Array.isArray(actionValues)) return 0;
 
   const specific = actionValues.find(
     (a: any) =>
-      a.action_type === FTD_ACTION_TYPE ||
-      a.action_type === FTD_ACTION_TYPE_ALT ||
-      a.action_type === FTD_ACTION_TYPE_LEGACY ||
-      a.action_type === FTD_ACTION_TYPE_LEGACY_ALT ||
-      (typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("firsttimedeposit")))
+      a.action_type === REG_ACTION_TYPE ||
+      a.action_type === REG_ACTION_TYPE_ALT ||
+      a.action_type === REG_ACTION_TYPE_OFFSITE ||
+      a.action_type === REG_ACTION_TYPE_MOBILE ||
+      (typeof a.action_type === "string" && a.action_type.toLowerCase().includes("completeregistration"))
   );
   if (specific) return parseFloat(specific.value) || 0;
 
