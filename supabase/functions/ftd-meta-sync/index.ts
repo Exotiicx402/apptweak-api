@@ -7,44 +7,43 @@ const corsHeaders = {
 };
 
 // Campaign name must contain BOTH fragments to be included
-// This ensures only "Website Adds Payment Info" campaigns are tracked
+// This ensures only app install/registration campaigns are tracked
 const CAMPAIGN_REQUIRED_FRAGMENTS = ["HOURS", "APP"];
 
-// Primary: Meta standard "Add Payment Info" event
-const FTD_ACTION_TYPE = "add_payment_info";
-// Fallback: pixel custom variant
-const FTD_ACTION_TYPE_ALT = "offsite_conversion.fb_pixel_custom.AddPaymentInfo";
-// Legacy fallbacks for historical data
-const FTD_ACTION_TYPE_LEGACY = "offsite_conversion.custom.FirstTimeDeposit";
-const FTD_ACTION_TYPE_LEGACY_ALT = "offsite_conversion.fb_pixel_custom.FirstTimeDeposit";
+// Primary: Meta standard "Complete Registration" event (in-app registrations)
+const REG_ACTION_TYPE = "app_custom_event.fb_mobile_complete_registration";
+// Fallback: standard complete_registration
+const REG_ACTION_TYPE_ALT = "complete_registration";
+// Additional fallback variants
+const REG_ACTION_TYPE_OFFSITE = "offsite_conversion.fb_pixel_custom.CompleteRegistration";
+const REG_ACTION_TYPE_MOBILE = "fb_mobile_complete_registration";
 
-function extractFTDCount(actions: any[]): number {
+function extractRegistrationCount(actions: any[]): number {
   if (!actions || !Array.isArray(actions)) return 0;
 
-  // Try Add Payment Info first, then legacy FirstTimeDeposit
   const specific = actions.find(
     (a: any) =>
-      a.action_type === FTD_ACTION_TYPE ||
-      a.action_type === FTD_ACTION_TYPE_ALT ||
-      a.action_type === FTD_ACTION_TYPE_LEGACY ||
-      a.action_type === FTD_ACTION_TYPE_LEGACY_ALT ||
-      (typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("firsttimedeposit")))
+      a.action_type === REG_ACTION_TYPE ||
+      a.action_type === REG_ACTION_TYPE_ALT ||
+      a.action_type === REG_ACTION_TYPE_OFFSITE ||
+      a.action_type === REG_ACTION_TYPE_MOBILE ||
+      (typeof a.action_type === "string" && a.action_type.toLowerCase().includes("completeregistration"))
   );
   if (specific) return parseInt(specific.value) || 0;
 
   return 0;
 }
 
-function extractFTDValue(actionValues: any[]): number {
+function extractRegistrationValue(actionValues: any[]): number {
   if (!actionValues || !Array.isArray(actionValues)) return 0;
 
   const specific = actionValues.find(
     (a: any) =>
-      a.action_type === FTD_ACTION_TYPE ||
-      a.action_type === FTD_ACTION_TYPE_ALT ||
-      a.action_type === FTD_ACTION_TYPE_LEGACY ||
-      a.action_type === FTD_ACTION_TYPE_LEGACY_ALT ||
-      (typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("firsttimedeposit")))
+      a.action_type === REG_ACTION_TYPE ||
+      a.action_type === REG_ACTION_TYPE_ALT ||
+      a.action_type === REG_ACTION_TYPE_OFFSITE ||
+      a.action_type === REG_ACTION_TYPE_MOBILE ||
+      (typeof a.action_type === "string" && a.action_type.toLowerCase().includes("completeregistration"))
   );
   if (specific) return parseFloat(specific.value) || 0;
 
@@ -128,15 +127,14 @@ async function fetchMetaFTDInsights(
   }
 
   // Filter to only campaigns containing ALL required fragments (case-insensitive)
-  // This ensures we only track campaigns with "Website Adds Payment Info" as primary metric
-  const ftdRows = allRows.filter((row: any) => {
+  const regRows = allRows.filter((row: any) => {
     if (typeof row.campaign_name !== "string") return false;
     const upper = row.campaign_name.toUpperCase();
     return CAMPAIGN_REQUIRED_FRAGMENTS.every((frag) => upper.includes(frag.toUpperCase()));
   });
 
-  console.log(`Payment Info Adds campaign rows after filtering: ${ftdRows.length} (required: ${CAMPAIGN_REQUIRED_FRAGMENTS.join(" + ")})`);
-  return ftdRows;
+  console.log(`Registration campaign rows after filtering: ${regRows.length} (required: ${CAMPAIGN_REQUIRED_FRAGMENTS.join(" + ")})`);
+  return regRows;
 }
 
 serve(async (req) => {
@@ -174,18 +172,18 @@ serve(async (req) => {
 
     // Log FTD extraction for verification
     rawRows.forEach((row: any) => {
-      const ftdConv = (row.conversions || []).find((a: any) => 
-        typeof a.action_type === "string" && (a.action_type.toLowerCase().includes("addpaymentinfo") || a.action_type.toLowerCase().includes("add_payment_info") || a.action_type.toLowerCase().includes("firsttimedeposit"))
+      const regConv = (row.conversions || []).find((a: any) => 
+        typeof a.action_type === "string" && a.action_type.toLowerCase().includes("completeregistration")
       );
-      console.log(`Campaign: ${row.campaign_name} | Date: ${row.date_start} | FTD/AddPaymentInfo conversions: ${JSON.stringify(ftdConv || 'none')}`);
+      console.log(`Campaign: ${row.campaign_name} | Date: ${row.date_start} | Registration conversions: ${JSON.stringify(regConv || 'none')}`);
     });
 
     // Transform rows (campaign-level)
     const rows = rawRows.map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
       // Use conversions field which provides granular custom event breakdown
-      const ftdCount = extractFTDCount(row.conversions || row.actions);
-      const resultsValue = extractFTDValue(row.conversion_values || row.action_values);
+      const ftdCount = extractRegistrationCount(row.conversions || row.actions);
+      const resultsValue = extractRegistrationValue(row.conversion_values || row.action_values);
       const roas = spend > 0 ? resultsValue / spend : 0;
       return {
         date: row.date_start,
