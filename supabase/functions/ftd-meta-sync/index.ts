@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Campaign name must contain BOTH fragments to be included
 // This ensures only "Website Adds Payment Info" campaigns are tracked
-const CAMPAIGN_REQUIRED_FRAGMENTS = ["HOURS", "WEB"];
+const CAMPAIGN_REQUIRED_FRAGMENTS = ["HOURS", "APP"];
 
 // Primary: Meta standard "Add Payment Info" event
 const FTD_ACTION_TYPE = "add_payment_info";
