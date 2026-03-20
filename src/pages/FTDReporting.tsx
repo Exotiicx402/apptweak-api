@@ -207,8 +207,8 @@ export default function FTDReporting() {
                       <TableRow>
                         <TableHead>Campaign</TableHead>
                         <TableHead className="text-right">Spend</TableHead>
-                        <TableHead className="text-right">Payment Info Adds</TableHead>
-                        <TableHead className="text-right">Cost / Add</TableHead>
+                        <TableHead className="text-right">Registrations</TableHead>
+                        <TableHead className="text-right">Cost / Reg</TableHead>
                         <TableHead className="text-right">Revenue</TableHead>
                         <TableHead className="text-right">ROAS</TableHead>
                         <TableHead className="text-right">Impressions</TableHead>
