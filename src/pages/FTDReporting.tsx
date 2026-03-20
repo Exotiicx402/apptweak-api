@@ -288,8 +288,8 @@ export default function FTDReporting() {
                       <TableRow>
                         <TableHead>Ad Set</TableHead>
                         <TableHead className="text-right">Spend</TableHead>
-                        <TableHead className="text-right">Payment Info Adds</TableHead>
-                        <TableHead className="text-right">Cost / Add</TableHead>
+                        <TableHead className="text-right">Registrations</TableHead>
+                        <TableHead className="text-right">Cost / Reg</TableHead>
                         <TableHead className="text-right">Impressions</TableHead>
                         <TableHead className="text-right">Clicks</TableHead>
                         <TableHead className="text-right">CTR</TableHead>
