@@ -63,7 +63,7 @@ export default function FTDReporting() {
               <div>
                 <h1 className="text-2xl font-bold text-foreground">HOURS Campaigns</h1>
                 <p className="text-xs text-muted-foreground font-mono">
-                  Website Adds Payment Info · All HOURS Campaigns
+                  In-App Registrations · All HOURS APP Campaigns
                 </p>
               </div>
             </div>
