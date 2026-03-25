@@ -97,6 +97,21 @@ export default function Reporting() {
               />
 
               <PlatformMetricsRow
+                platform="Moloco"
+                logo={molocoLogo}
+                spend={data.moloco.spend}
+                installs={data.moloco.installs}
+                cpi={data.moloco.cpi}
+                previousSpend={data.moloco.previousSpend}
+                previousInstalls={data.moloco.previousInstalls}
+                previousCpi={data.moloco.previousCpi}
+                loading={data.moloco.isLoading}
+                error={data.moloco.error}
+                dataUnavailable={data.moloco.dataUnavailable}
+                unavailableReason={data.moloco.unavailableReason}
+              />
+
+              <PlatformMetricsRow
                 platform="Snapchat"
                 logo={snapchatLogo}
                 spend={data.snapchat.spend}
