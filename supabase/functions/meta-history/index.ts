@@ -846,6 +846,8 @@ serve(async (req) => {
     let dailyData = bqDailyData.map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
       const installs = parseInt(row.installs) || 0;
+      const registrations = parseInt(row.registrations) || 0;
+      const ftds = parseInt(row.ftds) || 0;
       return {
         date: row.date?.split("T")[0] || row.date,
         spend,
@@ -857,6 +859,8 @@ serve(async (req) => {
         ctr: parseFloat(row.ctr) || 0,
         installs,
         cpi: installs > 0 ? spend / installs : 0,
+        registrations,
+        ftds,
       };
     });
 
@@ -888,6 +892,8 @@ serve(async (req) => {
       cpc: parseFloat(bqTotals.avg_cpc) || 0,
       ctr: parseFloat(bqTotals.calculated_ctr) || 0,
       installs: parseInt(bqTotals.total_installs) || 0,
+      registrations: parseInt(bqTotals.total_registrations) || 0,
+      ftds: parseInt(bqTotals.total_ftds) || 0,
       cpi: 0,
     };
     totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
