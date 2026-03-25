@@ -174,16 +174,32 @@ function CreativeCard({ creative, showPlatform, columnConfig, onClick, isClickab
               <span className="font-medium">{formatCurrency(creative.spend)}</span>
             </div>
           )}
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">FTD</span>
+            <span className="font-medium">{creative.ftds > 0 ? formatNumber(creative.ftds) : '-'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">CFTD</span>
+            <span className="font-medium">{creative.cftd > 0 ? formatCurrency(creative.cftd) : '-'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Thumbstop</span>
+            <span className="font-medium">{creative.thumbstopRate > 0 ? formatPercent(creative.thumbstopRate) : '-'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Avg. Watch Time</span>
+            <span className="font-medium">{creative.avgWatchTime > 0 ? `${creative.avgWatchTime.toFixed(1)}s` : '-'}</span>
+          </div>
           {metrics.ctr && (
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">CTR (all)</span>
+              <span className="text-muted-foreground">CTR</span>
               <span className="font-medium">{formatPercent(creative.ctr)}</span>
             </div>
           )}
         </div>
 
         {/* Metadata badges - styled like reference */}
-        <div className="space-y-2 mb-3">
+        <div className="space-y-2">
           {attributes.contentType && parsed.contentType && (
             <div className="flex items-center gap-2">
               <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -206,22 +222,6 @@ function CreativeCard({ creative, showPlatform, columnConfig, onClick, isClickab
               <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-200">
                 {parsed.tactic}
               </Badge>
-            </div>
-          )}
-        </div>
-
-        {/* Install metrics */}
-        <div className="space-y-1 text-sm border-t pt-3">
-          {metrics.installs && (
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">App installs</span>
-              <span className="font-medium">{creative.installs > 0 ? formatNumber(creative.installs) : '-'}</span>
-            </div>
-          )}
-          {metrics.cpi && (
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Cost per app install</span>
-              <span className="font-medium">{creative.cpi > 0 ? formatCurrency(creative.cpi) : '-'}</span>
             </div>
           )}
         </div>

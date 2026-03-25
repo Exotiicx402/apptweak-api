@@ -18,6 +18,9 @@ interface AdMetric {
   tradeValue?: number;
   cps?: number;
   cftd?: number;
+  video3sViews?: number;
+  avgWatchTime?: number;
+  thumbstopRate?: number;
 }
 
 interface CreativeAsset {
@@ -35,6 +38,7 @@ export interface EnrichedCreative {
   adId: string;
   adName: string;
   spend: number;
+  impressions: number;
   installs: number;
   ctr: number;
   cpi: number;
@@ -45,6 +49,9 @@ export interface EnrichedCreative {
   tradeValue: number;
   cps: number;
   cftd: number;
+  video3sViews: number;
+  avgWatchTime: number;
+  thumbstopRate: number;
   platform: string;
   parsed: ParsedCreativeName;
   assetUrl: string | null;
@@ -147,10 +154,13 @@ export function useMultiPlatformCreatives() {
   const enrichAds = useCallback((ads: AdMetric[], platform: string): EnrichedCreative[] => {
     return ads.map((ad) => {
       const asset = assetMap.get(ad.ad_name);
+      const impressions = ad.impressions || 0;
+      const video3sViews = ad.video3sViews || 0;
       return {
-      adId: ad.ad_id || ad.ad_name, // Use ad_name as fallback ID if ad_id not available
+      adId: ad.ad_id || ad.ad_name,
       adName: ad.ad_name,
       spend: ad.spend,
+      impressions,
       installs: ad.installs,
       ctr: ad.ctr,
       cpi: ad.cpi,
@@ -161,6 +171,9 @@ export function useMultiPlatformCreatives() {
       tradeValue: ad.tradeValue || 0,
       cps: ad.cps || 0,
       cftd: ad.cftd || 0,
+      video3sViews,
+      avgWatchTime: ad.avgWatchTime || 0,
+      thumbstopRate: ad.thumbstopRate || (impressions > 0 ? video3sViews / impressions : 0),
       platform,
       parsed: parseCreativeName(ad.ad_name),
         assetUrl: asset?.url || null,
@@ -182,15 +195,20 @@ export function useMultiPlatformCreatives() {
     if (existing) {
         // Aggregate metrics
         existing.spend += creative.spend;
+        existing.impressions += creative.impressions;
         existing.installs += creative.installs;
         existing.registrations += creative.registrations;
         existing.ftds += creative.ftds;
         existing.trades += creative.trades;
         existing.ftdValue += creative.ftdValue;
         existing.tradeValue += creative.tradeValue;
+        existing.video3sViews += creative.video3sViews;
         existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
         existing.cps = existing.registrations > 0 ? existing.spend / existing.registrations : 0;
         existing.cftd = existing.ftds > 0 ? existing.spend / existing.ftds : 0;
+        existing.thumbstopRate = existing.impressions > 0 ? existing.video3sViews / existing.impressions : 0;
+        // Weighted avg watch time
+        existing.avgWatchTime = (existing.avgWatchTime + creative.avgWatchTime) / 2;
         // Weighted CTR (by impressions would be ideal, but we use spend as proxy)
         existing.ctr = (existing.ctr + creative.ctr) / 2;
         // Mark as truly blended only when multiple platforms contribute

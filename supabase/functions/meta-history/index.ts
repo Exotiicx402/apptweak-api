@@ -195,6 +195,8 @@ async function fetchMetaAdInsights(date: string): Promise<any[]> {
     "ctr",
     "actions",
     "action_values",
+    "video_play_actions",
+    "video_avg_time_watched_actions",
   ].join(",");
 
   const timeRange = JSON.stringify({
@@ -267,6 +269,8 @@ const REGISTRATION_ACTION_TYPES = [
 ];
 
 const FTD_ACTION_TYPES = [
+  'first_time_deposit',
+  'app_custom_event.first_time_deposit',
   'app_custom_event.fb_mobile_add_payment_info',
   'add_payment_info',
   'fb_mobile_add_payment_info',
@@ -624,7 +628,7 @@ serve(async (req) => {
             CAST(
               (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
                FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
-               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('first_time_deposit', 'app_custom_event.first_time_deposit', 'app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
                LIMIT 1) AS INT64
             ), 0
           )
@@ -644,7 +648,7 @@ serve(async (req) => {
             CAST(
               (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
                FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
-               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('first_time_deposit', 'app_custom_event.first_time_deposit', 'app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
                LIMIT 1) AS FLOAT64
             ), 0
           )
@@ -658,7 +662,17 @@ serve(async (req) => {
                LIMIT 1) AS FLOAT64
             ), 0
           )
-        ) as trade_value
+        ) as trade_value,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'video_view'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as video_3s_views
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${hoursAppFilter}
@@ -808,6 +822,8 @@ serve(async (req) => {
         let trades = 0;
         let ftdValue = 0;
         let tradeValue = 0;
+        let video3sViews = 0;
+        let avgWatchTime = 0;
         if (ad.actions && Array.isArray(ad.actions)) {
           const installAction = ad.actions.find((a: any) => a.action_type === "mobile_app_install");
           if (installAction) {
@@ -816,10 +832,29 @@ serve(async (req) => {
           registrations = extractActionCount(ad.actions, REGISTRATION_ACTION_TYPES);
           ftds = extractActionCount(ad.actions, FTD_ACTION_TYPES);
           trades = extractActionCount(ad.actions, PURCHASE_ACTION_TYPES);
+          // 3-sec video views
+          const videoViewAction = ad.actions.find((a: any) => a.action_type === "video_view");
+          if (videoViewAction) {
+            video3sViews = parseInt(videoViewAction.value) || 0;
+          }
         }
         if (ad.action_values && Array.isArray(ad.action_values)) {
           ftdValue = extractActionValue(ad.action_values, FTD_ACTION_TYPES);
           tradeValue = extractActionValue(ad.action_values, PURCHASE_ACTION_TYPES);
+        }
+        // Extract video avg watch time from video_avg_time_watched_actions
+        if (ad.video_avg_time_watched_actions && Array.isArray(ad.video_avg_time_watched_actions)) {
+          const totalAction = ad.video_avg_time_watched_actions.find((a: any) => a.action_type === "video_view");
+          if (totalAction) {
+            avgWatchTime = parseFloat(totalAction.value) || 0;
+          }
+        }
+        // Also try video_play_actions for 3s views if not found in actions
+        if (video3sViews === 0 && ad.video_play_actions && Array.isArray(ad.video_play_actions)) {
+          const playAction = ad.video_play_actions.find((a: any) => a.action_type === "video_view");
+          if (playAction) {
+            video3sViews = parseInt(playAction.value) || 0;
+          }
         }
 
         const existing = bqAdsData.find((a: any) => a.ad_id === adId);
@@ -833,6 +868,14 @@ serve(async (req) => {
           existing.trades = (parseInt(existing.trades) || 0) + trades;
           existing.ftd_value = (parseFloat(existing.ftd_value) || 0) + ftdValue;
           existing.trade_value = (parseFloat(existing.trade_value) || 0) + tradeValue;
+          existing.video_3s_views = (parseInt(existing.video_3s_views) || 0) + video3sViews;
+          // Avg watch time: weighted average by impressions
+          const prevImps = existing.impressions - impressions;
+          if (prevImps > 0 && impressions > 0) {
+            existing.avg_watch_time = ((existing.avg_watch_time || 0) * prevImps + avgWatchTime * impressions) / existing.impressions;
+          } else {
+            existing.avg_watch_time = avgWatchTime || existing.avg_watch_time || 0;
+          }
           existing.ctr = existing.impressions > 0 ? existing.clicks / existing.impressions : 0;
           existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
         } else {
@@ -852,6 +895,8 @@ serve(async (req) => {
             trades,
             ftd_value: ftdValue,
             trade_value: tradeValue,
+            video_3s_views: video3sViews,
+            avg_watch_time: avgWatchTime,
           });
         }
       }
@@ -1221,17 +1266,21 @@ serve(async (req) => {
     // Process ads data
     const adsData = (bqAdsData || []).map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
+      const impressions = parseInt(row.impressions) || 0;
       const installs = parseInt(row.installs) || 0;
       const registrations = parseInt(row.registrations) || 0;
       const ftds = parseInt(row.ftds) || 0;
       const trades = parseInt(row.trades) || 0;
       const ftdValue = parseFloat(row.ftd_value) || 0;
       const tradeValue = parseFloat(row.trade_value) || 0;
+      const video3sViews = parseInt(row.video_3s_views) || 0;
+      const avgWatchTime = parseFloat(row.avg_watch_time) || 0;
+      const thumbstopRate = impressions > 0 ? video3sViews / impressions : 0;
       return {
         ad_id: row.ad_id,
         ad_name: row.ad_name,
         spend,
-        impressions: parseInt(row.impressions) || 0,
+        impressions,
         clicks: parseInt(row.clicks) || 0,
         ctr: parseFloat(row.ctr) || 0,
         installs,
@@ -1243,6 +1292,9 @@ serve(async (req) => {
         tradeValue,
         cps: registrations > 0 ? spend / registrations : 0,
         cftd: ftds > 0 ? spend / ftds : 0,
+        video3sViews,
+        avgWatchTime,
+        thumbstopRate,
       };
     });
 

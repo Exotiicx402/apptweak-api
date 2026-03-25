@@ -303,6 +303,10 @@ export default function HoursCreatives() {
             tradeValue: 0,
             cps: 0,
             cftd: 0,
+            impressions: 0,
+            video3sViews: 0,
+            avgWatchTime: 0,
+            thumbstopRate: 0,
           }}
         />
       )}
