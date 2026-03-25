@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,149 +42,127 @@ function formatDateForDisplay(dateStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export interface FTDTotals {
+interface PlatformData {
   spend: number;
-  ftd_count: number;
-  cost_per_ftd: number;
-  results_value: number;
-  roas: number;
-  avg_ftd_value: number;
+  installs: number;
+  ftds: number;
+  cpi: number;
+  cftd: number;
 }
 
-export interface CampaignTotals extends FTDTotals {
-  campaign_name: string;
-}
+const emptyPlatform: PlatformData = { spend: 0, installs: 0, ftds: 0, cpi: 0, cftd: 0 };
 
-async function fetchFTDData(
-  supabase: ReturnType<typeof createClient>,
-  date: string
-): Promise<{ totals: FTDTotals; campaigns: CampaignTotals[] }> {
-  const { data, error } = await supabase
-    .from('ftd_performance')
-    .select('spend, ftd_count, results_value, campaign_name')
-    .eq('date', date);
-
-  if (error) {
-    console.error(`FTD fetch error for ${date}:`, error.message);
-    const empty = { spend: 0, ftd_count: 0, cost_per_ftd: 0, results_value: 0, roas: 0, avg_ftd_value: 0 };
-    return { totals: empty, campaigns: [] };
-  }
-
-  const rows = data || [];
-
-  // Per-campaign aggregation
-  const campMap = new Map<string, { spend: number; ftd_count: number; results_value: number }>();
-  rows.forEach((r) => {
-    const name = r.campaign_name || 'Unknown';
-    if (!campMap.has(name)) campMap.set(name, { spend: 0, ftd_count: 0, results_value: 0 });
-    const c = campMap.get(name)!;
-    c.spend += Number(r.spend) || 0;
-    c.ftd_count += Number(r.ftd_count) || 0;
-    c.results_value += Number(r.results_value) || 0;
-  });
-
-  const campaigns: CampaignTotals[] = Array.from(campMap.entries())
-    .map(([name, c]) => ({
-      campaign_name: name,
-      spend: c.spend,
-      ftd_count: c.ftd_count,
-      cost_per_ftd: c.ftd_count > 0 ? c.spend / c.ftd_count : 0,
-      results_value: c.results_value,
-      roas: c.spend > 0 ? c.results_value / c.spend : 0,
-      avg_ftd_value: c.ftd_count > 0 ? c.results_value / c.ftd_count : 0,
-    }))
-    .sort((a, b) => b.spend - a.spend);
-
-  // Overall totals
-  const spend = rows.reduce((s, r) => s + (Number(r.spend) || 0), 0);
-  const ftd_count = rows.reduce((s, r) => s + (Number(r.ftd_count) || 0), 0);
-  const results_value = rows.reduce((s, r) => s + (Number(r.results_value) || 0), 0);
-
-  return {
-    totals: {
+async function fetchPlatformData(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  functionName: string,
+  startDate: string,
+  endDate: string,
+): Promise<PlatformData> {
+  try {
+    const url = `${supabaseUrl}/functions/v1/${functionName}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ startDate, endDate }),
+    });
+    const result = await resp.json();
+    if (!result?.success) {
+      console.error(`${functionName} failed:`, result?.error);
+      return { ...emptyPlatform };
+    }
+    const totals = result.data?.totals || {};
+    const spend = totals.spend || 0;
+    const installs = totals.installs || 0;
+    const ftds = totals.ftds || 0;
+    return {
       spend,
-      ftd_count,
-      cost_per_ftd: ftd_count > 0 ? spend / ftd_count : 0,
-      results_value,
-      roas: spend > 0 ? results_value / spend : 0,
-      avg_ftd_value: ftd_count > 0 ? results_value / ftd_count : 0,
-    },
-    campaigns,
-  };
-}
-
-// Short label from campaign name: extract the distinguishing segments after "HOURS"
-function campaignLabel(name: string): string {
-  const parts = name.split('|').map(s => s.trim());
-  const hoursIdx = parts.findIndex(p => p.toUpperCase() === 'HOURS');
-  if (hoursIdx >= 0 && parts.length > hoursIdx + 1) {
-    // Take segments after HOURS, skip generic trailing parts like "WEB"
-    const meaningful = parts.slice(hoursIdx + 1).filter(p => !['WEB', 'FTD'].includes(p.toUpperCase()));
-    if (meaningful.length > 0) return meaningful.join(' · ');
+      installs,
+      ftds,
+      cpi: installs > 0 ? spend / installs : 0,
+      cftd: ftds > 0 ? spend / ftds : 0,
+    };
+  } catch (err) {
+    console.error(`Error calling ${functionName}:`, err);
+    return { ...emptyPlatform };
   }
-  return name.length > 25 ? name.substring(0, 25) + '…' : name;
 }
 
 function buildSlackMessage(
   date: string,
-  currentData: { totals: FTDTotals; campaigns: CampaignTotals[] },
-  previousData: { totals: FTDTotals; campaigns: CampaignTotals[] },
+  metaCurrent: PlatformData,
+  metaPrevious: PlatformData,
+  molocoCurrent: PlatformData,
+  molocoPrevious: PlatformData,
 ): object {
   const displayDate = formatDateForDisplay(date);
-
   const reportDateShort = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const prevDateShort = (() => {
     const prev = new Date(new Date(date + 'T12:00:00').getTime() - 86400000);
     return prev.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   })();
 
-  const COL1 = 18;
+  const COL1 = 14;
   const COL2 = 12;
-  const COL3 = 16;
+  const COL3 = 14;
   const SEP_LEN = COL1 + COL2 + COL3;
 
-  const header =    `${'Metric'.padEnd(COL1)}${reportDateShort.padStart(COL2)}${('vs ' + prevDateShort).padStart(COL3)}`;
+  const header    = `${'Metric'.padEnd(COL1)}${reportDateShort.padStart(COL2)}${('vs ' + prevDateShort).padStart(COL3)}`;
   const separator = '━'.repeat(SEP_LEN);
-  const thinSep =   '─'.repeat(SEP_LEN);
+  const thinSep   = '─'.repeat(SEP_LEN);
 
   function row(label: string, value: string, change: string) {
     return `${label.padEnd(COL1)}${value.padStart(COL2)}${change.padStart(COL3)}`;
   }
 
-  function metricsBlock(current: FTDTotals, previous: FTDTotals): string[] {
-    const roasVal = current.roas > 0 ? `${current.roas.toFixed(2)}x` : '-';
-    const roasChg = previous.roas > 0 ? pct(current.roas, previous.roas) : '-';
+  function platformBlock(current: PlatformData, previous: PlatformData): string[] {
     return [
-      row('Amount Spent',      formatCurrency(current.spend),                             pct(current.spend, previous.spend)),
-      row('Registrations',     formatNumber(current.ftd_count),                           pct(current.ftd_count, previous.ftd_count)),
-      row('Cost / Reg',        current.ftd_count > 0 ? formatCurrency(current.cost_per_ftd, 2) : '-', pct(current.cost_per_ftd, previous.cost_per_ftd)),
-      row('Results Value',     current.results_value > 0 ? formatCurrency(current.results_value) : '-', pct(current.results_value, previous.results_value)),
-      row('Results ROAS',      roasVal,                                                   roasChg),
-      row('Avg. Reg Value',  current.avg_ftd_value > 0 ? formatCurrency(current.avg_ftd_value, 2) : '-', pct(current.avg_ftd_value, previous.avg_ftd_value)),
+      row('Spend',    formatCurrency(current.spend),                        pct(current.spend, previous.spend)),
+      row('Installs', formatNumber(current.installs),                       pct(current.installs, previous.installs)),
+      row('FTD',      formatNumber(current.ftds),                           pct(current.ftds, previous.ftds)),
+      row('CPI',      current.cpi > 0 ? formatCurrency(current.cpi, 2) : '-',   current.cpi > 0 && previous.cpi > 0 ? pct(current.cpi, previous.cpi) : '  -  '),
+      row('CFTD',     current.cftd > 0 ? formatCurrency(current.cftd, 2) : '-', current.cftd > 0 && previous.cftd > 0 ? pct(current.cftd, previous.cftd) : '  -  '),
     ];
   }
 
-  // Build per-campaign sections
-  const campaignBlocks: string[] = [];
-  currentData.campaigns.forEach((camp) => {
-    const prevCamp = previousData.campaigns.find(p => p.campaign_name === camp.campaign_name)
-      || { spend: 0, ftd_count: 0, cost_per_ftd: 0, results_value: 0, roas: 0, avg_ftd_value: 0, campaign_name: '' };
-    const label = campaignLabel(camp.campaign_name);
-    campaignBlocks.push('');
-    campaignBlocks.push(`📌 ${label}`);
-    campaignBlocks.push(thinSep);
-    campaignBlocks.push(...metricsBlock(camp, prevCamp));
-  });
+  // Totals
+  const totalCurrent: PlatformData = {
+    spend: metaCurrent.spend + molocoCurrent.spend,
+    installs: metaCurrent.installs + molocoCurrent.installs,
+    ftds: metaCurrent.ftds + molocoCurrent.ftds,
+    cpi: 0, cftd: 0,
+  };
+  totalCurrent.cpi = totalCurrent.installs > 0 ? totalCurrent.spend / totalCurrent.installs : 0;
+  totalCurrent.cftd = totalCurrent.ftds > 0 ? totalCurrent.spend / totalCurrent.ftds : 0;
 
-  // Total section
-  const totalBlock = [
-    '',
-    `📊 TOTAL`,
+  const totalPrevious: PlatformData = {
+    spend: metaPrevious.spend + molocoPrevious.spend,
+    installs: metaPrevious.installs + molocoPrevious.installs,
+    ftds: metaPrevious.ftds + molocoPrevious.ftds,
+    cpi: 0, cftd: 0,
+  };
+  totalPrevious.cpi = totalPrevious.installs > 0 ? totalPrevious.spend / totalPrevious.installs : 0;
+  totalPrevious.cftd = totalPrevious.ftds > 0 ? totalPrevious.spend / totalPrevious.ftds : 0;
+
+  const lines = [
+    header,
     separator,
-    ...metricsBlock(currentData.totals, previousData.totals),
-  ];
-
-  const lines = [header, separator, ...campaignBlocks, ...totalBlock].join('\n');
+    '',
+    '📱 META',
+    thinSep,
+    ...platformBlock(metaCurrent, metaPrevious),
+    '',
+    '🟣 MOLOCO',
+    thinSep,
+    ...platformBlock(molocoCurrent, molocoPrevious),
+    '',
+    '📊 TOTAL',
+    separator,
+    ...platformBlock(totalCurrent, totalPrevious),
+  ].join('\n');
 
   return {
     channel: 'C0AED2ECQSZ',
@@ -215,8 +192,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
     let customDate: string | null = null;
     let previewOnly = false;
 
@@ -228,41 +203,24 @@ serve(async (req) => {
       } catch { /* no body */ }
     }
 
-    // Always report on yesterday (previous day) unless a custom date is provided
     const reportDate = customDate || getDateEST(1);
     const previousDate = customDate
       ? new Date(new Date(customDate + 'T12:00:00').getTime() - 86400000).toISOString().split('T')[0]
       : getDateEST(2);
 
-    console.log(`FTD report for: ${reportDate} vs ${previousDate} (preview: ${previewOnly})`);
+    console.log(`Platform report for: ${reportDate} vs ${previousDate} (preview: ${previewOnly})`);
 
-    // Auto-sync from Meta before generating report
-    try {
-      const syncUrl = `${supabaseUrl}/functions/v1/ftd-meta-sync`;
-      console.log(`Auto-syncing FTD data for ${previousDate} to ${reportDate}...`);
-      const syncResp = await fetch(syncUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify({ startDate: previousDate, endDate: reportDate }),
-      });
-      const syncResult = await syncResp.json();
-      console.log('Auto-sync result:', JSON.stringify(syncResult));
-    } catch (syncErr) {
-      console.error('Auto-sync failed (continuing with existing data):', syncErr);
-    }
-
-    const [currentData, previousData] = await Promise.all([
-      fetchFTDData(supabase, reportDate),
-      fetchFTDData(supabase, previousDate),
+    // Fetch all 4 data points in parallel
+    const [metaCurrent, metaPrevious, molocoCurrent, molocoPrevious] = await Promise.all([
+      fetchPlatformData(supabaseUrl, serviceRoleKey, 'meta-history', reportDate, reportDate),
+      fetchPlatformData(supabaseUrl, serviceRoleKey, 'meta-history', previousDate, previousDate),
+      fetchPlatformData(supabaseUrl, serviceRoleKey, 'moloco-history', reportDate, reportDate),
+      fetchPlatformData(supabaseUrl, serviceRoleKey, 'moloco-history', previousDate, previousDate),
     ]);
 
-    console.log('Current totals:', currentData.totals);
-    console.log('Campaigns:', currentData.campaigns.map(c => c.campaign_name));
+    console.log('Meta current:', metaCurrent);
+    console.log('Moloco current:', molocoCurrent);
 
-    // If preview mode, return the data without sending to Slack
     if (previewOnly) {
       return new Response(
         JSON.stringify({
@@ -270,10 +228,8 @@ serve(async (req) => {
           preview: true,
           date: reportDate,
           previousDate,
-          current: currentData.totals,
-          previous: previousData.totals,
-          campaigns: currentData.campaigns,
-          previousCampaigns: previousData.campaigns,
+          meta: { current: metaCurrent, previous: metaPrevious },
+          moloco: { current: molocoCurrent, previous: molocoPrevious },
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -283,7 +239,7 @@ serve(async (req) => {
     const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
     if (!slackWebhookUrl) throw new Error('SLACK_WEBHOOK_URL not configured');
 
-    const slackMessage = buildSlackMessage(reportDate, currentData, previousData);
+    const slackMessage = buildSlackMessage(reportDate, metaCurrent, metaPrevious, molocoCurrent, molocoPrevious);
 
     const slackResponse = await fetch(slackWebhookUrl, {
       method: 'POST',
@@ -296,10 +252,10 @@ serve(async (req) => {
       throw new Error(`Slack API error: ${slackResponse.status} - ${errorText}`);
     }
 
-    console.log('Slack FTD report sent successfully');
+    console.log('Slack platform report sent successfully');
 
     return new Response(
-      JSON.stringify({ success: true, date: reportDate, current: currentData.totals, previous: previousData.totals }),
+      JSON.stringify({ success: true, date: reportDate, meta: metaCurrent, moloco: molocoCurrent }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
