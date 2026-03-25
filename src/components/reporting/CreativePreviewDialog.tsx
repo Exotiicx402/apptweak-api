@@ -10,10 +10,11 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
  import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play, Download } from "lucide-react";
-import { useMemo, useState, useRef } from "react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play, Download, Eye } from "lucide-react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
  
  interface CreativePreviewDialogProps {
    open: boolean;
