@@ -979,6 +979,8 @@ serve(async (req) => {
             cpc: parseFloat(prevTotals.avg_cpc) || 0,
             ctr: parseFloat(prevTotals.avg_ctr) || 0,
             installs: parseInt(prevTotals.total_installs) || 0,
+            registrations: parseInt(prevTotals.total_registrations) || 0,
+            ftds: parseInt(prevTotals.total_ftds) || 0,
             cpi: parseInt(prevTotals.total_installs) > 0 ? parseFloat(prevTotals.total_spend) / parseInt(prevTotals.total_installs) : 0,
           },
           dateRange: { startDate, endDate },
