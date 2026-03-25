@@ -265,7 +265,7 @@ function CumulativeReportPreview({ data }: { data: CumulativePreviewData }) {
       ))}
 
       <div className="px-4 py-2 bg-primary/10 border-y border-border">
-        <span className="text-xs font-semibold text-foreground">📊 TOTAL</span>
+        <span className="text-xs font-semibold text-foreground">TOTAL</span>
       </div>
       <div className="divide-y divide-border">
         <CumulativeMetricsRows totals={totals} />

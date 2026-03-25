@@ -171,7 +171,7 @@ function buildSlackMessage(
         type: 'header',
         text: {
           type: 'plain_text',
-          text: `📊 Daily Performance Report - ${displayDate}`,
+          text: `Daily Performance Report - ${displayDate}`,
           emoji: true,
         },
       },
