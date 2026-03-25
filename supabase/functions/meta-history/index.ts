@@ -907,6 +907,7 @@ serve(async (req) => {
         cpi: installs > 0 ? spend / installs : 0,
         registrations,
         ftds,
+        trades: parseInt(row.trades) || 0,
       };
     });
 
