@@ -754,7 +754,7 @@ serve(async (req) => {
     const totals = calculateTotals(mergedRows);
     const previousTotals = calculateTotals(mergedPrevRows);
 
-    console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}`);
+    console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}, ftds=${totals.ftds}`);
 
     // Fetch ad-group level data for creative reporting (sequential to respect rate limits)
     let ads: any[] = [];
