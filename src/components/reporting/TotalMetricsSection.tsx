@@ -1,25 +1,26 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, Download, TrendingUp } from "lucide-react";
+import { DollarSign, TrendingUp, UserPlus, CreditCard, Target } from "lucide-react";
 import { PercentChange } from "./PercentChange";
 
 interface TotalMetricsSectionProps {
   spend: number;
-  installs: number;
   cpi: number;
+  cps: number;
+  ftds: number;
+  cftd: number;
   previousSpend?: number;
-  previousInstalls?: number;
   previousCpi?: number;
+  previousCps?: number;
+  previousFtds?: number;
+  previousCftd?: number;
   loading?: boolean;
 }
 
-export function TotalMetricsSection({ 
-  spend, 
-  installs, 
-  cpi, 
-  previousSpend = 0,
-  previousInstalls = 0,
-  previousCpi = 0,
-  loading 
+export function TotalMetricsSection({
+  spend, cpi, cps, ftds, cftd,
+  previousSpend = 0, previousCpi = 0, previousCps = 0,
+  previousFtds = 0, previousCftd = 0,
+  loading,
 }: TotalMetricsSectionProps) {
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-US", {
@@ -32,16 +33,24 @@ export function TotalMetricsSection({
   const formatNumber = (value: number) =>
     new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 
+  const metrics = [
+    { icon: DollarSign, label: "Total Spend", value: formatCurrency(spend), current: spend, previous: previousSpend },
+    { icon: TrendingUp, label: "CPI", value: formatCurrency(cpi), current: cpi, previous: previousCpi },
+    { icon: UserPlus, label: "CPS", value: formatCurrency(cps), current: cps, previous: previousCps },
+    { icon: CreditCard, label: "Total FTD", value: formatNumber(ftds), current: ftds, previous: previousFtds },
+    { icon: Target, label: "CFTD", value: formatCurrency(cftd), current: cftd, previous: previousCftd },
+  ];
+
   if (loading) {
     return (
       <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg p-6 mb-8">
         <h2 className="text-lg font-semibold mb-4 text-foreground">Total (All Channels)</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
             <Card key={i} className="animate-pulse">
-              <CardContent className="pt-6">
-                <div className="h-4 bg-muted rounded w-20 mb-2" />
-                <div className="h-8 bg-muted rounded w-32" />
+              <CardContent className="pt-5 pb-4">
+                <div className="h-3 bg-muted rounded w-16 mb-2" />
+                <div className="h-7 bg-muted rounded w-24" />
               </CardContent>
             </Card>
           ))}
@@ -53,39 +62,19 @@ export function TotalMetricsSection({
   return (
     <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg p-6 mb-8">
       <h2 className="text-lg font-semibold mb-4 text-foreground">Total (All Channels)</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-background/80 backdrop-blur">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              <DollarSign className="h-4 w-4" />
-              Total Spend
-            </div>
-            <div className="text-3xl font-bold text-foreground">{formatCurrency(spend)}</div>
-            <PercentChange current={spend} previous={previousSpend} className="mt-2" />
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-background/80 backdrop-blur">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              <Download className="h-4 w-4" />
-              Total Installs
-            </div>
-            <div className="text-3xl font-bold text-foreground">{formatNumber(installs)}</div>
-            <PercentChange current={installs} previous={previousInstalls} className="mt-2" />
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-background/80 backdrop-blur">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              <TrendingUp className="h-4 w-4" />
-              Blended CPI
-            </div>
-            <div className="text-3xl font-bold text-foreground">{formatCurrency(cpi)}</div>
-            <PercentChange current={cpi} previous={previousCpi} className="mt-2" />
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {metrics.map(({ icon: Icon, label, value, current, previous }) => (
+          <Card key={label} className="bg-background/80 backdrop-blur">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </div>
+              <div className="text-2xl font-bold text-foreground">{value}</div>
+              <PercentChange current={current} previous={previous} className="mt-1.5" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
     </div>
   );
