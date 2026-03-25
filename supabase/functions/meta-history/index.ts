@@ -239,6 +239,92 @@ async function fetchMetaAdInsights(date: string): Promise<any[]> {
   return allAds;
 }
 
+// Fetch video metrics for a date range at ad level (single API call for the whole range)
+async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Promise<Map<string, { video3sViews: number; avgWatchTime: number }>> {
+  const accessToken = Deno.env.get("META_ACCESS_TOKEN");
+  let adAccountId = Deno.env.get("META_AD_ACCOUNT_ID");
+
+  if (!accessToken || !adAccountId) {
+    return new Map();
+  }
+
+  if (!adAccountId.startsWith("act_")) {
+    adAccountId = `act_${adAccountId}`;
+  }
+
+  const fields = "ad_id,ad_name,campaign_name,impressions,video_play_actions,video_avg_time_watched_actions";
+
+  const timeRange = JSON.stringify({ since: startDate, until: endDate });
+
+  const baseUrl = `https://graph.facebook.com/v19.0/${adAccountId}/insights`;
+  const params = new URLSearchParams({
+    fields,
+    time_range: timeRange,
+    level: "ad",
+    filtering: JSON.stringify([{ field: "campaign.name", operator: "CONTAIN", value: "HOURS" }]),
+    access_token: accessToken,
+    limit: "500",
+  });
+
+  console.log(`Fetching video metrics for date range: ${startDate} to ${endDate}`);
+
+  const result = new Map<string, { video3sViews: number; avgWatchTime: number }>();
+
+  try {
+    let fetchUrl: string | null = `${baseUrl}?${params.toString()}`;
+    let pageCount = 0;
+
+    while (fetchUrl && pageCount < 5) {
+      pageCount++;
+      const response = await fetch(fetchUrl);
+
+      if (!response.ok) {
+        console.error("Video metrics API error:", await response.text());
+        break;
+      }
+
+      const data = await response.json();
+      for (const ad of data.data || []) {
+        const campaignName = ad.campaign_name?.toUpperCase() || "";
+        if (!campaignName.includes("HOURS") || !campaignName.includes("APP")) continue;
+
+        const adId = ad.ad_id;
+        if (!adId) continue;
+
+        let video3sViews = 0;
+        let avgWatchTime = 0;
+
+        if (ad.video_play_actions && Array.isArray(ad.video_play_actions)) {
+          const playAction = ad.video_play_actions.find((a: any) => a.action_type === "video_view");
+          if (playAction) video3sViews = parseInt(playAction.value) || 0;
+        }
+
+        if (ad.video_avg_time_watched_actions && Array.isArray(ad.video_avg_time_watched_actions)) {
+          const watchAction = ad.video_avg_time_watched_actions.find((a: any) => a.action_type === "video_view");
+          if (watchAction) avgWatchTime = parseFloat(watchAction.value) || 0;
+        }
+
+        const existing = result.get(adId);
+        if (existing) {
+          existing.video3sViews += video3sViews;
+          // Weighted average for watch time
+          existing.avgWatchTime = (existing.avgWatchTime + avgWatchTime) / 2;
+        } else {
+          result.set(adId, { video3sViews, avgWatchTime });
+        }
+      }
+
+      fetchUrl = data.paging?.next || null;
+    }
+
+    console.log(`Video metrics fetched for ${result.size} ads`);
+  } catch (err) {
+    console.error("Error fetching video metrics:", err);
+  }
+
+  return result;
+}
+
 function filterHoursAppCampaigns(campaigns: any[]): any[] {
   return campaigns.filter(
     (c) => {
