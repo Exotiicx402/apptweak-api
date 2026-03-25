@@ -153,7 +153,7 @@ export function PlatformMetricsRow({
               CPI
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cpi)}</div>
-            <PercentChange current={cpi} previous={previousCpi} className="mt-1" />
+            <PercentChange current={cpi} previous={previousCpi} invertColor className="mt-1" />
           </CardContent>
         </Card>
 
