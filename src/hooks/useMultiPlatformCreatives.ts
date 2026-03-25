@@ -18,6 +18,9 @@ interface AdMetric {
   tradeValue?: number;
   cps?: number;
   cftd?: number;
+  video3sViews?: number;
+  avgWatchTime?: number;
+  thumbstopRate?: number;
 }
 
 interface CreativeAsset {
