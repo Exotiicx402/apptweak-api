@@ -257,16 +257,19 @@ export function useMultiPlatformCreatives() {
       case "meta":
         result = metaAds;
         break;
+      case "moloco":
+        result = molocoAds;
+        break;
       case "blended":
       default:
-        const all = [...metaAds];
+        const all = [...metaAds, ...molocoAds];
         result = blendCreatives(all);
         break;
     }
 
     // Sort by spend descending
     return result.sort((a, b) => b.spend - a.spend);
-  }, [metaAds, activePlatform]);
+  }, [metaAds, molocoAds, activePlatform]);
 
   const isLoading = meta.isLoading;
 
