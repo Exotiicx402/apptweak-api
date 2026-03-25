@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, DollarSign, Download, TrendingUp, Clock } from "lucide-react";
+import { AlertCircle, DollarSign, Download, TrendingUp, Clock, UserCheck, CreditCard } from "lucide-react";
 import { PercentChange } from "./PercentChange";
 import {
   Tooltip,
@@ -14,9 +14,17 @@ interface PlatformMetricsRowProps {
   spend: number;
   installs: number;
   cpi: number;
+  registrations?: number;
+  cps?: number;
+  ftds?: number;
+  cftd?: number;
   previousSpend?: number;
   previousInstalls?: number;
   previousCpi?: number;
+  previousRegistrations?: number;
+  previousCps?: number;
+  previousFtds?: number;
+  previousCftd?: number;
   loading?: boolean;
   error?: string | null;
   dataUnavailable?: boolean;
@@ -29,9 +37,17 @@ export function PlatformMetricsRow({
   spend,
   installs,
   cpi,
+  registrations = 0,
+  cps = 0,
+  ftds = 0,
+  cftd = 0,
   previousSpend = 0,
   previousInstalls = 0,
   previousCpi = 0,
+  previousRegistrations = 0,
+  previousCps = 0,
+  previousFtds = 0,
+  previousCftd = 0,
   loading,
   error,
   dataUnavailable,
@@ -55,8 +71,8 @@ export function PlatformMetricsRow({
           {logo && <img src={logo} alt={platform} className="h-5 w-auto object-contain" />}
           {platform}
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="pt-4 pb-4">
                 <div className="h-3 bg-muted rounded w-16 mb-2" />
@@ -107,7 +123,7 @@ export function PlatformMetricsRow({
           </TooltipProvider>
         )}
       </h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
@@ -138,6 +154,39 @@ export function PlatformMetricsRow({
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cpi)}</div>
             <PercentChange current={cpi} previous={previousCpi} className="mt-1" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+              <TrendingUp className="h-3 w-3" />
+              CPS
+            </div>
+            <div className="text-xl font-semibold text-foreground">{formatCurrency(cps)}</div>
+            <PercentChange current={cps} previous={previousCps} className="mt-1" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+              <CreditCard className="h-3 w-3" />
+              FTDs
+            </div>
+            <div className="text-xl font-semibold text-foreground">{formatNumber(ftds)}</div>
+            <PercentChange current={ftds} previous={previousFtds} className="mt-1" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+              <TrendingUp className="h-3 w-3" />
+              CFTD
+            </div>
+            <div className="text-xl font-semibold text-foreground">{formatCurrency(cftd)}</div>
+            <PercentChange current={cftd} previous={previousCftd} className="mt-1" />
           </CardContent>
         </Card>
       </div>
