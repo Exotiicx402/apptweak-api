@@ -68,6 +68,8 @@ interface MolocoRow {
     clicks: string;
     installs: string;
     spend: number;
+    conversions: string;
+    target_actions: string;
   };
 }
 
