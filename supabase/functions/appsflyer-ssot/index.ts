@@ -28,11 +28,16 @@ serve(async (req) => {
     const source = mediaSource || "moloco_int";
 
     // Use AppsFlyer Pull API - Aggregate Performance Report
-    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/partners_report/v5?api_token=${token}&from=${from}&to=${to}&timezone=America%2FNew_York&media_source=${source}&groupings=date,media_source,campaign&kpis=installs,total_revenue,event_counter,unique_users`;
+    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/partners_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York&media_source=${source}&groupings=date,media_source,campaign&kpis=installs,total_revenue,event_counter,unique_users`;
     
     console.log(`Fetching AppsFlyer data: ${from} to ${to}, source: ${source}`);
     
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'text/csv',
+      },
+    });
     
     if (!response.ok) {
       const errorText = await response.text();
