@@ -280,7 +280,8 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
     fetchAllPlatforms,
     hasAdData,
     platformCounts,
-    getPlatformBreakdown
+    getPlatformBreakdown,
+    getAdsetBreakdown
   } = useMultiPlatformCreatives();
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>("all");
@@ -296,6 +297,10 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
 
   const platformBreakdown = selectedCreative 
     ? getPlatformBreakdown(selectedCreative.adName) 
+    : [];
+
+  const adsetBreakdown = selectedCreative
+    ? getAdsetBreakdown(selectedCreative.adName)
     : [];
 
   useEffect(() => {
