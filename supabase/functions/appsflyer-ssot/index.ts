@@ -26,7 +26,7 @@ serve(async (req) => {
     const to = endDate || "2026-03-24";
 
     // Fetch ALL in-app events (no media source filter) to discover sources
-    const url = `https://hq1.appsflyer.com/api/raw-data/export/app/${appId}/in_app_events_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York&maximum_rows=100`;
+    const url = `https://hq1.appsflyer.com/api/raw-data/export/app/${appId}/in_app_events_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York`;
     
     console.log(`Fetching ALL AppsFlyer events for Moloco: ${from} to ${to}`);
     
