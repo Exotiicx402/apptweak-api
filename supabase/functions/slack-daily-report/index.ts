@@ -155,7 +155,7 @@ function buildSlackMessage(
     thinSep,
     ...platformBlock(metaCurrent, metaPrevious),
     '',
-    '🟣 MOLOCO',
+    'MOLOCO',
     thinSep,
     ...platformBlock(molocoCurrent, molocoPrevious),
     '',
