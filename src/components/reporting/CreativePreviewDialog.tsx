@@ -62,6 +62,7 @@ import { supabase } from "@/integrations/supabase/client";
 function getPlatformLabel(platform: string): string {
   switch (platform) {
     case "meta": return "Meta";
+    case "moloco": return "Moloco";
     case "snapchat": return "Snapchat";
     case "tiktok": return "TikTok";
     case "google": return "Google Ads";
@@ -72,6 +73,7 @@ function getPlatformLabel(platform: string): string {
 function getPlatformColor(platform: string): string {
   switch (platform) {
     case "meta": return "bg-blue-100 text-blue-800 border-blue-200";
+    case "moloco": return "bg-purple-100 text-purple-800 border-purple-200";
     case "snapchat": return "bg-yellow-100 text-yellow-800 border-yellow-200";
     case "tiktok": return "bg-pink-100 text-pink-800 border-pink-200";
     case "google": return "bg-red-100 text-red-800 border-red-200";
