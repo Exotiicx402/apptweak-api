@@ -138,6 +138,21 @@ export default function Reporting() {
                 dataUnavailable={data.tiktok.dataUnavailable}
                 unavailableReason={data.tiktok.unavailableReason}
               />
+
+              <PlatformMetricsRow
+                platform="Moloco"
+                logo={molocoLogo}
+                spend={data.moloco.spend}
+                installs={data.moloco.installs}
+                cpi={data.moloco.cpi}
+                previousSpend={data.moloco.previousSpend}
+                previousInstalls={data.moloco.previousInstalls}
+                previousCpi={data.moloco.previousCpi}
+                loading={data.moloco.isLoading}
+                error={data.moloco.error}
+                dataUnavailable={data.moloco.dataUnavailable}
+                unavailableReason={data.moloco.unavailableReason}
+              />
             </div>
 
             {/* Ranking Section */}

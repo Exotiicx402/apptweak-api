@@ -133,6 +133,7 @@ export function useReportingData() {
       snapchat,
       googleAds,
       tiktok,
+      moloco,
       totals: {
         spend: totalSpend,
         installs: totalInstalls,
