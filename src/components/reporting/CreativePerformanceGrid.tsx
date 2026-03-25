@@ -397,21 +397,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
     );
   }
 
-  // Show message for platforms without ad-level data
-  if (platformMissingAdData && !isLoading) {
-    return (
-      <div className="mt-8">
-        {headerContent}
-        <Card>
-          <CardContent className="py-8">
-            <p className="text-muted-foreground text-center">{getPlatformUnavailableMessage(activePlatform)}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (data.length === 0) {
+  if (data.length === 0 && !isLoading) {
     return (
       <div className="mt-8">
         {headerContent}
