@@ -71,8 +71,8 @@ export function PlatformMetricsRow({
           {logo && <img src={logo} alt={platform} className="h-5 w-auto object-contain" />}
           {platform}
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="pt-4 pb-4">
                 <div className="h-3 bg-muted rounded w-16 mb-2" />
