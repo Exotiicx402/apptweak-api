@@ -338,10 +338,11 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
    const isMetaCreative = creative.platform === 'meta' && !!creative.platformCreativeId;
 
   // For videos: use fullAssetUrl as the MP4, posterUrl for the poster
-  // For images: prefer originalUrl (high-res Meta CDN) > fullAssetUrl > assetUrl
+  // For images: prefer HD URL > originalUrl > fullAssetUrl > assetUrl
   const videoUrl = isVideo ? creative.fullAssetUrl : null;
   const posterImage = creative.posterUrl || creative.assetUrl || null;
-  const displayUrl = isVideo ? posterImage : (creative.originalUrl || creative.fullAssetUrl || creative.assetUrl);
+  const displayUrl = isVideo ? posterImage : (hdUrl || creative.originalUrl || creative.fullAssetUrl || creative.assetUrl);
+  const hasAssetOrHd = hasAsset || !!hdUrl;
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>
