@@ -944,6 +944,8 @@ serve(async (req) => {
               total_registrations: 0,
               total_ftds: 0,
               total_trades: 0,
+              total_ftd_value: 0,
+              total_trade_value: 0,
             };
           }
           bqTotalsData[0].total_spend = (parseFloat(bqTotalsData[0].total_spend) || 0) + transformed.daily.spend;
@@ -954,6 +956,8 @@ serve(async (req) => {
           bqTotalsData[0].total_registrations = (parseInt(bqTotalsData[0].total_registrations) || 0) + transformed.daily.registrations;
           bqTotalsData[0].total_ftds = (parseInt(bqTotalsData[0].total_ftds) || 0) + transformed.daily.ftds;
           bqTotalsData[0].total_trades = (parseInt(bqTotalsData[0].total_trades) || 0) + transformed.daily.trades;
+          bqTotalsData[0].total_ftd_value = (parseFloat(bqTotalsData[0].total_ftd_value) || 0) + transformed.daily.ftdValue;
+          bqTotalsData[0].total_trade_value = (parseFloat(bqTotalsData[0].total_trade_value) || 0) + transformed.daily.tradeValue;
 
           console.log(`Added live fallback data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
         }
