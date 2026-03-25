@@ -648,7 +648,7 @@ serve(async (req) => {
             CAST(
               (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
                FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
-               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('first_time_deposit', 'app_custom_event.first_time_deposit', 'app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
                LIMIT 1) AS FLOAT64
             ), 0
           )
@@ -662,7 +662,17 @@ serve(async (req) => {
                LIMIT 1) AS FLOAT64
             ), 0
           )
-        ) as trade_value
+        ) as trade_value,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'video_view'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as video_3s_views
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${hoursAppFilter}
