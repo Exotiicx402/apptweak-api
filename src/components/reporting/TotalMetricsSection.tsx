@@ -34,11 +34,11 @@ export function TotalMetricsSection({
     new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 
   const metrics = [
-    { icon: DollarSign, label: "Total Spend", value: formatCurrency(spend), current: spend, previous: previousSpend },
-    { icon: TrendingUp, label: "CPI", value: formatCurrency(cpi), current: cpi, previous: previousCpi },
-    { icon: UserPlus, label: "CPS", value: formatCurrency(cps), current: cps, previous: previousCps },
-    { icon: CreditCard, label: "Total FTD", value: formatNumber(ftds), current: ftds, previous: previousFtds },
-    { icon: Target, label: "CFTD", value: formatCurrency(cftd), current: cftd, previous: previousCftd },
+    { icon: DollarSign, label: "Total Spend", value: formatCurrency(spend), current: spend, previous: previousSpend, invertColor: false },
+    { icon: TrendingUp, label: "CPI", value: formatCurrency(cpi), current: cpi, previous: previousCpi, invertColor: true },
+    { icon: UserPlus, label: "CPS", value: formatCurrency(cps), current: cps, previous: previousCps, invertColor: true },
+    { icon: CreditCard, label: "Total FTD", value: formatNumber(ftds), current: ftds, previous: previousFtds, invertColor: false },
+    { icon: Target, label: "CFTD", value: formatCurrency(cftd), current: cftd, previous: previousCftd, invertColor: true },
   ];
 
   if (loading) {
