@@ -628,7 +628,7 @@ serve(async (req) => {
             CAST(
               (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
                FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
-               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('first_time_deposit', 'app_custom_event.first_time_deposit', 'app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
                LIMIT 1) AS INT64
             ), 0
           )
