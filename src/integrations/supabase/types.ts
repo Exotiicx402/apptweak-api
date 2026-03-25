@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_creatives_daily_cache: {
+        Row: {
+          account_id: string
+          ad_data: Json | null
+          ad_id: string
+          adset_id: string | null
+          date: string
+          id: string
+          insights_data: Json | null
+          synced_at: string | null
+        }
+        Insert: {
+          account_id: string
+          ad_data?: Json | null
+          ad_id: string
+          adset_id?: string | null
+          date: string
+          id?: string
+          insights_data?: Json | null
+          synced_at?: string | null
+        }
+        Update: {
+          account_id?: string
+          ad_data?: Json | null
+          ad_id?: string
+          adset_id?: string | null
+          date?: string
+          id?: string
+          insights_data?: Json | null
+          synced_at?: string | null
+        }
+        Relationships: []
+      }
       app_downloads_history: {
         Row: {
           app_id: string
@@ -191,6 +224,33 @@ export type Database = {
         }
         Relationships: []
       }
+      creative_media_cache: {
+        Row: {
+          account_id: string
+          created_at: string | null
+          hd_url: string | null
+          id: string
+          media_id: string
+          media_type: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string | null
+          hd_url?: string | null
+          id?: string
+          media_id: string
+          media_type?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string | null
+          hd_url?: string | null
+          id?: string
+          media_id?: string
+          media_type?: string | null
+        }
+        Relationships: []
+      }
       creative_requests: {
         Row: {
           created_at: string
@@ -320,6 +380,45 @@ export type Database = {
           roas?: number | null
           spend?: number | null
           synced_at?: string | null
+        }
+        Relationships: []
+      }
+      processed_creative_assets: {
+        Row: {
+          account_id: string
+          created_at: string | null
+          creative_id: string
+          file_size: number | null
+          height: number | null
+          id: string
+          media_type: string | null
+          original_url: string | null
+          stored_url: string | null
+          width: number | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string | null
+          creative_id: string
+          file_size?: number | null
+          height?: number | null
+          id?: string
+          media_type?: string | null
+          original_url?: string | null
+          stored_url?: string | null
+          width?: number | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string | null
+          creative_id?: string
+          file_size?: number | null
+          height?: number | null
+          id?: string
+          media_type?: string | null
+          original_url?: string | null
+          stored_url?: string | null
+          width?: number | null
         }
         Relationships: []
       }
