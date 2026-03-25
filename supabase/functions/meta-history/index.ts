@@ -251,6 +251,13 @@ function extractActionCount(actions: any[], actionTypes: string[]): number {
   return found ? parseInt(found.value) || 0 : 0;
 }
 
+// Extract action value (dollar amount) by type from Meta action_values array
+function extractActionValue(actionValues: any[], actionTypes: string[]): number {
+  if (!actionValues || !Array.isArray(actionValues)) return 0;
+  const found = actionValues.find((a: any) => actionTypes.includes(a.action_type));
+  return found ? parseFloat(found.value) || 0 : 0;
+}
+
 const REGISTRATION_ACTION_TYPES = [
   'app_custom_event.fb_mobile_complete_registration',
   'complete_registration',
