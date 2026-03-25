@@ -363,7 +363,54 @@ function processRows(rows: MolocoRow[]): ProcessedRow[] {
   }));
 }
 
-// Fetch live Moloco data from API
+interface AdGroupRow {
+  date: string;
+  ad_group_id: string;
+  ad_group_name: string;
+  spend: number;
+  installs: number;
+  impressions: number;
+  clicks: number;
+}
+
+function processAdGroupRows(rows: MolocoRow[]): AdGroupRow[] {
+  return rows.map(row => ({
+    date: row.date,
+    ad_group_id: row.ad_group?.id || '',
+    ad_group_name: row.ad_group?.title || 'Unknown',
+    spend: row.metric?.spend || 0,
+    installs: parseInt(row.metric?.installs || '0', 10),
+    impressions: parseInt(row.metric?.impressions || '0', 10),
+    clicks: parseInt(row.metric?.clicks || '0', 10),
+  }));
+}
+
+function aggregateAdGroups(rows: AdGroupRow[]): any[] {
+  const map = new Map<string, any>();
+  for (const row of rows) {
+    const key = row.ad_group_name;
+    const existing = map.get(key) || {
+      ad_id: row.ad_group_id,
+      ad_name: row.ad_group_name,
+      spend: 0,
+      installs: 0,
+      impressions: 0,
+      clicks: 0,
+    };
+    existing.spend += row.spend;
+    existing.installs += row.installs;
+    existing.impressions += row.impressions;
+    existing.clicks += row.clicks;
+    map.set(key, existing);
+  }
+  return Array.from(map.values()).map(a => ({
+    ...a,
+    ctr: a.impressions > 0 ? a.clicks / a.impressions : 0,
+    cpi: a.installs > 0 ? a.spend / a.installs : 0,
+  })).sort((a, b) => b.spend - a.spend);
+}
+
+// Fetch live Moloco data from API (campaign level)
 async function fetchMolocoLiveData(startDate: string, endDate: string): Promise<ProcessedRow[]> {
   const apiKey = Deno.env.get('MOLOCO_API_KEY');
   const adAccountId = Deno.env.get('MOLOCO_AD_ACCOUNT_ID');
