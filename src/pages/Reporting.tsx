@@ -83,9 +83,17 @@ export default function Reporting() {
                 spend={data.meta.spend}
                 installs={data.meta.installs}
                 cpi={data.meta.cpi}
+                registrations={data.meta.registrations}
+                cps={data.meta.registrations > 0 ? data.meta.spend / data.meta.registrations : 0}
+                ftds={data.meta.ftds}
+                cftd={data.meta.ftds > 0 ? data.meta.spend / data.meta.ftds : 0}
                 previousSpend={data.meta.previousSpend}
                 previousInstalls={data.meta.previousInstalls}
                 previousCpi={data.meta.previousCpi}
+                previousRegistrations={data.meta.previousRegistrations}
+                previousCps={data.meta.previousRegistrations > 0 ? data.meta.previousSpend / data.meta.previousRegistrations : 0}
+                previousFtds={data.meta.previousFtds}
+                previousCftd={data.meta.previousFtds > 0 ? data.meta.previousSpend / data.meta.previousFtds : 0}
                 loading={data.meta.isLoading}
                 error={data.meta.error}
               />

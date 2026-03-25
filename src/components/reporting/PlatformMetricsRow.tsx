@@ -14,9 +14,17 @@ interface PlatformMetricsRowProps {
   spend: number;
   installs: number;
   cpi: number;
+  registrations?: number;
+  cps?: number;
+  ftds?: number;
+  cftd?: number;
   previousSpend?: number;
   previousInstalls?: number;
   previousCpi?: number;
+  previousRegistrations?: number;
+  previousCps?: number;
+  previousFtds?: number;
+  previousCftd?: number;
   loading?: boolean;
   error?: string | null;
   dataUnavailable?: boolean;
