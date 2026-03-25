@@ -589,7 +589,8 @@ serve(async (req) => {
           spend,
           installs,
           impressions,
-          clicks
+          clicks,
+          IFNULL(ftds, 0) as ftds
         FROM ${fullTable}
         WHERE date BETWEEN '${startDate}' AND '${endDate}'
         ORDER BY date, campaign_id
@@ -603,7 +604,8 @@ serve(async (req) => {
           spend,
           installs,
           impressions,
-          clicks
+          clicks,
+          IFNULL(ftds, 0) as ftds
         FROM ${fullTable}
         WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
         ORDER BY date, campaign_id
