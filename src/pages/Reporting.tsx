@@ -34,7 +34,8 @@ export default function Reporting() {
     data.meta?.isLoading || 
     data.snapchat?.isLoading || 
     data.googleAds?.isLoading ||
-    data.tiktok?.isLoading;
+    data.tiktok?.isLoading ||
+    data.moloco?.isLoading;
 
   return (
     <div className="min-h-screen bg-background p-6">
