@@ -555,7 +555,7 @@ serve(async (req) => {
       clicks: parseInt(row.clicks) || 0,
     }));
 
-    const prevRows: ProcessedRow[] = bqPrevRows.map((row: any) => ({
+    let prevRows: ProcessedRow[] = bqPrevRows.map((row: any) => ({
       date: typeof row.date === 'string' && row.date.includes('T') 
         ? row.date.split('T')[0] 
         : String(row.date),
@@ -575,6 +575,14 @@ serve(async (req) => {
     const backfillableDates = getBackfillableDates(missingDates);
 
     console.log(`Missing dates: ${missingDates.length}, Backfillable (within ${BACKFILL_WINDOW_DAYS} days): ${backfillableDates.length}`);
+
+    // Also check previous period for missing dates
+    const prevRequestedDates = getDatesBetween(prevStartStr, prevEndStr);
+    const existingPrevDates = new Set(prevRows.map(r => r.date));
+    const missingPrevDates = getMissingDates(prevRequestedDates, existingPrevDates);
+    const backfillablePrevDates = getBackfillableDates(missingPrevDates);
+
+    console.log(`Previous period missing dates: ${missingPrevDates.length}, Backfillable: ${backfillablePrevDates.length}`);
 
     // Fetch live data for backfillable dates (or if BQ query failed entirely)
     let liveRows: ProcessedRow[] = [];
@@ -604,7 +612,33 @@ serve(async (req) => {
         }
       } catch (liveErr) {
         console.error('Failed to fetch live Moloco data:', liveErr);
-        // Don't throw - return whatever we have from BigQuery
+      }
+    }
+
+    // Fetch live data for missing previous period dates
+    let livePrevRows: ProcessedRow[] = [];
+
+    if (backfillablePrevDates.length > 0) {
+      const prevFetchStart = backfillablePrevDates.sort()[0];
+      const prevFetchEnd = backfillablePrevDates.sort().slice(-1)[0];
+
+      console.log(`Fetching live Moloco previous period data from ${prevFetchStart} to ${prevFetchEnd}...`);
+      
+      try {
+        livePrevRows = await fetchMolocoLiveData(prevFetchStart, prevFetchEnd);
+        console.log(`Fetched ${livePrevRows.length} live previous period rows from Moloco API`);
+
+        // Cache to BigQuery
+        if (livePrevRows.length > 0 && !bqQueryFailed) {
+          try {
+            await mergeIntoBigQuery(livePrevRows, googleAccessToken);
+            console.log(`Cached ${livePrevRows.length} previous period rows to BigQuery`);
+          } catch (cacheErr) {
+            console.error('Failed to cache previous period to BigQuery (non-blocking):', cacheErr);
+          }
+        }
+      } catch (liveErr) {
+        console.error('Failed to fetch live Moloco previous period data:', liveErr);
       }
     }
 
@@ -613,11 +647,17 @@ serve(async (req) => {
     const filteredBqRows = currentRows.filter(r => !liveDataDates.has(r.date));
     const mergedRows = [...filteredBqRows, ...liveRows];
 
+    // Merge previous period data
+    const livePrevDataDates = new Set(livePrevRows.map(r => r.date));
+    const filteredBqPrevRows = prevRows.filter(r => !livePrevDataDates.has(r.date));
+    const mergedPrevRows = [...filteredBqPrevRows, ...livePrevRows];
+
     console.log(`Final merged rows: ${mergedRows.length} (${filteredBqRows.length} from BQ + ${liveRows.length} from live)`);
+    console.log(`Final merged previous rows: ${mergedPrevRows.length}`);
 
     // Calculate results
     const totals = calculateTotals(mergedRows);
-    const previousTotals = calculateTotals(prevRows);
+    const previousTotals = calculateTotals(mergedPrevRows);
 
     console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}`);
 
