@@ -996,6 +996,8 @@ serve(async (req) => {
         registrations,
         ftds,
         trades: parseInt(row.trades) || 0,
+        ftdValue: parseFloat(row.ftd_value) || 0,
+        tradeValue: parseFloat(row.trade_value) || 0,
       };
     });
 
