@@ -194,6 +194,8 @@ export function useMultiPlatformCreatives() {
       return {
       adId,
       adName: ad.ad_name,
+      adsetId: ad.adset_id,
+      adsetName: ad.adset_name,
       spend: ad.spend,
       impressions,
       clicks,
