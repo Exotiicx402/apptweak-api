@@ -143,12 +143,29 @@ export function useMultiPlatformCreatives() {
     }
   };
 
+  const fetchStoredAssets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('processed_creative_assets')
+        .select('creative_id, stored_url');
+      if (error) { console.error('Error fetching stored assets:', error); return; }
+      const map = new Map<string, string>();
+      for (const row of data || []) {
+        if (row.stored_url) map.set(row.creative_id, row.stored_url);
+      }
+      setStoredUrlMap(map);
+    } catch (err) {
+      console.error('Error fetching stored assets:', err);
+    }
+  };
+
   const fetchAllPlatforms = useCallback(async (startDate: string, endDate: string) => {
     // Fetch all platforms and assets in parallel
     await Promise.all([
       fetchPlatform("meta", "meta-history", startDate, endDate, setMeta),
       fetchPlatform("moloco", "moloco-history", startDate, endDate, setMoloco),
       fetchCreativeAssets(),
+      fetchStoredAssets(),
     ]);
   }, []);
 
