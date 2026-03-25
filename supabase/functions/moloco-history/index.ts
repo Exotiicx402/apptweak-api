@@ -650,6 +650,7 @@ serve(async (req) => {
       installs: parseInt(row.installs) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
+      ftds: 0,
     }));
 
     // Identify which dates we have from BigQuery
