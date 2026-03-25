@@ -484,36 +484,37 @@ async function fetchAppsFlyerFtds(startDate: string, endDate: string): Promise<A
     
     console.log(`AppsFlyer FTD headers: ${headers.join(', ')}`);
 
-    // Find column indices
-    const dateIdx = headers.findIndex(h => h.toLowerCase().includes('date'));
-    const campaignIdx = headers.findIndex(h => h.toLowerCase().includes('campaign'));
-    const uniqueUsersIdx = headers.findIndex(h => h.toLowerCase().includes('unique users'));
-    const eventCounterIdx = headers.findIndex(h => h.toLowerCase().includes('event counter'));
+    // Find column indices - raw data has one row per event
+    const dateIdx = headers.findIndex(h => h.toLowerCase() === 'event time' || h.toLowerCase() === 'event_time');
+    const dateAltIdx = dateIdx >= 0 ? dateIdx : headers.findIndex(h => h.toLowerCase().includes('date'));
+    const actualDateIdx = dateIdx >= 0 ? dateIdx : dateAltIdx;
+    const campaignIdx = headers.findIndex(h => h.toLowerCase() === 'campaign' || h.toLowerCase() === 'campaign_name');
     
-    // Prefer unique_users for FTD count (first-time = unique), fallback to event_counter
-    const ftdIdx = uniqueUsersIdx >= 0 ? uniqueUsersIdx : eventCounterIdx;
-    
-    if (dateIdx < 0 || ftdIdx < 0) {
-      console.error("Could not find date or FTD columns in AppsFlyer response");
+    if (actualDateIdx < 0) {
+      console.error("Could not find date column in AppsFlyer response. Headers:", headers.join(', '));
       return empty;
     }
+
+    console.log(`Using date column index ${actualDateIdx} (${headers[actualDateIdx]}), campaign index ${campaignIdx}`);
 
     const byDate = new Map<string, number>();
     const byCampaign = new Map<string, number>();
     let total = 0;
 
+    // Each row = one FTD event in raw data
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-      const date = values[dateIdx] || '';
+      // Extract just the date part (YYYY-MM-DD) from event time
+      const rawDate = values[actualDateIdx] || '';
+      const date = rawDate.substring(0, 10);
       const campaign = campaignIdx >= 0 ? (values[campaignIdx] || '') : '';
-      const ftdCount = parseInt(values[ftdIdx] || '0', 10);
       
-      if (ftdCount > 0) {
-        byDate.set(date, (byDate.get(date) || 0) + ftdCount);
+      if (date) {
+        byDate.set(date, (byDate.get(date) || 0) + 1);
         if (campaign) {
-          byCampaign.set(campaign, (byCampaign.get(campaign) || 0) + ftdCount);
+          byCampaign.set(campaign, (byCampaign.get(campaign) || 0) + 1);
         }
-        total += ftdCount;
+        total++;
       }
     }
 
