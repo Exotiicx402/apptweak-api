@@ -183,6 +183,7 @@ export function useMultiPlatformCreatives() {
         assetType: asset?.type || null,
         fullAssetUrl: asset?.fullAssetUrl || null,
         posterUrl: asset?.posterUrl || null,
+        platformCreativeId: asset?.platformCreativeId || null,
       };
     });
   }, [assetMap]);
