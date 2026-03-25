@@ -312,19 +312,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
 
   // Check if the selected platform lacks ad-level data
   const platformMissingAdData = 
-    (activePlatform === "snapchat" && !hasAdData.snapchat) ||
-    (activePlatform === "tiktok" && !hasAdData.tiktok) ||
-    (activePlatform === "google" && !hasAdData.google);
-
-  const getPlatformUnavailableMessage = (platform: Platform): string => {
-    const platformNames: Record<string, string> = {
-      snapchat: "Snapchat",
-      tiktok: "TikTok",
-      google: "Google Ads",
-    };
-    const name = platformNames[platform] || platform;
-    return `Ad-level creative data is not yet available for ${name}. This platform currently syncs at campaign level only.`;
-  };
+    false;
 
   const showPlatformBadge = activePlatform === "blended";
 
@@ -409,21 +397,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
     );
   }
 
-  // Show message for platforms without ad-level data
-  if (platformMissingAdData && !isLoading) {
-    return (
-      <div className="mt-8">
-        {headerContent}
-        <Card>
-          <CardContent className="py-8">
-            <p className="text-muted-foreground text-center">{getPlatformUnavailableMessage(activePlatform)}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (data.length === 0) {
+  if (data.length === 0 && !isLoading) {
     return (
       <div className="mt-8">
         {headerContent}
