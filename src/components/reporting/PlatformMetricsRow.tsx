@@ -153,7 +153,7 @@ export function PlatformMetricsRow({
               CPI
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cpi)}</div>
-            <PercentChange current={cpi} previous={previousCpi} className="mt-1" />
+            <PercentChange current={cpi} previous={previousCpi} invertColor className="mt-1" />
           </CardContent>
         </Card>
 
@@ -164,7 +164,7 @@ export function PlatformMetricsRow({
               CPS
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cps)}</div>
-            <PercentChange current={cps} previous={previousCps} className="mt-1" />
+            <PercentChange current={cps} previous={previousCps} invertColor className="mt-1" />
           </CardContent>
         </Card>
 
@@ -186,7 +186,7 @@ export function PlatformMetricsRow({
               CFTD
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cftd)}</div>
-            <PercentChange current={cftd} previous={previousCftd} className="mt-1" />
+            <PercentChange current={cftd} previous={previousCftd} invertColor className="mt-1" />
           </CardContent>
         </Card>
       </div>
