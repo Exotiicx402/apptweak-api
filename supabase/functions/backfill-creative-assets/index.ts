@@ -112,19 +112,23 @@ serve(async (req) => {
       let sourceUrl: string | null = null;
       let mediaType = "image";
 
+      console.log(`Ad ${adId}: imageHash=${imageHash}, videoId=${videoId}`);
+
       if (imageHash) {
-        // Resolve HD image via adimages API
-        const hashUrl = `https://graph.facebook.com/v21.0/${accountId}/adimages?hashes=['${imageHash}']&fields=hash,url&access_token=${accessToken}`;
+        const hashUrl = `https://graph.facebook.com/v21.0/${accountId}/adimages?hashes=${encodeURIComponent(JSON.stringify([imageHash]))}&fields=hash,url&access_token=${accessToken}`;
         try {
           const resp = await fetch(hashUrl);
           if (resp.ok) {
             const data = await resp.json();
             const img = (data.data || [])[0];
+            console.log(`Hash ${imageHash} resolved: ${img?.url?.substring(0, 80) || 'none'}`);
             if (img?.url && !img.url.includes("p64x64")) {
               sourceUrl = img.url;
             }
+          } else {
+            console.error(`Adimages API error: ${await resp.text()}`);
           }
-        } catch { /* skip */ }
+        } catch (e) { console.error(`Hash fetch error: ${e}`); }
       } else if (videoId) {
         // Get video thumbnail
         mediaType = "video";
