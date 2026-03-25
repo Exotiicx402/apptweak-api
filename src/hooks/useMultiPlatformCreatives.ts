@@ -143,6 +143,7 @@ export function useMultiPlatformCreatives() {
     // Fetch all platforms and assets in parallel
     await Promise.all([
       fetchPlatform("meta", "meta-history", startDate, endDate, setMeta),
+      fetchPlatform("moloco", "moloco-history", startDate, endDate, setMoloco),
       fetchCreativeAssets(),
     ]);
   }, []);
