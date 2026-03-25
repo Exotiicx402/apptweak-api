@@ -944,7 +944,11 @@ serve(async (req) => {
           }
         }
 
-        const existing = bqAdsData.find((a: any) => a.ad_id === adId);
+        // Use composite key to preserve adset-level granularity
+        const adsetId = ad.adset_id || '';
+        const adsetName = ad.adset_name || '';
+        const compositeKey = `${adId}::${adsetId}`;
+        const existing = bqAdsData.find((a: any) => `${a.ad_id}::${a.adset_id || ''}` === compositeKey);
         if (existing) {
           existing.spend = (parseFloat(existing.spend) || 0) + spend;
           existing.impressions = (parseInt(existing.impressions) || 0) + impressions;
@@ -956,7 +960,6 @@ serve(async (req) => {
           existing.ftd_value = (parseFloat(existing.ftd_value) || 0) + ftdValue;
           existing.trade_value = (parseFloat(existing.trade_value) || 0) + tradeValue;
           existing.video_3s_views = (parseInt(existing.video_3s_views) || 0) + video3sViews;
-          // Avg watch time: weighted average by impressions
           const prevImps = existing.impressions - impressions;
           if (prevImps > 0 && impressions > 0) {
             existing.avg_watch_time = ((existing.avg_watch_time || 0) * prevImps + avgWatchTime * impressions) / existing.impressions;
@@ -971,6 +974,8 @@ serve(async (req) => {
           bqAdsData.push({
             ad_id: adId,
             ad_name: ad.ad_name,
+            adset_id: adsetId,
+            adset_name: adsetName,
             spend,
             impressions,
             clicks,
