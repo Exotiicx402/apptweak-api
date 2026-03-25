@@ -62,6 +62,7 @@ export function useReportingData() {
       snapchat: { ...emptyMetrics, isLoading: true },
       googleAds: { ...emptyMetrics, isLoading: true },
       tiktok: { ...emptyMetrics, isLoading: true },
+      moloco: { ...emptyMetrics, isLoading: true },
     }));
 
     // Only 4 requests - each endpoint already returns both totals and previousTotals
