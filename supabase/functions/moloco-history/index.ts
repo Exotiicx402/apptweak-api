@@ -681,9 +681,13 @@ serve(async (req) => {
     const prevRequestedDates = getDatesBetween(prevStartStr, prevEndStr);
     const existingPrevDates = new Set(prevRows.map(r => r.date));
     const missingPrevDates = getMissingDates(prevRequestedDates, existingPrevDates);
-    const backfillablePrevDates = getBackfillableDates(missingPrevDates);
+    const prevDatesWithMissingFtds = prevRows
+      .filter(r => r.ftds === 0)
+      .map(r => r.date);
+    const allPrevDatesToFetch = [...new Set([...missingPrevDates, ...prevDatesWithMissingFtds])];
+    const backfillablePrevDates = getBackfillableDates(allPrevDatesToFetch);
 
-    console.log(`Previous period missing dates: ${missingPrevDates.length}, Backfillable: ${backfillablePrevDates.length}`);
+    console.log(`Previous period missing dates: ${missingPrevDates.length}, Missing FTDs: ${prevDatesWithMissingFtds.length}, Backfillable: ${backfillablePrevDates.length}`);
 
     // Fetch live data for backfillable dates (or if BQ query failed entirely)
     let liveRows: ProcessedRow[] = [];
