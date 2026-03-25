@@ -140,6 +140,7 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
     "cpc",
     "ctr",
     "actions",
+    "action_values",
   ].join(",");
 
   const timeRange = JSON.stringify({
