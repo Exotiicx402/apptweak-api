@@ -744,6 +744,7 @@ serve(async (req) => {
               total_installs: 0,
               total_registrations: 0,
               total_ftds: 0,
+              total_trades: 0,
               avg_cpm: 0,
               avg_cpc: 0,
               avg_ctr: 0,
@@ -757,6 +758,7 @@ serve(async (req) => {
           prevTotalsData[0].total_installs = (parseInt(prevTotalsData[0].total_installs) || 0) + transformed.daily.installs;
           prevTotalsData[0].total_registrations = (parseInt(prevTotalsData[0].total_registrations) || 0) + transformed.daily.registrations;
           prevTotalsData[0].total_ftds = (parseInt(prevTotalsData[0].total_ftds) || 0) + transformed.daily.ftds;
+          prevTotalsData[0].total_trades = (parseInt(prevTotalsData[0].total_trades) || 0) + transformed.daily.trades;
 
           console.log(`Added previous period live data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
         }
