@@ -271,16 +271,18 @@ export function useMultiPlatformCreatives() {
     return result.sort((a, b) => b.spend - a.spend);
   }, [metaAds, molocoAds, activePlatform]);
 
-  const isLoading = meta.isLoading;
+  const isLoading = meta.isLoading || moloco.isLoading;
 
   // Check if a specific platform has ad-level data available
   const hasAdData = {
     meta: meta.ads.length > 0,
+    moloco: moloco.ads.length > 0,
   };
 
   // Get errors from any platform
   const errors: string[] = [
     meta.error,
+    moloco.error,
   ].filter((e): e is string => e !== null);
 
   return {
