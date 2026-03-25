@@ -896,6 +896,22 @@ serve(async (req) => {
     console.log(`Final merged rows: ${mergedRows.length} (${filteredBqRows.length} from BQ + ${liveRows.length} from live)`);
     console.log(`Final merged previous rows: ${mergedPrevRows.length}`);
 
+    // Fetch AppsFlyer FTD data for both periods in parallel
+    let [currentFtds, prevFtds] = await Promise.all([
+      fetchAppsFlyerFtds(startDate, endDate).catch(err => {
+        console.error('AppsFlyer current FTD fetch failed (non-blocking):', err);
+        return { byDate: new Map(), byCampaign: new Map(), total: 0 } as AppsFlyerFtdData;
+      }),
+      fetchAppsFlyerFtds(prevStartStr, prevEndStr).catch(err => {
+        console.error('AppsFlyer prev FTD fetch failed (non-blocking):', err);
+        return { byDate: new Map(), byCampaign: new Map(), total: 0 } as AppsFlyerFtdData;
+      }),
+    ]);
+
+    // Merge AppsFlyer FTDs into Moloco rows
+    mergeAppsFlyerFtds(mergedRows, currentFtds);
+    mergeAppsFlyerFtds(mergedPrevRows, prevFtds);
+
     // Calculate results
     const totals = calculateTotals(mergedRows);
     const previousTotals = calculateTotals(mergedPrevRows);
