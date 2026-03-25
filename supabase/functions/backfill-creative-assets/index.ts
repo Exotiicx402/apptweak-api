@@ -104,8 +104,10 @@ serve(async (req) => {
 
       const imageHash = creative.image_hash ||
         creative.object_story_spec?.link_data?.image_hash ||
-        creative.object_story_spec?.photo_data?.image_hash;
-      const videoId = creative.object_story_spec?.video_data?.video_id;
+        creative.object_story_spec?.photo_data?.image_hash ||
+        creative.asset_feed_spec?.images?.[0]?.hash;
+      const videoId = creative.object_story_spec?.video_data?.video_id ||
+        creative.asset_feed_spec?.videos?.[0]?.video_id;
 
       let sourceUrl: string | null = null;
       let mediaType = "image";
