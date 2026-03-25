@@ -21,7 +21,10 @@ function isVideoCreative(creative: EnrichedCreative): boolean {
   if (creative.assetType) {
     return creative.assetType.toLowerCase() === "video";
   }
-  // Fallback: parse from naming convention contentType field
+  // Fallback: parse from naming convention assetType field (index 2, e.g. "VID", "IMG")
+  const assetType = creative.parsed.assetType?.toUpperCase() || "";
+  if (assetType.includes("VID")) return true;
+  // Also check contentType field as secondary fallback
   const contentType = creative.parsed.contentType?.toUpperCase() || "";
   return contentType.includes("VID");
 }
