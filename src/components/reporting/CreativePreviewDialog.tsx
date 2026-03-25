@@ -324,9 +324,37 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
            </DialogTitle>
          </DialogHeader>
  
-         <div className="grid gap-6 md:grid-cols-2">
-           {/* Image Preview */}
+          <div className="grid gap-6 md:grid-cols-2">
+           {/* Preview area */}
            <div className="relative">
+            {/* Ad Preview toggle for Meta creatives */}
+            {isMetaCreative && (
+              <div className="flex gap-1 mb-2">
+                <Button
+                  variant={!showAdPreview ? "default" : "outline"}
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={() => setShowAdPreview(false)}
+                >
+                  Asset
+                </Button>
+                <Button
+                  variant={showAdPreview ? "default" : "outline"}
+                  size="sm"
+                  className="text-xs h-7 gap-1"
+                  onClick={() => setShowAdPreview(true)}
+                >
+                  <Eye className="h-3 w-3" />
+                  Ad Preview
+                </Button>
+              </div>
+            )}
+
+            {showAdPreview && isMetaCreative ? (
+              <div className="rounded-lg overflow-hidden bg-muted" style={{ minHeight: 480 }}>
+                <MetaAdPreview creativeId={creative.platformCreativeId!} />
+              </div>
+            ) : (
             <AspectRatio ratio={4 / 3} className="bg-muted rounded-lg overflow-hidden">
               {isVideo && videoUrl ? (
                 <VideoPlayer videoUrl={videoUrl} posterUrl={posterImage} />
@@ -344,6 +372,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
                 </div>
               )}
             </AspectRatio>
+            )}
              <Badge className="absolute bottom-3 left-3 bg-black/70 text-white border-0 hover:bg-black/70">
                {getAssetTypeLabel(assetType)}
              </Badge>
