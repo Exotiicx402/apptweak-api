@@ -189,6 +189,7 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
         ${row.installs},
         ${row.impressions},
         ${row.clicks},
+        ${row.ftds},
         CURRENT_TIMESTAMP()
       )`;
     })
@@ -198,7 +199,7 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
     MERGE \`${fullTableId}\` AS target
     USING (
       SELECT * FROM UNNEST([
-        STRUCT<date DATE, campaign_id STRING, campaign_name STRING, spend FLOAT64, installs INT64, impressions INT64, clicks INT64, fetched_at TIMESTAMP>
+        STRUCT<date DATE, campaign_id STRING, campaign_name STRING, spend FLOAT64, installs INT64, impressions INT64, clicks INT64, ftds INT64, fetched_at TIMESTAMP>
         ${valuesClause}
       ])
     ) AS source
@@ -210,10 +211,11 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
         installs = source.installs,
         impressions = source.impressions,
         clicks = source.clicks,
+        ftds = source.ftds,
         fetched_at = source.fetched_at
     WHEN NOT MATCHED THEN
-      INSERT (date, campaign_id, campaign_name, spend, installs, impressions, clicks, fetched_at)
-      VALUES (source.date, source.campaign_id, source.campaign_name, source.spend, source.installs, source.impressions, source.clicks, source.fetched_at)
+      INSERT (date, campaign_id, campaign_name, spend, installs, impressions, clicks, ftds, fetched_at)
+      VALUES (source.date, source.campaign_id, source.campaign_name, source.spend, source.installs, source.impressions, source.clicks, source.ftds, source.fetched_at)
   `;
 
   console.log(`Merging ${rows.length} rows into BigQuery...`);
@@ -587,7 +589,8 @@ serve(async (req) => {
           spend,
           installs,
           impressions,
-          clicks
+          clicks,
+          IFNULL(ftds, 0) as ftds
         FROM ${fullTable}
         WHERE date BETWEEN '${startDate}' AND '${endDate}'
         ORDER BY date, campaign_id
@@ -601,7 +604,8 @@ serve(async (req) => {
           spend,
           installs,
           impressions,
-          clicks
+          clicks,
+          IFNULL(ftds, 0) as ftds
         FROM ${fullTable}
         WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
         ORDER BY date, campaign_id
@@ -637,7 +641,7 @@ serve(async (req) => {
       installs: parseInt(row.installs) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
-      ftds: 0, // BQ cache doesn't have FTDs yet — live API backfill provides them
+      ftds: parseInt(row.ftds) || 0,
     }));
 
     let prevRows: ProcessedRow[] = bqPrevRows.map((row: any) => ({
@@ -650,7 +654,7 @@ serve(async (req) => {
       installs: parseInt(row.installs) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
-      ftds: 0,
+      ftds: parseInt(row.ftds) || 0,
     }));
 
     // Identify which dates we have from BigQuery
