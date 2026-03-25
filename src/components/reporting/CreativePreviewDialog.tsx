@@ -23,6 +23,7 @@ import { extractImageHash, extractVideoId } from "@/lib/creativeDataTransformers
    onOpenChange: (open: boolean) => void;
    creative: EnrichedCreative | null;
   platformBreakdown?: EnrichedCreative[];
+  adsetBreakdown?: EnrichedCreative[];
    isBlended?: boolean;
  }
  
