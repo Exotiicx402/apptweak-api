@@ -30,6 +30,7 @@ interface CreativeAsset {
   full_asset_url: string | null;
   poster_url: string | null;
   updated_at: string | null;
+  platform_creative_id: string | null;
 }
 
 export type Platform = "meta" | "moloco" | "blended";
