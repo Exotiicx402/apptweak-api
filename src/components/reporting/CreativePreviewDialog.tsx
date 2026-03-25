@@ -600,6 +600,51 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
             </div>
           </>
         )}
+
+        {/* BY ADSET Breakdown */}
+        {adsetBreakdown.length > 1 && (
+          <>
+            <Separator className="my-4" />
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">By Adset</h4>
+              <div className="space-y-3">
+                {adsetBreakdown.map((item, idx) => (
+                  <div key={`${item.adsetId || idx}`} className="border rounded-lg p-3">
+                    <p className="text-sm font-medium text-foreground mb-2 truncate">
+                      {item.adsetName || item.adsetId || `Adset ${idx + 1}`}
+                    </p>
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-1 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Spend: </span>
+                        <span className="font-medium">{formatCurrency(item.spend)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">CTR: </span>
+                        <span className="font-medium">{formatPercent(item.ctr)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">CPI: </span>
+                        <span className="font-medium">{item.cpi > 0 ? formatCurrency(item.cpi) : '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Regs: </span>
+                        <span className="font-medium">{item.registrations > 0 ? formatNumber(item.registrations) : '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">FTDs: </span>
+                        <span className="font-medium">{item.ftds > 0 ? formatNumber(item.ftds) : '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Clicks: </span>
+                        <span className="font-medium">{formatNumber(item.clicks)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
        </DialogContent>
      </Dialog>
    );
