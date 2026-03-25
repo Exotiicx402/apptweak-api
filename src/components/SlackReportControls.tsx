@@ -61,6 +61,22 @@ function pct(current: number, previous: number): { value: string; positive: bool
   return { value: `${sign}${change.toFixed(1)}%`, positive: change >= 0, neutral: false };
 }
 
+interface PlatformMetrics {
+  spend: number;
+  installs: number;
+  ftds: number;
+  cpi: number;
+  cftd: number;
+}
+
+interface PreviewData {
+  date: string;
+  previousDate: string;
+  meta: { current: PlatformMetrics; previous: PlatformMetrics };
+  moloco: { current: PlatformMetrics; previous: PlatformMetrics };
+}
+
+// Keep old interfaces for cumulative report which still uses FTD data
 interface FTDTotals {
   spend: number;
   ftd_count: number;
@@ -72,15 +88,6 @@ interface FTDTotals {
 
 interface CampaignTotals extends FTDTotals {
   campaign_name: string;
-}
-
-interface PreviewData {
-  date: string;
-  previousDate: string;
-  current: FTDTotals;
-  previous: FTDTotals;
-  campaigns?: CampaignTotals[];
-  previousCampaigns?: CampaignTotals[];
 }
 
 interface CumulativePreviewData {
