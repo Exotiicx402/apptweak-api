@@ -437,6 +437,141 @@ function aggregateAdGroups(rows: AdGroupRow[]): any[] {
   })).sort((a, b) => b.spend - a.spend);
 }
 
+// ============ AppsFlyer FTD Fetch ============
+
+interface AppsFlyerFtdData {
+  byDate: Map<string, number>;        // date -> ftd count
+  byCampaign: Map<string, number>;    // campaign_name -> ftd count
+  total: number;
+}
+
+async function fetchAppsFlyerFtds(startDate: string, endDate: string): Promise<AppsFlyerFtdData> {
+  const token = Deno.env.get("APPSFLYER_API_TOKEN");
+  const appId = Deno.env.get("APPSFLYER_APP_ID");
+  
+  const empty: AppsFlyerFtdData = { byDate: new Map(), byCampaign: new Map(), total: 0 };
+  
+  if (!token || !appId) {
+    console.log("AppsFlyer credentials not configured, skipping FTD fetch");
+    return empty;
+  }
+
+  try {
+    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/in_app_events_report/v5?from=${startDate}&to=${endDate}&timezone=America%2FNew_York&media_source=moloco_int&event_name=first_time_deposit&groupings=date,campaign&kpis=unique_users,event_counter`;
+    
+    console.log(`Fetching AppsFlyer FTDs for Moloco: ${startDate} to ${endDate}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'text/csv',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`AppsFlyer API error [${response.status}]:`, errorText.substring(0, 200));
+      return empty;
+    }
+
+    const csvText = await response.text();
+    if (!csvText.trim()) {
+      console.log("AppsFlyer returned empty response");
+      return empty;
+    }
+
+    const lines = csvText.trim().split('\n');
+    const headers = lines[0]?.split(',').map(h => h.trim().replace(/"/g, '')) || [];
+    
+    console.log(`AppsFlyer FTD headers: ${headers.join(', ')}`);
+
+    // Find column indices
+    const dateIdx = headers.findIndex(h => h.toLowerCase().includes('date'));
+    const campaignIdx = headers.findIndex(h => h.toLowerCase().includes('campaign'));
+    const uniqueUsersIdx = headers.findIndex(h => h.toLowerCase().includes('unique users'));
+    const eventCounterIdx = headers.findIndex(h => h.toLowerCase().includes('event counter'));
+    
+    // Prefer unique_users for FTD count (first-time = unique), fallback to event_counter
+    const ftdIdx = uniqueUsersIdx >= 0 ? uniqueUsersIdx : eventCounterIdx;
+    
+    if (dateIdx < 0 || ftdIdx < 0) {
+      console.error("Could not find date or FTD columns in AppsFlyer response");
+      return empty;
+    }
+
+    const byDate = new Map<string, number>();
+    const byCampaign = new Map<string, number>();
+    let total = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      const date = values[dateIdx] || '';
+      const campaign = campaignIdx >= 0 ? (values[campaignIdx] || '') : '';
+      const ftdCount = parseInt(values[ftdIdx] || '0', 10);
+      
+      if (ftdCount > 0) {
+        byDate.set(date, (byDate.get(date) || 0) + ftdCount);
+        if (campaign) {
+          byCampaign.set(campaign, (byCampaign.get(campaign) || 0) + ftdCount);
+        }
+        total += ftdCount;
+      }
+    }
+
+    console.log(`AppsFlyer FTDs: ${total} total across ${byDate.size} dates, ${byCampaign.size} campaigns`);
+    return { byDate, byCampaign, total };
+  } catch (err) {
+    console.error("AppsFlyer FTD fetch error:", err instanceof Error ? err.message : err);
+    return empty;
+  }
+}
+
+function mergeAppsFlyerFtds(rows: ProcessedRow[], ftdData: AppsFlyerFtdData): void {
+  if (ftdData.total === 0) return;
+  
+  // Group rows by date to distribute FTDs proportionally by spend
+  const dateGroups = new Map<string, ProcessedRow[]>();
+  for (const row of rows) {
+    const group = dateGroups.get(row.date) || [];
+    group.push(row);
+    dateGroups.set(row.date, group);
+  }
+
+  for (const [date, groupRows] of dateGroups) {
+    const dateFtds = ftdData.byDate.get(date) || 0;
+    if (dateFtds === 0) continue;
+    
+    // If only one campaign, assign all FTDs to it
+    if (groupRows.length === 1) {
+      groupRows[0].ftds = dateFtds;
+      continue;
+    }
+    
+    // Distribute FTDs proportionally by spend
+    const totalSpend = groupRows.reduce((s, r) => s + r.spend, 0);
+    if (totalSpend === 0) {
+      // Equal distribution
+      const each = Math.floor(dateFtds / groupRows.length);
+      let remainder = dateFtds - each * groupRows.length;
+      for (const row of groupRows) {
+        row.ftds = each + (remainder > 0 ? 1 : 0);
+        remainder--;
+      }
+    } else {
+      let assigned = 0;
+      for (let i = 0; i < groupRows.length; i++) {
+        if (i === groupRows.length - 1) {
+          groupRows[i].ftds = dateFtds - assigned;
+        } else {
+          const share = Math.round(dateFtds * (groupRows[i].spend / totalSpend));
+          groupRows[i].ftds = share;
+          assigned += share;
+        }
+      }
+    }
+  }
+}
+
 // Fetch live Moloco data from API (campaign level)
 async function fetchMolocoLiveData(startDate: string, endDate: string): Promise<ProcessedRow[]> {
   const apiKey = Deno.env.get('MOLOCO_API_KEY');
