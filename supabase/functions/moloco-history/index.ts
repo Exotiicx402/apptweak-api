@@ -542,7 +542,7 @@ serve(async (req) => {
   }
 
   try {
-    const { startDate, endDate } = await req.json();
+    const { startDate, endDate, forceRefresh } = await req.json();
 
     if (!startDate || !endDate) {
       throw new Error('startDate and endDate are required');
