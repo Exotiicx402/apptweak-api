@@ -5,6 +5,8 @@ import { parseCreativeName, ParsedCreativeName } from "@/lib/creativeNamingParse
 interface AdMetric {
   ad_id?: string;
   ad_name: string;
+  adset_id?: string;
+  adset_name?: string;
   spend: number;
   impressions: number;
   clicks: number;
