@@ -68,6 +68,8 @@ interface MolocoRow {
     clicks: string;
     installs: string;
     spend: number;
+    conversions: string;
+    target_actions: string;
   };
 }
 
@@ -79,6 +81,7 @@ interface ProcessedRow {
   installs: number;
   impressions: number;
   clicks: number;
+  ftds: number;
 }
 
 // ============ BigQuery Helper Functions ============
@@ -361,6 +364,7 @@ function processRows(rows: MolocoRow[]): ProcessedRow[] {
     installs: parseInt(row.metric?.installs || '0', 10),
     impressions: parseInt(row.metric?.impressions || '0', 10),
     clicks: parseInt(row.metric?.clicks || '0', 10),
+    ftds: parseInt(row.metric?.target_actions || '0', 10),
   }));
 }
 
@@ -372,6 +376,7 @@ interface AdGroupRow {
   installs: number;
   impressions: number;
   clicks: number;
+  ftds: number;
 }
 
 function processAdGroupRows(rows: MolocoRow[]): AdGroupRow[] {
@@ -383,6 +388,7 @@ function processAdGroupRows(rows: MolocoRow[]): AdGroupRow[] {
     installs: parseInt(row.metric?.installs || '0', 10),
     impressions: parseInt(row.metric?.impressions || '0', 10),
     clicks: parseInt(row.metric?.clicks || '0', 10),
+    ftds: parseInt(row.metric?.target_actions || '0', 10),
   }));
 }
 
@@ -397,17 +403,20 @@ function aggregateAdGroups(rows: AdGroupRow[]): any[] {
       installs: 0,
       impressions: 0,
       clicks: 0,
+      ftds: 0,
     };
     existing.spend += row.spend;
     existing.installs += row.installs;
     existing.impressions += row.impressions;
     existing.clicks += row.clicks;
+    existing.ftds += row.ftds;
     map.set(key, existing);
   }
   return Array.from(map.values()).map(a => ({
     ...a,
     ctr: a.impressions > 0 ? a.clicks / a.impressions : 0,
     cpi: a.installs > 0 ? a.spend / a.installs : 0,
+    cftd: a.ftds > 0 ? a.spend / a.ftds : 0,
   })).sort((a, b) => b.spend - a.spend);
 }
 
@@ -455,11 +464,13 @@ function aggregateByDate(rows: ProcessedRow[]): any[] {
       installs: 0,
       impressions: 0,
       clicks: 0,
+      ftds: 0,
     };
     existing.spend += row.spend;
     existing.installs += row.installs;
     existing.impressions += row.impressions;
     existing.clicks += row.clicks;
+    existing.ftds += row.ftds;
     dateMap.set(row.date, existing);
   }
   
@@ -478,11 +489,13 @@ function aggregateByCampaign(rows: ProcessedRow[]): any[] {
       installs: 0,
       impressions: 0,
       clicks: 0,
+      ftds: 0,
     };
     existing.spend += row.spend;
     existing.installs += row.installs;
     existing.impressions += row.impressions;
     existing.clicks += row.clicks;
+    existing.ftds += row.ftds;
     campaignMap.set(key, existing);
   }
   
@@ -490,6 +503,7 @@ function aggregateByCampaign(rows: ProcessedRow[]): any[] {
     .map(c => ({
       ...c,
       cpi: c.installs > 0 ? c.spend / c.installs : 0,
+      cftd: c.ftds > 0 ? c.spend / c.ftds : 0,
     }))
     .sort((a, b) => b.spend - a.spend);
 }
@@ -501,13 +515,15 @@ function calculateTotals(rows: ProcessedRow[]): any {
       installs: acc.installs + row.installs,
       impressions: acc.impressions + row.impressions,
       clicks: acc.clicks + row.clicks,
+      ftds: acc.ftds + row.ftds,
     }),
-    { spend: 0, installs: 0, impressions: 0, clicks: 0 }
+    { spend: 0, installs: 0, impressions: 0, clicks: 0, ftds: 0 }
   );
 
   return {
     ...totals,
     cpi: totals.installs > 0 ? totals.spend / totals.installs : 0,
+    cftd: totals.ftds > 0 ? totals.spend / totals.ftds : 0,
   };
 }
 
@@ -621,6 +637,7 @@ serve(async (req) => {
       installs: parseInt(row.installs) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
+      ftds: 0, // BQ cache doesn't have FTDs yet — live API backfill provides them
     }));
 
     let prevRows: ProcessedRow[] = bqPrevRows.map((row: any) => ({
@@ -633,6 +650,7 @@ serve(async (req) => {
       installs: parseInt(row.installs) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
+      ftds: 0,
     }));
 
     // Identify which dates we have from BigQuery
