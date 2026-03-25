@@ -464,11 +464,13 @@ function aggregateByDate(rows: ProcessedRow[]): any[] {
       installs: 0,
       impressions: 0,
       clicks: 0,
+      ftds: 0,
     };
     existing.spend += row.spend;
     existing.installs += row.installs;
     existing.impressions += row.impressions;
     existing.clicks += row.clicks;
+    existing.ftds += row.ftds;
     dateMap.set(row.date, existing);
   }
   
