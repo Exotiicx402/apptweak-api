@@ -30,6 +30,7 @@ interface CreativeAsset {
   full_asset_url: string | null;
   poster_url: string | null;
   updated_at: string | null;
+  platform_creative_id: string | null;
 }
 
 export type Platform = "meta" | "moloco" | "blended";
@@ -59,6 +60,7 @@ export interface EnrichedCreative {
   fullAssetUrl: string | null;
   posterUrl: string | null;
   originalUrl?: string | null;
+  platformCreativeId?: string | null;
 }
 
 interface PlatformData {
@@ -70,7 +72,7 @@ interface PlatformData {
 export function useMultiPlatformCreatives() {
   const [meta, setMeta] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [moloco, setMoloco] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
-  const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>>(new Map());
+  const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null; platformCreativeId: string | null }>>(new Map());
   const [activePlatform, setActivePlatform] = useState<Platform>("meta");
 
   const fetchPlatform = async (
@@ -107,30 +109,28 @@ export function useMultiPlatformCreatives() {
     try {
       const { data, error } = await supabase
         .from('creative_assets')
-        .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at');
+        .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at, platform_creative_id');
 
       if (error) {
         console.error('Error fetching creative assets:', error);
         return;
       }
 
-      const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>();
+      const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null; platformCreativeId: string | null }>();
       for (const asset of (data as CreativeAsset[]) || []) {
         // Add cache-busting query param based on updated_at
         const cacheBust = asset.updated_at ? `?v=${new Date(asset.updated_at).getTime()}` : '';
         
-        // For grid display: use thumbnail (which should be the poster for videos, or full image)
-        // For preview: use full_asset_url (which is the MP4 for videos, or full image)
         const thumbnailWithCache = asset.thumbnail_url ? asset.thumbnail_url + cacheBust : null;
         const fullWithCache = asset.full_asset_url ? asset.full_asset_url + cacheBust : null;
         const posterWithCache = asset.poster_url ? asset.poster_url + cacheBust : null;
         
         map.set(asset.creative_name, {
-          // For card display: prefer thumbnail (poster for videos), never show an MP4 URL here
           url: thumbnailWithCache || posterWithCache,
           type: asset.asset_type,
           fullAssetUrl: fullWithCache,
           posterUrl: posterWithCache || thumbnailWithCache,
+          platformCreativeId: asset.platform_creative_id,
         });
       }
       setAssetMap(map);
@@ -183,6 +183,7 @@ export function useMultiPlatformCreatives() {
         assetType: asset?.type || null,
         fullAssetUrl: asset?.fullAssetUrl || null,
         posterUrl: asset?.posterUrl || null,
+        platformCreativeId: asset?.platformCreativeId || null,
       };
     });
   }, [assetMap]);

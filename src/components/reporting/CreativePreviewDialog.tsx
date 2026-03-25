@@ -10,10 +10,11 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
  import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play, Download } from "lucide-react";
-import { useMemo, useState, useRef } from "react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play, Download, Eye } from "lucide-react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
  
  interface CreativePreviewDialogProps {
    open: boolean;
@@ -61,6 +62,7 @@ import { toast } from "sonner";
 function getPlatformLabel(platform: string): string {
   switch (platform) {
     case "meta": return "Meta";
+    case "moloco": return "Moloco";
     case "snapchat": return "Snapchat";
     case "tiktok": return "TikTok";
     case "google": return "Google Ads";
@@ -71,6 +73,7 @@ function getPlatformLabel(platform: string): string {
 function getPlatformColor(platform: string): string {
   switch (platform) {
     case "meta": return "bg-blue-100 text-blue-800 border-blue-200";
+    case "moloco": return "bg-purple-100 text-purple-800 border-purple-200";
     case "snapchat": return "bg-yellow-100 text-yellow-800 border-yellow-200";
     case "tiktok": return "bg-pink-100 text-pink-800 border-pink-200";
     case "google": return "bg-red-100 text-red-800 border-red-200";
@@ -152,6 +155,67 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
   );
 }
 
+// Meta Ad Preview iframe component
+function MetaAdPreview({ creativeId }: { creativeId: string }) {
+  const [iframeSrc, setIframeSrc] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const { data, error: invokeError } = await supabase.functions.invoke('meta-ad-preview', {
+          body: { creativeId },
+        });
+
+        if (cancelled) return;
+
+        if (invokeError) throw new Error(invokeError.message);
+        if (!data?.success) throw new Error(data?.error || 'Failed to load preview');
+
+        setIframeSrc(data.data.iframeSrc);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load preview');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [creativeId]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-muted/50">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !iframeSrc) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-muted/50">
+        <p className="text-sm text-muted-foreground">{error || 'No preview available'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      src={iframeSrc}
+      className="w-full h-full border-0"
+      sandbox="allow-scripts allow-same-origin"
+      title="Meta Ad Preview"
+    />
+  );
+}
+
  export function CreativePreviewDialog({
    open,
    onOpenChange,
@@ -159,6 +223,8 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
   platformBreakdown = [],
    isBlended = false,
  }: CreativePreviewDialogProps) {
+  const [showAdPreview, setShowAdPreview] = useState(false);
+
   // Calculate totals for platform breakdown
   const { totals, ranges } = useMemo(() => {
     if (!platformBreakdown || platformBreakdown.length === 0) {
@@ -241,8 +307,9 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
     creative.assetType === 'video' || 
     assetType.toUpperCase().includes('VID') ||
     (creative.fullAssetUrl && creative.fullAssetUrl.includes('.mp4'));
-  const hasAsset = !!creative.assetUrl || !!creative.fullAssetUrl;
-  const showBreakdown = isBlended && platformBreakdown.length > 0;
+   const hasAsset = !!creative.assetUrl || !!creative.fullAssetUrl;
+   const showBreakdown = isBlended && platformBreakdown.length > 0;
+   const isMetaCreative = creative.platform === 'meta' && !!creative.platformCreativeId;
 
   // For videos: use fullAssetUrl as the MP4, posterUrl for the poster
   // For images: prefer originalUrl (high-res Meta CDN) > fullAssetUrl > assetUrl
@@ -259,9 +326,37 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
            </DialogTitle>
          </DialogHeader>
  
-         <div className="grid gap-6 md:grid-cols-2">
-           {/* Image Preview */}
+          <div className="grid gap-6 md:grid-cols-2">
+           {/* Preview area */}
            <div className="relative">
+            {/* Ad Preview toggle for Meta creatives */}
+            {isMetaCreative && (
+              <div className="flex gap-1 mb-2">
+                <Button
+                  variant={!showAdPreview ? "default" : "outline"}
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={() => setShowAdPreview(false)}
+                >
+                  Asset
+                </Button>
+                <Button
+                  variant={showAdPreview ? "default" : "outline"}
+                  size="sm"
+                  className="text-xs h-7 gap-1"
+                  onClick={() => setShowAdPreview(true)}
+                >
+                  <Eye className="h-3 w-3" />
+                  Ad Preview
+                </Button>
+              </div>
+            )}
+
+            {showAdPreview && isMetaCreative ? (
+              <div className="rounded-lg overflow-hidden bg-muted" style={{ minHeight: 480 }}>
+                <MetaAdPreview creativeId={creative.platformCreativeId!} />
+              </div>
+            ) : (
             <AspectRatio ratio={4 / 3} className="bg-muted rounded-lg overflow-hidden">
               {isVideo && videoUrl ? (
                 <VideoPlayer videoUrl={videoUrl} posterUrl={posterImage} />
@@ -279,6 +374,7 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
                 </div>
               )}
             </AspectRatio>
+            )}
              <Badge className="absolute bottom-3 left-3 bg-black/70 text-white border-0 hover:bg-black/70">
                {getAssetTypeLabel(assetType)}
              </Badge>
