@@ -48,15 +48,19 @@ serve(async (req) => {
     const lines = csvText.trim().split('\n');
     const headers = lines[0]?.split(',').map(h => h.trim().replace(/"/g, '')) || [];
     
-    // Find event name column
+    // Find event name and media source columns
     const eventNameIdx = headers.findIndex(h => h === 'Event Name');
+    const mediaSourceIdx = headers.findIndex(h => h === 'Media Source');
     
-    // Collect unique event names
+    // Collect unique event names and media sources
     const eventCounts = new Map<string, number>();
+    const mediaSources = new Map<string, number>();
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
       const eventName = eventNameIdx >= 0 ? values[eventNameIdx] : 'unknown';
+      const mediaSource = mediaSourceIdx >= 0 ? values[mediaSourceIdx] : 'unknown';
       eventCounts.set(eventName, (eventCounts.get(eventName) || 0) + 1);
+      mediaSources.set(mediaSource, (mediaSources.get(mediaSource) || 0) + 1);
     }
 
     return new Response(JSON.stringify({ 
