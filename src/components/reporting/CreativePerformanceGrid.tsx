@@ -462,6 +462,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
         onOpenChange={setPreviewOpen}
         creative={selectedCreative}
         platformBreakdown={platformBreakdown}
+        adsetBreakdown={adsetBreakdown}
         isBlended={activePlatform === "blended"}
       />
     </div>
