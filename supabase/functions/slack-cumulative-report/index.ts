@@ -156,14 +156,14 @@ function buildCumulativeSlackMessage(
   data.campaigns.forEach((camp) => {
     const label = campaignLabel(camp.campaign_name);
     campaignBlocks.push('');
-    campaignBlocks.push(`📌 ${label}`);
+    campaignBlocks.push(`${label}`);
     campaignBlocks.push(thinSep);
     campaignBlocks.push(...metricsBlock(camp));
   });
 
   const totalBlock = [
     '',
-    `📊 TOTAL`,
+    `TOTAL`,
     separator,
     ...metricsBlock(data.totals),
   ];
@@ -181,7 +181,7 @@ function buildCumulativeSlackMessage(
         type: 'header',
         text: {
           type: 'plain_text',
-          text: `📊 Cumulative Performance Report — ${displayStart} to ${displayEnd}`,
+          text: `Cumulative Performance Report — ${displayStart} to ${displayEnd}`,
           emoji: true,
         },
       },

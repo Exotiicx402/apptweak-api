@@ -201,7 +201,7 @@ function ReportPreview({ data }: { data: PreviewData }) {
   return (
     <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
       <div className="bg-primary/10 border-b border-border px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">📊 Daily Performance Report — {formatDisplayDate(date)}</p>
+        <p className="text-sm font-semibold text-foreground">Daily Performance Report — {formatDisplayDate(date)}</p>
       </div>
       <div className="flex items-center px-4 py-2 bg-muted/50 border-b border-border">
         <span className="text-xs font-medium text-muted-foreground w-36">Metric</span>
@@ -211,21 +211,21 @@ function ReportPreview({ data }: { data: PreviewData }) {
       </div>
 
       <div className="px-4 py-2 bg-muted/40 border-y border-border">
-        <span className="text-xs font-semibold text-foreground">📱 Meta</span>
+        <span className="text-xs font-semibold text-foreground">Meta</span>
       </div>
       <div className="divide-y divide-border">
         <PlatformMetricsRows current={safeMeta.current} previous={safeMeta.previous} />
       </div>
 
       <div className="px-4 py-2 bg-muted/40 border-y border-border">
-        <span className="text-xs font-semibold text-foreground">🟣 Moloco</span>
+        <span className="text-xs font-semibold text-foreground">Moloco</span>
       </div>
       <div className="divide-y divide-border">
         <PlatformMetricsRows current={safeMoloco.current} previous={safeMoloco.previous} />
       </div>
 
       <div className="px-4 py-2 bg-primary/10 border-y border-border">
-        <span className="text-xs font-semibold text-foreground">📊 TOTAL</span>
+        <span className="text-xs font-semibold text-foreground">TOTAL</span>
       </div>
       <div className="divide-y divide-border">
         <PlatformMetricsRows current={totalCurrent} previous={totalPrevious} />
@@ -246,7 +246,7 @@ function CumulativeReportPreview({ data }: { data: CumulativePreviewData }) {
   return (
     <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
       <div className="bg-primary/10 border-b border-border px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">📊 Cumulative Performance — {formatShortDate(startDate)} to {formatDisplayDate(endDate)}</p>
+        <p className="text-sm font-semibold text-foreground">Cumulative Performance — {formatShortDate(startDate)} to {formatDisplayDate(endDate)}</p>
       </div>
       <div className="flex items-center px-4 py-2 bg-muted/50 border-b border-border">
         <span className="text-xs font-medium text-muted-foreground w-36">Metric</span>
@@ -256,7 +256,7 @@ function CumulativeReportPreview({ data }: { data: CumulativePreviewData }) {
       {(campaigns || []).map((camp) => (
         <div key={camp.campaign_name}>
           <div className="px-4 py-2 bg-muted/40 border-y border-border">
-            <span className="text-xs font-semibold text-foreground">📌 {campaignLabel(camp.campaign_name)}</span>
+            <span className="text-xs font-semibold text-foreground">{campaignLabel(camp.campaign_name)}</span>
           </div>
           <div className="divide-y divide-border">
             <CumulativeMetricsRows totals={camp} />
@@ -265,7 +265,7 @@ function CumulativeReportPreview({ data }: { data: CumulativePreviewData }) {
       ))}
 
       <div className="px-4 py-2 bg-primary/10 border-y border-border">
-        <span className="text-xs font-semibold text-foreground">📊 TOTAL</span>
+        <span className="text-xs font-semibold text-foreground">TOTAL</span>
       </div>
       <div className="divide-y divide-border">
         <CumulativeMetricsRows totals={totals} />
