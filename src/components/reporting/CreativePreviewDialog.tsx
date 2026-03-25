@@ -226,6 +226,30 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
    isBlended = false,
  }: CreativePreviewDialogProps) {
   const [showAdPreview, setShowAdPreview] = useState(false);
+  const { hdUrl, mediaType: hdMediaType, loading: hdLoading, fetchHdMedia, reset: resetHd } = useFetchHdMedia();
+
+  // Lazy-load HD media when dialog opens with a creative
+  useEffect(() => {
+    if (!open || !creative) {
+      resetHd();
+      return;
+    }
+    // Only fetch if we don't already have a good asset URL
+    if (creative.fullAssetUrl || creative.originalUrl) return;
+    
+    // Try to extract image hash or video ID from ad_data for HD resolution
+    const adData = (creative as any).adData;
+    if (!adData?.creative) return;
+
+    const imageHash = extractImageHash(adData.creative);
+    const videoId = extractVideoId(adData.creative);
+
+    if (imageHash) {
+      fetchHdMedia({ mediaType: "image", imageHash });
+    } else if (videoId) {
+      fetchHdMedia({ mediaType: "video", videoId, adId: creative.adId });
+    }
+  }, [open, creative, fetchHdMedia, resetHd]);
 
   // Calculate totals for platform breakdown
   const { totals, ranges } = useMemo(() => {
