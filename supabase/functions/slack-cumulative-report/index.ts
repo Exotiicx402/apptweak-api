@@ -156,7 +156,7 @@ function buildCumulativeSlackMessage(
   data.campaigns.forEach((camp) => {
     const label = campaignLabel(camp.campaign_name);
     campaignBlocks.push('');
-    campaignBlocks.push(`📌 ${label}`);
+    campaignBlocks.push(`${label}`);
     campaignBlocks.push(thinSep);
     campaignBlocks.push(...metricsBlock(camp));
   });
