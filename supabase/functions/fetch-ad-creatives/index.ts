@@ -68,7 +68,7 @@ async function fetchAndCacheDate(
   supabase: any
 ): Promise<{ ads: number; insights: number }> {
   // Step 1: Fetch ads with creative details (HD thumbnails)
-  const adsFields = "id,name,status,effective_status,adset_id,adset{id,name},creative{id,thumbnail_url,image_url,image_hash,object_story_spec{link_data{image_hash,image_url,picture},video_data{video_id,image_url},photo_data{image_hash,url}},asset_feed_spec{images{hash,url},videos{video_id,thumbnail_url}},title,body,call_to_action_type}";
+  const adsFields = "id,name,status,effective_status,adset_id,adset{id,name},creative{id,thumbnail_url,image_hash,object_story_spec{link_data{image_hash,picture},video_data{video_id},photo_data{image_hash}},asset_feed_spec{images{hash,url},videos{video_id,thumbnail_url}},title,body,call_to_action_type}";
   
   const filtering = JSON.stringify([
     { field: "campaign.name", operator: "CONTAIN", value: "hours" },
