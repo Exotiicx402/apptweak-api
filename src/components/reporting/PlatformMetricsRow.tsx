@@ -164,7 +164,7 @@ export function PlatformMetricsRow({
               CPS
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cps)}</div>
-            <PercentChange current={cps} previous={previousCps} className="mt-1" />
+            <PercentChange current={cps} previous={previousCps} invertColor className="mt-1" />
           </CardContent>
         </Card>
 
