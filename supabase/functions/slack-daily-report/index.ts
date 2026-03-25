@@ -151,7 +151,7 @@ function buildSlackMessage(
     header,
     separator,
     '',
-    '📱 META',
+    'META',
     thinSep,
     ...platformBlock(metaCurrent, metaPrevious),
     '',
