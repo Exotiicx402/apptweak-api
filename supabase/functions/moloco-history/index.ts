@@ -354,7 +354,12 @@ async function downloadReport(jsonUrl: string): Promise<MolocoRow[]> {
   }
 
   const data = await response.json();
-  return data.rows || [];
+  const rows = data.rows || [];
+  if (rows.length > 0) {
+    console.log('Sample metric keys:', JSON.stringify(Object.keys(rows[0].metric || {})));
+    console.log('Sample metric values:', JSON.stringify(rows[0].metric));
+  }
+  return rows;
 }
 
 function processRows(rows: MolocoRow[]): ProcessedRow[] {
@@ -537,7 +542,7 @@ serve(async (req) => {
   }
 
   try {
-    const { startDate, endDate } = await req.json();
+    const { startDate, endDate, forceRefresh } = await req.json();
 
     if (!startDate || !endDate) {
       throw new Error('startDate and endDate are required');
@@ -674,14 +679,15 @@ serve(async (req) => {
 
     console.log(`Previous period missing dates: ${missingPrevDates.length}, Backfillable: ${backfillablePrevDates.length}`);
 
-    // Fetch live data for backfillable dates (or if BQ query failed entirely)
+    // Fetch live data for backfillable dates (or if BQ query failed, or forced refresh)
     let liveRows: ProcessedRow[] = [];
+    const shouldFetchLive = backfillableDates.length > 0 || bqQueryFailed || forceRefresh;
     
-    if (backfillableDates.length > 0 || bqQueryFailed) {
-      const fetchStart = bqQueryFailed 
+    if (shouldFetchLive) {
+      const fetchStart = (bqQueryFailed || forceRefresh)
         ? (isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS))
         : backfillableDates.sort()[0];
-      const fetchEnd = bqQueryFailed
+      const fetchEnd = (bqQueryFailed || forceRefresh)
         ? (endDate > today ? today : endDate)
         : backfillableDates.sort().slice(-1)[0];
 
@@ -749,7 +755,7 @@ serve(async (req) => {
     const totals = calculateTotals(mergedRows);
     const previousTotals = calculateTotals(mergedPrevRows);
 
-    console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}`);
+    console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}, ftds=${totals.ftds}`);
 
     // Fetch ad-group level data for creative reporting (sequential to respect rate limits)
     let ads: any[] = [];
