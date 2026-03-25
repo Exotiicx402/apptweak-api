@@ -261,6 +261,15 @@ export function useMultiPlatformCreatives() {
         existing.cps = existing.registrations > 0 ? existing.spend / existing.registrations : 0;
         existing.cftd = existing.ftds > 0 ? existing.spend / existing.ftds : 0;
         existing.thumbstopRate = existing.impressions > 0 ? existing.video3sViews / existing.impressions : 0;
+        // Fill in missing asset URL from any variant that has one
+        if (!existing.assetUrl && creative.assetUrl) {
+          existing.assetUrl = creative.assetUrl;
+          existing.assetType = creative.assetType;
+          existing.fullAssetUrl = creative.fullAssetUrl;
+          existing.posterUrl = creative.posterUrl;
+          existing.storedUrl = creative.storedUrl;
+          existing.adData = creative.adData;
+        }
       } else {
         grouped.set(key, { ...creative });
       }
