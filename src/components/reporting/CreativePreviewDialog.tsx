@@ -15,6 +15,8 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useFetchHdMedia } from "@/hooks/useFetchHdMedia";
+import { extractImageHash, extractVideoId } from "@/lib/creativeDataTransformers";
  
  interface CreativePreviewDialogProps {
    open: boolean;
@@ -224,6 +226,30 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
    isBlended = false,
  }: CreativePreviewDialogProps) {
   const [showAdPreview, setShowAdPreview] = useState(false);
+  const { hdUrl, mediaType: hdMediaType, loading: hdLoading, fetchHdMedia, reset: resetHd } = useFetchHdMedia();
+
+  // Lazy-load HD media when dialog opens with a creative
+  useEffect(() => {
+    if (!open || !creative) {
+      resetHd();
+      return;
+    }
+    // Only fetch if we don't already have a good asset URL
+    if (creative.fullAssetUrl || creative.originalUrl) return;
+    
+    // Try to extract image hash or video ID from ad_data for HD resolution
+    const adData = (creative as any).adData;
+    if (!adData?.creative) return;
+
+    const imageHash = extractImageHash(adData.creative);
+    const videoId = extractVideoId(adData.creative);
+
+    if (imageHash) {
+      fetchHdMedia({ mediaType: "image", imageHash });
+    } else if (videoId) {
+      fetchHdMedia({ mediaType: "video", videoId, adId: creative.adId });
+    }
+  }, [open, creative, fetchHdMedia, resetHd]);
 
   // Calculate totals for platform breakdown
   const { totals, ranges } = useMemo(() => {
@@ -312,10 +338,11 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
    const isMetaCreative = creative.platform === 'meta' && !!creative.platformCreativeId;
 
   // For videos: use fullAssetUrl as the MP4, posterUrl for the poster
-  // For images: prefer originalUrl (high-res Meta CDN) > fullAssetUrl > assetUrl
+  // For images: prefer HD URL > originalUrl > fullAssetUrl > assetUrl
   const videoUrl = isVideo ? creative.fullAssetUrl : null;
   const posterImage = creative.posterUrl || creative.assetUrl || null;
-  const displayUrl = isVideo ? posterImage : (creative.originalUrl || creative.fullAssetUrl || creative.assetUrl);
+  const displayUrl = isVideo ? posterImage : (hdUrl || creative.originalUrl || creative.fullAssetUrl || creative.assetUrl);
+  const hasAssetOrHd = hasAsset || !!hdUrl;
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>

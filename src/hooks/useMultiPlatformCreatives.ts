@@ -62,6 +62,8 @@ export interface EnrichedCreative {
   posterUrl: string | null;
   originalUrl?: string | null;
   platformCreativeId?: string | null;
+  storedUrl?: string | null;
+  adData?: any;
 }
 
 interface PlatformData {
@@ -74,6 +76,7 @@ export function useMultiPlatformCreatives() {
   const [meta, setMeta] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [moloco, setMoloco] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null; platformCreativeId: string | null }>>(new Map());
+  const [storedUrlMap, setStoredUrlMap] = useState<Map<string, string>>(new Map());
   const [activePlatform, setActivePlatform] = useState<Platform>("meta");
 
   const fetchPlatform = async (
@@ -140,12 +143,29 @@ export function useMultiPlatformCreatives() {
     }
   };
 
+  const fetchStoredAssets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('processed_creative_assets')
+        .select('creative_id, stored_url');
+      if (error) { console.error('Error fetching stored assets:', error); return; }
+      const map = new Map<string, string>();
+      for (const row of data || []) {
+        if (row.stored_url) map.set(row.creative_id, row.stored_url);
+      }
+      setStoredUrlMap(map);
+    } catch (err) {
+      console.error('Error fetching stored assets:', err);
+    }
+  };
+
   const fetchAllPlatforms = useCallback(async (startDate: string, endDate: string) => {
     // Fetch all platforms and assets in parallel
     await Promise.all([
       fetchPlatform("meta", "meta-history", startDate, endDate, setMeta),
       fetchPlatform("moloco", "moloco-history", startDate, endDate, setMoloco),
       fetchCreativeAssets(),
+      fetchStoredAssets(),
     ]);
   }, []);
 
@@ -160,11 +180,15 @@ export function useMultiPlatformCreatives() {
   const enrichAds = useCallback((ads: AdMetric[], platform: string): EnrichedCreative[] => {
     return ads.map((ad) => {
       const asset = assetMap.get(ad.ad_name);
+      const adId = ad.ad_id || ad.ad_name;
+      const stored = storedUrlMap.get(adId);
       const impressions = ad.impressions || 0;
       const clicks = ad.clicks || 0;
       const video3sViews = ad.video3sViews || 0;
+      // Priority waterfall: stored URL > asset URL
+      const resolvedAssetUrl = stored || asset?.url || null;
       return {
-      adId: ad.ad_id || ad.ad_name,
+      adId,
       adName: ad.ad_name,
       spend: ad.spend,
       impressions,
@@ -184,14 +208,15 @@ export function useMultiPlatformCreatives() {
       thumbstopRate: ad.thumbstopRate || (impressions > 0 ? video3sViews / impressions : 0),
       platform,
       parsed: parseCreativeName(ad.ad_name),
-        assetUrl: asset?.url || null,
+        assetUrl: resolvedAssetUrl,
         assetType: asset?.type || null,
         fullAssetUrl: asset?.fullAssetUrl || null,
         posterUrl: asset?.posterUrl || null,
         platformCreativeId: asset?.platformCreativeId || null,
+        storedUrl: stored || null,
       };
     });
-  }, [assetMap]);
+  }, [assetMap, storedUrlMap]);
 
   // Aggregate creatives with the same ad name (including cross-adset rollups)
   const aggregateCreativesByName = (creatives: EnrichedCreative[]): EnrichedCreative[] => {
