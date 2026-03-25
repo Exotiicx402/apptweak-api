@@ -66,12 +66,13 @@ export function useReportingData() {
     }));
 
     // Only 4 requests - each endpoint already returns both totals and previousTotals
-    const [metaResult, snapchatResult, googleAdsResult, tiktokResult] = 
+    const [metaResult, snapchatResult, googleAdsResult, tiktokResult, molocoResult] = 
       await Promise.allSettled([
         supabase.functions.invoke("meta-history", { body: { startDate, endDate } }),
         supabase.functions.invoke("snapchat-history", { body: { startDate, endDate } }),
         supabase.functions.invoke("google-ads-history", { body: { startDate, endDate } }),
         supabase.functions.invoke("tiktok-history", { body: { startDate, endDate } }),
+        supabase.functions.invoke("moloco-history", { body: { startDate, endDate } }),
       ]);
 
     // Extract both current and previous totals from a single response
