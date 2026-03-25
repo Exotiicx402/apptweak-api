@@ -1266,17 +1266,21 @@ serve(async (req) => {
     // Process ads data
     const adsData = (bqAdsData || []).map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
+      const impressions = parseInt(row.impressions) || 0;
       const installs = parseInt(row.installs) || 0;
       const registrations = parseInt(row.registrations) || 0;
       const ftds = parseInt(row.ftds) || 0;
       const trades = parseInt(row.trades) || 0;
       const ftdValue = parseFloat(row.ftd_value) || 0;
       const tradeValue = parseFloat(row.trade_value) || 0;
+      const video3sViews = parseInt(row.video_3s_views) || 0;
+      const avgWatchTime = parseFloat(row.avg_watch_time) || 0;
+      const thumbstopRate = impressions > 0 ? video3sViews / impressions : 0;
       return {
         ad_id: row.ad_id,
         ad_name: row.ad_name,
         spend,
-        impressions: parseInt(row.impressions) || 0,
+        impressions,
         clicks: parseInt(row.clicks) || 0,
         ctr: parseFloat(row.ctr) || 0,
         installs,
@@ -1288,6 +1292,9 @@ serve(async (req) => {
         tradeValue,
         cps: registrations > 0 ? spend / registrations : 0,
         cftd: ftds > 0 ? spend / ftds : 0,
+        video3sViews,
+        avgWatchTime,
+        thumbstopRate,
       };
     });
 
