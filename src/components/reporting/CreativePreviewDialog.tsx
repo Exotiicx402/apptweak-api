@@ -305,8 +305,9 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
     creative.assetType === 'video' || 
     assetType.toUpperCase().includes('VID') ||
     (creative.fullAssetUrl && creative.fullAssetUrl.includes('.mp4'));
-  const hasAsset = !!creative.assetUrl || !!creative.fullAssetUrl;
-  const showBreakdown = isBlended && platformBreakdown.length > 0;
+   const hasAsset = !!creative.assetUrl || !!creative.fullAssetUrl;
+   const showBreakdown = isBlended && platformBreakdown.length > 0;
+   const isMetaCreative = creative.platform === 'meta' && !!creative.platformCreativeId;
 
   // For videos: use fullAssetUrl as the MP4, posterUrl for the poster
   // For images: prefer originalUrl (high-res Meta CDN) > fullAssetUrl > assetUrl
