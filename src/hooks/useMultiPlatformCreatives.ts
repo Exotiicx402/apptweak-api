@@ -40,6 +40,8 @@ export type Platform = "meta" | "moloco" | "blended";
 export interface EnrichedCreative {
   adId: string;
   adName: string;
+  adsetId?: string;
+  adsetName?: string;
   spend: number;
   impressions: number;
   clicks: number;
