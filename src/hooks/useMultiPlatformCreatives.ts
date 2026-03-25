@@ -38,6 +38,7 @@ export interface EnrichedCreative {
   adId: string;
   adName: string;
   spend: number;
+  impressions: number;
   installs: number;
   ctr: number;
   cpi: number;
@@ -48,6 +49,9 @@ export interface EnrichedCreative {
   tradeValue: number;
   cps: number;
   cftd: number;
+  video3sViews: number;
+  avgWatchTime: number;
+  thumbstopRate: number;
   platform: string;
   parsed: ParsedCreativeName;
   assetUrl: string | null;
