@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, DollarSign, Download, TrendingUp, Clock } from "lucide-react";
+import { AlertCircle, DollarSign, Download, TrendingUp, Clock, UserCheck, CreditCard } from "lucide-react";
 import { PercentChange } from "./PercentChange";
 import {
   Tooltip,
