@@ -70,7 +70,7 @@ interface PlatformData {
 export function useMultiPlatformCreatives() {
   const [meta, setMeta] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>>(new Map());
-  const [activePlatform, setActivePlatform] = useState<Platform>("blended"); // Default to blended
+  const [activePlatform, setActivePlatform] = useState<Platform>("meta");
 
   const fetchPlatform = async (
     platform: string,
