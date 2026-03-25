@@ -292,6 +292,8 @@ function transformLiveData(liveData: any[], date: string): {
   let totalRegistrations = 0;
   let totalFtds = 0;
   let totalTrades = 0;
+  let totalFtdValue = 0;
+  let totalTradeValue = 0;
 
   const campaigns = liveData.map((row) => {
     const spend = parseFloat(row.spend) || 0;
@@ -303,6 +305,8 @@ function transformLiveData(liveData: any[], date: string): {
     const registrations = extractActionCount(row.actions, REGISTRATION_ACTION_TYPES);
     const ftds = extractActionCount(row.actions, FTD_ACTION_TYPES);
     const trades = extractActionCount(row.actions, PURCHASE_ACTION_TYPES);
+    const ftdValue = extractActionValue(row.action_values, FTD_ACTION_TYPES);
+    const tradeValue = extractActionValue(row.action_values, PURCHASE_ACTION_TYPES);
 
     totalSpend += spend;
     totalImpressions += impressions;
@@ -312,6 +316,8 @@ function transformLiveData(liveData: any[], date: string): {
     totalRegistrations += registrations;
     totalFtds += ftds;
     totalTrades += trades;
+    totalFtdValue += ftdValue;
+    totalTradeValue += tradeValue;
 
     return {
       campaign_id: row.campaign_id,
@@ -328,6 +334,8 @@ function transformLiveData(liveData: any[], date: string): {
       registrations,
       ftds,
       trades,
+      ftdValue,
+      tradeValue,
     };
   });
 
@@ -345,6 +353,8 @@ function transformLiveData(liveData: any[], date: string): {
     registrations: totalRegistrations,
     ftds: totalFtds,
     trades: totalTrades,
+    ftdValue: totalFtdValue,
+    tradeValue: totalTradeValue,
   };
 
   return { daily, campaigns };
