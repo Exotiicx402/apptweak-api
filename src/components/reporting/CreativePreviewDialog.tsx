@@ -212,6 +212,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
       title="Meta Ad Preview"
     />
   );
+}
 
  export function CreativePreviewDialog({
    open,
