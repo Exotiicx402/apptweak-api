@@ -268,9 +268,10 @@ async function createReport(
   token: string,
   adAccountId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  dimensions: string[] = ['DATE', 'CAMPAIGN']
 ): Promise<string> {
-  console.log(`Creating Moloco report for ${startDate} to ${endDate}...`);
+  console.log(`Creating Moloco report for ${startDate} to ${endDate} with dimensions ${dimensions.join(',')}...`);
   
   const response = await fetch(MOLOCO_REPORTS_URL, {
     method: 'POST',
@@ -284,7 +285,7 @@ async function createReport(
         start: startDate,
         end: endDate,
       },
-      dimensions: ['DATE', 'CAMPAIGN'],
+      dimensions,
     }),
   });
 
