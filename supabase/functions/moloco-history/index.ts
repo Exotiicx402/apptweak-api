@@ -684,10 +684,10 @@ serve(async (req) => {
     const shouldFetchLive = backfillableDates.length > 0 || bqQueryFailed || forceRefresh;
     
     if (shouldFetchLive) {
-      const fetchStart = bqQueryFailed 
+      const fetchStart = (bqQueryFailed || forceRefresh)
         ? (isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS))
         : backfillableDates.sort()[0];
-      const fetchEnd = bqQueryFailed
+      const fetchEnd = (bqQueryFailed || forceRefresh)
         ? (endDate > today ? today : endDate)
         : backfillableDates.sort().slice(-1)[0];
 
