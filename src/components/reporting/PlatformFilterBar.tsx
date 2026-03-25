@@ -12,8 +12,6 @@ interface PlatformFilterBarProps {
 }
 
 export function PlatformFilterBar({ activePlatform, onPlatformChange, counts }: PlatformFilterBarProps) {
-  const blendedCount = counts.meta;
-
   return (
     <ToggleGroup
       type="single"
@@ -21,17 +19,6 @@ export function PlatformFilterBar({ activePlatform, onPlatformChange, counts }: 
       onValueChange={(value) => value && onPlatformChange(value as Platform)}
       className="justify-start flex-wrap gap-1"
     >
-      <ToggleGroupItem
-        value="blended"
-        aria-label="Blended creatives"
-        className="px-3 py-1.5 h-auto text-xs gap-1.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-      >
-        Blended
-        {blendedCount > 0 && (
-          <span className="text-[10px] opacity-70">({blendedCount})</span>
-        )}
-      </ToggleGroupItem>
-
       <ToggleGroupItem
         value="meta"
         aria-label="Meta ads"
