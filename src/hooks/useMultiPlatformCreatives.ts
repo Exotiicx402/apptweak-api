@@ -256,8 +256,8 @@ export function useMultiPlatformCreatives() {
         break;
     }
 
-    // Sort by spend descending and limit to top 50
-    return result.sort((a, b) => b.spend - a.spend).slice(0, 50);
+    // Sort by spend descending
+    return result.sort((a, b) => b.spend - a.spend);
   }, [metaAds, activePlatform]);
 
   const isLoading = meta.isLoading;
