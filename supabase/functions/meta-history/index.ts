@@ -263,6 +263,13 @@ const FTD_ACTION_TYPES = [
   'fb_mobile_add_payment_info',
 ];
 
+const PURCHASE_ACTION_TYPES = [
+  'purchase',
+  'app_custom_event.fb_mobile_purchase',
+  'fb_mobile_purchase',
+  'offsite_conversion.fb_pixel_purchase',
+];
+
 // Transform live Meta data to match BigQuery format
 function transformLiveData(liveData: any[], date: string): {
   daily: any;
