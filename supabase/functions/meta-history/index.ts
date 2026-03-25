@@ -1349,6 +1349,14 @@ serve(async (req) => {
     // Sort campaign data by spend desc
     campaignData.sort((a: any, b: any) => b.spend - a.spend);
 
+    // Fetch video metrics from live Meta API (BQ doesn't store video_play_actions)
+    let videoMetricsMap = new Map<string, { video3sViews: number; avgWatchTime: number }>();
+    try {
+      videoMetricsMap = await fetchMetaAdVideoMetrics(startDate, endDate);
+    } catch (err) {
+      console.warn("Failed to fetch video metrics, continuing without them:", err);
+    }
+
     // Process ads data
     const adsData = (bqAdsData || []).map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
@@ -1359,8 +1367,10 @@ serve(async (req) => {
       const trades = parseInt(row.trades) || 0;
       const ftdValue = parseFloat(row.ftd_value) || 0;
       const tradeValue = parseFloat(row.trade_value) || 0;
-      const video3sViews = parseInt(row.video_3s_views) || 0;
-      const avgWatchTime = parseFloat(row.avg_watch_time) || 0;
+      // Use live video metrics, falling back to BQ data
+      const videoMetrics = videoMetricsMap.get(row.ad_id);
+      const video3sViews = videoMetrics?.video3sViews || parseInt(row.video_3s_views) || 0;
+      const avgWatchTime = videoMetrics?.avgWatchTime || parseFloat(row.avg_watch_time) || 0;
       const thumbstopRate = impressions > 0 ? video3sViews / impressions : 0;
       return {
         ad_id: row.ad_id,
