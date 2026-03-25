@@ -848,16 +848,63 @@ serve(async (req) => {
       }
     }
 
-    // Check if BigQuery returned no data for recent dates - fall back to live API
+    // Check if BigQuery returned no data (or suspicious all-zero data) for recent dates - fall back to live API
     const requestedDates = getDatesBetween(startDate, bqEndDate);
-    const bqDatesFound = new Set(bqDailyData.map((row: any) => row.date?.split("T")[0] || row.date));
-    const missingDates = requestedDates.filter(d => !bqDatesFound.has(d) && isWithinLastNDays(d, 7));
+    const normalizeDate = (value: string) => value?.split("T")[0] || value;
 
-    if (missingDates.length > 0 && shouldQueryBigQuery) {
-      console.log(`BigQuery missing data for ${missingDates.length} recent dates: ${missingDates.join(", ")}. Fetching from live API...`);
+    const bqDailyByDate = new Map<string, any>();
+    for (const row of bqDailyData) {
+      const dateKey = normalizeDate(row.date);
+      if (!dateKey) continue;
 
-      // Fetch missing dates from live Meta API (campaign-level for totals)
-      const missingDataPromises = missingDates.map(async (date) => {
+      const existing = bqDailyByDate.get(dateKey);
+      if (!existing) {
+        bqDailyByDate.set(dateKey, {
+          spend: parseFloat(row.spend) || 0,
+          impressions: parseInt(row.impressions) || 0,
+          clicks: parseInt(row.clicks) || 0,
+          installs: parseInt(row.installs) || 0,
+          registrations: parseInt(row.registrations) || 0,
+          ftds: parseInt(row.ftds) || 0,
+          trades: parseInt(row.trades) || 0,
+        });
+      } else {
+        existing.spend += parseFloat(row.spend) || 0;
+        existing.impressions += parseInt(row.impressions) || 0;
+        existing.clicks += parseInt(row.clicks) || 0;
+        existing.installs += parseInt(row.installs) || 0;
+        existing.registrations += parseInt(row.registrations) || 0;
+        existing.ftds += parseInt(row.ftds) || 0;
+        existing.trades += parseInt(row.trades) || 0;
+      }
+    }
+
+    const bqDatesFound = new Set(Array.from(bqDailyByDate.keys()));
+    const missingDates = requestedDates.filter((d) => !bqDatesFound.has(d) && isWithinLastNDays(d, 7));
+    const staleZeroDates = requestedDates.filter((d) => {
+      if (!bqDatesFound.has(d) || !isWithinLastNDays(d, 7)) return false;
+      const row = bqDailyByDate.get(d);
+      if (!row) return false;
+      return (
+        row.spend === 0 &&
+        row.impressions === 0 &&
+        row.clicks === 0 &&
+        row.installs === 0 &&
+        row.registrations === 0 &&
+        row.ftds === 0 &&
+        row.trades === 0
+      );
+    });
+
+    const fallbackDates = Array.from(new Set([...missingDates, ...staleZeroDates]));
+
+    if (fallbackDates.length > 0 && shouldQueryBigQuery) {
+      console.log(
+        `BigQuery fallback needed for ${fallbackDates.length} recent dates: ${fallbackDates.join(", ")} (missing: ${missingDates.length}, zero: ${staleZeroDates.length})`
+      );
+
+      // Fetch fallback dates from live Meta API (campaign-level for totals)
+      const missingDataPromises = fallbackDates.map(async (date) => {
         try {
           const rawLiveData = await fetchMetaInsights(date);
           const liveDayData = filterHoursAppCampaigns(rawLiveData);
@@ -870,7 +917,7 @@ serve(async (req) => {
       });
 
       // Also fetch ad-level data for creatives
-      const missingAdDataPromises = missingDates.map(async (date) => {
+      const missingAdDataPromises = fallbackDates.map(async (date) => {
         try {
           const rawAdData = await fetchMetaAdInsights(date);
           const filteredAdData = filterHoursAppCampaigns(rawAdData);
@@ -892,8 +939,8 @@ serve(async (req) => {
         if (data.length > 0) {
           const transformed = transformLiveData(data, date);
 
-          // Add to daily data
-          bqDailyData.push({
+          // Upsert into daily data
+          const fallbackDailyRow = {
             date,
             spend: transformed.daily.spend,
             impressions: transformed.daily.impressions,
@@ -906,7 +953,19 @@ serve(async (req) => {
             registrations: transformed.daily.registrations,
             ftds: transformed.daily.ftds,
             trades: transformed.daily.trades,
-          });
+            ftd_value: transformed.daily.ftdValue,
+            trade_value: transformed.daily.tradeValue,
+          };
+
+          const existingDailyIdx = bqDailyData.findIndex(
+            (row: any) => (row.date?.split("T")[0] || row.date) === date
+          );
+
+          if (existingDailyIdx >= 0) {
+            bqDailyData[existingDailyIdx] = fallbackDailyRow;
+          } else {
+            bqDailyData.push(fallbackDailyRow);
+          }
 
           // Add to campaign data
           for (const camp of transformed.campaigns) {
