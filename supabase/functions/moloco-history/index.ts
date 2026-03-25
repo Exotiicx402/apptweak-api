@@ -679,10 +679,11 @@ serve(async (req) => {
 
     console.log(`Previous period missing dates: ${missingPrevDates.length}, Backfillable: ${backfillablePrevDates.length}`);
 
-    // Fetch live data for backfillable dates (or if BQ query failed entirely)
+    // Fetch live data for backfillable dates (or if BQ query failed, or forced refresh)
     let liveRows: ProcessedRow[] = [];
+    const shouldFetchLive = backfillableDates.length > 0 || bqQueryFailed || forceRefresh;
     
-    if (backfillableDates.length > 0 || bqQueryFailed) {
+    if (shouldFetchLive) {
       const fetchStart = bqQueryFailed 
         ? (isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS))
         : backfillableDates.sort()[0];
