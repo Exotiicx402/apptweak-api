@@ -145,6 +145,7 @@ function transformData(metaData: any[], targetDate: string): any[] {
     cpc: parseFloat(row.cpc || "0"),
     ctr: parseFloat(row.ctr || "0"),
     actions: row.actions ? JSON.stringify(row.actions) : null,
+    action_values: row.action_values ? JSON.stringify(row.action_values) : null,
     fetched_at: fetchedAt,
   }));
 }
