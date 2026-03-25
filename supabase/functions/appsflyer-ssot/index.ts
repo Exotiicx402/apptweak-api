@@ -26,7 +26,7 @@ serve(async (req) => {
     const to = endDate || "2026-03-24";
 
     // Try partners_by_date_report - aggregate report filtered by moloco
-    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/partners_by_date_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York&media_source=moloco_int&groupings=date,campaign&kpis=installs,first_time_deposit_unique_users,first_time_deposit_event_counter,total_revenue`;
+    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/partners_by_date_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York&groupings=date,pid&kpis=installs,total_revenue`;
     
     console.log(`Fetching AppsFlyer partners_by_date for moloco: ${from} to ${to}`);
     
