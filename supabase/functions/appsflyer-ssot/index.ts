@@ -25,10 +25,10 @@ serve(async (req) => {
     const from = startDate || "2026-03-24";
     const to = endDate || "2026-03-24";
 
-    // Fetch ALL in-app events (no media source filter) to discover sources
-    const url = `https://hq1.appsflyer.com/api/raw-data/export/app/${appId}/in_app_events_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York`;
+    // Try partners_by_date_report - aggregate report filtered by moloco
+    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/partners_by_date_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York&media_source=moloco_int&groupings=date,campaign&kpis=installs,first_time_deposit_unique_users,first_time_deposit_event_counter,total_revenue`;
     
-    console.log(`Fetching ALL AppsFlyer events for Moloco: ${from} to ${to}`);
+    console.log(`Fetching AppsFlyer partners_by_date for moloco: ${from} to ${to}`);
     
     const response = await fetch(url, {
       headers: {
@@ -37,38 +37,31 @@ serve(async (req) => {
       },
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const errorText = await response.text();
-      return new Response(JSON.stringify({ success: false, error: `${response.status}: ${errorText.substring(0, 300)}` }), {
+      // Try alternate: daily report
+      const url2 = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/daily_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York&media_source=moloco_int&groupings=date&kpis=installs,total_revenue`;
+      
+      console.log(`Trying daily_report endpoint...`);
+      const resp2 = await fetch(url2, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'text/csv' },
+      });
+      const text2 = await resp2.text();
+
+      return new Response(JSON.stringify({ 
+        success: false,
+        partnersError: `${response.status}: ${responseText.substring(0, 300)}`,
+        dailyStatus: resp2.status,
+        dailyResponse: text2.substring(0, 1000),
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const csvText = await response.text();
-    const lines = csvText.trim().split('\n');
-    const headers = lines[0]?.split(',').map(h => h.trim().replace(/"/g, '')) || [];
-    
-    // Find event name and media source columns
-    const eventNameIdx = headers.findIndex(h => h === 'Event Name');
-    const mediaSourceIdx = headers.findIndex(h => h === 'Media Source');
-    
-    // Collect unique event names and media sources
-    const eventCounts = new Map<string, number>();
-    const mediaSources = new Map<string, number>();
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-      const eventName = eventNameIdx >= 0 ? values[eventNameIdx] : 'unknown';
-      const mediaSource = mediaSourceIdx >= 0 ? values[mediaSourceIdx] : 'unknown';
-      eventCounts.set(eventName, (eventCounts.get(eventName) || 0) + 1);
-      mediaSources.set(mediaSource, (mediaSources.get(mediaSource) || 0) + 1);
-    }
-
     return new Response(JSON.stringify({ 
       success: true,
-      totalRows: lines.length - 1,
-      eventCounts: Object.fromEntries(eventCounts),
-      mediaSources: Object.fromEntries(mediaSources),
-      sampleHeaders: headers.slice(0, 15),
+      rawCsv: responseText.substring(0, 2000),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
