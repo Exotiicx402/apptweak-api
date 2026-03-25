@@ -291,7 +291,6 @@ async function createReport(
         end: endDate,
       },
       dimensions,
-      metrics: ['impressions', 'clicks', 'installs', 'spend', 'target_actions', 'revenue'],
     }),
   });
 
