@@ -14,23 +14,21 @@ serve(async (req) => {
   const appId = Deno.env.get("APPSFLYER_APP_ID");
 
   if (!token || !appId) {
-    return new Response(JSON.stringify({ error: "Missing APPSFLYER_API_TOKEN or APPSFLYER_APP_ID" }), {
+    return new Response(JSON.stringify({ error: "Missing credentials" }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
   try {
-    const { startDate, endDate, mediaSource, testOnly } = await req.json();
-    
+    const { startDate, endDate } = await req.json();
     const from = startDate || "2026-03-24";
     const to = endDate || "2026-03-24";
-    const source = mediaSource || "moloco_int";
 
-    // Use AppsFlyer Pull API - Aggregate Performance Report
-    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/partners_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York&media_source=${source}&groupings=date,media_source,campaign&kpis=installs,total_revenue,event_counter,unique_users`;
+    // Fetch ALL in-app events for moloco_int to discover event names
+    const url = `https://hq1.appsflyer.com/api/raw-data/export/app/${appId}/in_app_events_report/v5?from=${from}&to=${to}&timezone=America%2FNew_York&media_source=moloco_int`;
     
-    console.log(`Fetching AppsFlyer data: ${from} to ${to}, source: ${source}`);
+    console.log(`Fetching ALL AppsFlyer events for Moloco: ${from} to ${to}`);
     
     const response = await fetch(url, {
       headers: {
@@ -38,46 +36,39 @@ serve(async (req) => {
         'Accept': 'text/csv',
       },
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`AppsFlyer API error [${response.status}]:`, errorText);
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: `AppsFlyer API returned ${response.status}`,
-        details: errorText.substring(0, 500),
-      }), {
-        status: 200,
+      return new Response(JSON.stringify({ success: false, error: `${response.status}: ${errorText.substring(0, 300)}` }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const csvText = await response.text();
-    console.log(`AppsFlyer response (first 500 chars):`, csvText.substring(0, 500));
-    
-    // Parse CSV
     const lines = csvText.trim().split('\n');
     const headers = lines[0]?.split(',').map(h => h.trim().replace(/"/g, '')) || [];
     
-    const rows = lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
-      const row: Record<string, string> = {};
-      headers.forEach((h, i) => { row[h] = values[i] || ''; });
-      return row;
-    });
+    // Find event name column
+    const eventNameIdx = headers.findIndex(h => h === 'Event Name');
+    
+    // Collect unique event names
+    const eventCounts = new Map<string, number>();
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      const eventName = eventNameIdx >= 0 ? values[eventNameIdx] : 'unknown';
+      eventCounts.set(eventName, (eventCounts.get(eventName) || 0) + 1);
+    }
 
     return new Response(JSON.stringify({ 
       success: true,
-      headers,
-      rowCount: rows.length,
-      rows: rows.slice(0, 20), // Return first 20 rows for inspection
+      totalRows: lines.length - 1,
+      eventCounts: Object.fromEntries(eventCounts),
+      sampleHeaders: headers.slice(0, 15),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("AppsFlyer error:", message);
-    return new Response(JSON.stringify({ success: false, error: message }), {
+    return new Response(JSON.stringify({ success: false, error: String(err) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
