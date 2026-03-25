@@ -180,11 +180,15 @@ export function useMultiPlatformCreatives() {
   const enrichAds = useCallback((ads: AdMetric[], platform: string): EnrichedCreative[] => {
     return ads.map((ad) => {
       const asset = assetMap.get(ad.ad_name);
+      const adId = ad.ad_id || ad.ad_name;
+      const stored = storedUrlMap.get(adId);
       const impressions = ad.impressions || 0;
       const clicks = ad.clicks || 0;
       const video3sViews = ad.video3sViews || 0;
+      // Priority waterfall: stored URL > asset URL
+      const resolvedAssetUrl = stored || asset?.url || null;
       return {
-      adId: ad.ad_id || ad.ad_name,
+      adId,
       adName: ad.ad_name,
       spend: ad.spend,
       impressions,
@@ -204,14 +208,15 @@ export function useMultiPlatformCreatives() {
       thumbstopRate: ad.thumbstopRate || (impressions > 0 ? video3sViews / impressions : 0),
       platform,
       parsed: parseCreativeName(ad.ad_name),
-        assetUrl: asset?.url || null,
+        assetUrl: resolvedAssetUrl,
         assetType: asset?.type || null,
         fullAssetUrl: asset?.fullAssetUrl || null,
         posterUrl: asset?.posterUrl || null,
         platformCreativeId: asset?.platformCreativeId || null,
+        storedUrl: stored || null,
       };
     });
-  }, [assetMap]);
+  }, [assetMap, storedUrlMap]);
 
   // Aggregate creatives with the same ad name (including cross-adset rollups)
   const aggregateCreativesByName = (creatives: EnrichedCreative[]): EnrichedCreative[] => {
