@@ -179,7 +179,7 @@ export function useMultiPlatformCreatives() {
       const key = creative.adName;
       const existing = grouped.get(key);
 
-      if (existing) {
+    if (existing) {
         // Aggregate metrics
         existing.spend += creative.spend;
         existing.installs += creative.installs;
@@ -193,9 +193,11 @@ export function useMultiPlatformCreatives() {
         existing.cftd = existing.ftds > 0 ? existing.spend / existing.ftds : 0;
         // Weighted CTR (by impressions would be ideal, but we use spend as proxy)
         existing.ctr = (existing.ctr + creative.ctr) / 2;
+        // Mark as truly blended only when multiple platforms contribute
         existing.platform = "blended";
       } else {
-        grouped.set(key, { ...creative, platform: "blended" });
+        // Keep original platform — only mark as "blended" if aggregated later
+        grouped.set(key, { ...creative });
       }
     }
 
