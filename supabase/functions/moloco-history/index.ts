@@ -456,7 +456,7 @@ async function fetchAppsFlyerFtds(startDate: string, endDate: string): Promise<A
   }
 
   try {
-    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${appId}/in_app_events_report/v5?from=${startDate}&to=${endDate}&timezone=America%2FNew_York&media_source=moloco_int&event_name=first_time_deposit&groupings=date,campaign&kpis=unique_users,event_counter`;
+    const url = `https://hq1.appsflyer.com/api/raw-data/export/app/${appId}/in_app_events_report/v5?from=${startDate}&to=${endDate}&timezone=America%2FNew_York&media_source=moloco_int&event_name=first_time_deposit&additional_fields=keyword_id`;
     
     console.log(`Fetching AppsFlyer FTDs for Moloco: ${startDate} to ${endDate}`);
     
