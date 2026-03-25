@@ -13,6 +13,7 @@ import metaLogo from "@/assets/logos/meta.png";
 import snapchatLogo from "@/assets/logos/snapchat.png";
 import googleAdsLogo from "@/assets/logos/google-ads.png";
 import tiktokLogo from "@/assets/logos/tiktok.png";
+import molocoLogo from "@/assets/logos/moloco.webp";
 
 export default function Reporting() {
   const [startDate, setStartDate] = useState(getLocalDaysAgo(8));
@@ -33,7 +34,8 @@ export default function Reporting() {
     data.meta?.isLoading || 
     data.snapchat?.isLoading || 
     data.googleAds?.isLoading ||
-    data.tiktok?.isLoading;
+    data.tiktok?.isLoading ||
+    data.moloco?.isLoading;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -135,6 +137,21 @@ export default function Reporting() {
                 error={data.tiktok.error}
                 dataUnavailable={data.tiktok.dataUnavailable}
                 unavailableReason={data.tiktok.unavailableReason}
+              />
+
+              <PlatformMetricsRow
+                platform="Moloco"
+                logo={molocoLogo}
+                spend={data.moloco.spend}
+                installs={data.moloco.installs}
+                cpi={data.moloco.cpi}
+                previousSpend={data.moloco.previousSpend}
+                previousInstalls={data.moloco.previousInstalls}
+                previousCpi={data.moloco.previousCpi}
+                loading={data.moloco.isLoading}
+                error={data.moloco.error}
+                dataUnavailable={data.moloco.dataUnavailable}
+                unavailableReason={data.moloco.unavailableReason}
               />
             </div>
 
