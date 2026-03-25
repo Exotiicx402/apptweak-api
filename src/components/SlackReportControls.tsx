@@ -211,7 +211,7 @@ function ReportPreview({ data }: { data: PreviewData }) {
       </div>
 
       <div className="px-4 py-2 bg-muted/40 border-y border-border">
-        <span className="text-xs font-semibold text-foreground">📱 Meta</span>
+        <span className="text-xs font-semibold text-foreground">Meta</span>
       </div>
       <div className="divide-y divide-border">
         <PlatformMetricsRows current={safeMeta.current} previous={safeMeta.previous} />
