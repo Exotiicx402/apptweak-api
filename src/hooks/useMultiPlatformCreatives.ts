@@ -62,6 +62,8 @@ export interface EnrichedCreative {
   posterUrl: string | null;
   originalUrl?: string | null;
   platformCreativeId?: string | null;
+  storedUrl?: string | null;
+  adData?: any;
 }
 
 interface PlatformData {
