@@ -978,6 +978,7 @@ serve(async (req) => {
       totals.installs += liveTransformed.daily.installs;
       totals.registrations += liveTransformed.daily.registrations;
       totals.ftds += liveTransformed.daily.ftds;
+      totals.trades += liveTransformed.daily.trades;
       totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
       totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
       totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
