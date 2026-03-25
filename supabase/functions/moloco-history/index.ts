@@ -81,6 +81,7 @@ interface ProcessedRow {
   installs: number;
   impressions: number;
   clicks: number;
+  ftds: number;
 }
 
 // ============ BigQuery Helper Functions ============
