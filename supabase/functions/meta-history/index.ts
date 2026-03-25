@@ -822,6 +822,7 @@ serve(async (req) => {
             installs: transformed.daily.installs,
             registrations: transformed.daily.registrations,
             ftds: transformed.daily.ftds,
+            trades: transformed.daily.trades,
           });
 
           // Add to campaign data

@@ -113,8 +113,8 @@ export function useReportingData() {
         clicks: parseInt(d.clicks) || 0,
         registrations: parseInt(d.registrations) || 0,
         ftds: parseInt(d.ftds) || 0,
+        trades: parseInt(d.trades) || 0,
         ftdValue: 0,
-        trades: 0,
         tradeValue: 0,
       }));
 
