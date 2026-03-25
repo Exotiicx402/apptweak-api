@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { parseCreativeName, ParsedCreativeName } from "@/lib/creativeNamingParser";
 
 interface AdMetric {
-  ad_id?: string; // Optional - some platforms (TikTok) don't have ad_id
+  ad_id?: string;
   ad_name: string;
   spend: number;
   impressions: number;
@@ -11,6 +11,13 @@ interface AdMetric {
   ctr: number;
   installs: number;
   cpi: number;
+  registrations?: number;
+  ftds?: number;
+  trades?: number;
+  ftdValue?: number;
+  tradeValue?: number;
+  cps?: number;
+  cftd?: number;
 }
 
 interface CreativeAsset {
@@ -22,7 +29,7 @@ interface CreativeAsset {
   updated_at: string | null;
 }
 
-export type Platform = "meta" | "snapchat" | "tiktok" | "google" | "blended";
+export type Platform = "meta" | "blended";
 
 export interface EnrichedCreative {
   adId: string;
@@ -31,6 +38,13 @@ export interface EnrichedCreative {
   installs: number;
   ctr: number;
   cpi: number;
+  registrations: number;
+  ftds: number;
+  trades: number;
+  ftdValue: number;
+  tradeValue: number;
+  cps: number;
+  cftd: number;
   platform: string;
   parsed: ParsedCreativeName;
   assetUrl: string | null;
@@ -48,9 +62,6 @@ interface PlatformData {
 
 export function useMultiPlatformCreatives() {
   const [meta, setMeta] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
-  const [snapchat, setSnapchat] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
-  const [tiktok, setTiktok] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
-  const [google, setGoogle] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>>(new Map());
   const [activePlatform, setActivePlatform] = useState<Platform>("blended"); // Default to blended
 
@@ -124,18 +135,12 @@ export function useMultiPlatformCreatives() {
     // Fetch all platforms and assets in parallel
     await Promise.all([
       fetchPlatform("meta", "meta-history", startDate, endDate, setMeta),
-      fetchPlatform("snapchat", "snapchat-history", startDate, endDate, setSnapchat),
-      fetchPlatform("tiktok", "tiktok-history", startDate, endDate, setTiktok),
-      fetchPlatform("google", "google-ads-history", startDate, endDate, setGoogle),
       fetchCreativeAssets(),
     ]);
   }, []);
 
   const clearData = useCallback(() => {
     setMeta({ ads: [], isLoading: false, error: null });
-    setSnapchat({ ads: [], isLoading: false, error: null });
-    setTiktok({ ads: [], isLoading: false, error: null });
-    setGoogle({ ads: [], isLoading: false, error: null });
   }, []);
 
   // Enrich ads with parsed naming convention data
@@ -149,6 +154,13 @@ export function useMultiPlatformCreatives() {
       installs: ad.installs,
       ctr: ad.ctr,
       cpi: ad.cpi,
+      registrations: ad.registrations || 0,
+      ftds: ad.ftds || 0,
+      trades: ad.trades || 0,
+      ftdValue: ad.ftdValue || 0,
+      tradeValue: ad.tradeValue || 0,
+      cps: ad.cps || 0,
+      cftd: ad.cftd || 0,
       platform,
       parsed: parseCreativeName(ad.ad_name),
         assetUrl: asset?.url || null,
@@ -171,7 +183,14 @@ export function useMultiPlatformCreatives() {
         // Aggregate metrics
         existing.spend += creative.spend;
         existing.installs += creative.installs;
+        existing.registrations += creative.registrations;
+        existing.ftds += creative.ftds;
+        existing.trades += creative.trades;
+        existing.ftdValue += creative.ftdValue;
+        existing.tradeValue += creative.tradeValue;
         existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
+        existing.cps = existing.registrations > 0 ? existing.spend / existing.registrations : 0;
+        existing.cftd = existing.ftds > 0 ? existing.spend / existing.ftds : 0;
         // Weighted CTR (by impressions would be ideal, but we use spend as proxy)
         existing.ctr = (existing.ctr + creative.ctr) / 2;
         existing.platform = "blended";
@@ -185,17 +204,11 @@ export function useMultiPlatformCreatives() {
 
   // Memoize enriched ads to prevent recalculation on every render
   const metaAds = useMemo(() => enrichAds(meta.ads, "meta"), [meta.ads, enrichAds]);
-  const snapchatAds = useMemo(() => enrichAds(snapchat.ads, "snapchat"), [snapchat.ads, enrichAds]);
-  const tiktokAds = useMemo(() => enrichAds(tiktok.ads, "tiktok"), [tiktok.ads, enrichAds]);
-  const googleAds = useMemo(() => enrichAds(google.ads, "google"), [google.ads, enrichAds]);
 
   // All enriched ads by platform (for drill-down)
   const allEnrichedByPlatform = useMemo(() => ({
     meta: metaAds,
-    snapchat: snapchatAds,
-    tiktok: tiktokAds,
-    google: googleAds,
-  }), [metaAds, snapchatAds, tiktokAds, googleAds]);
+  }), [metaAds]);
 
   // Get platform breakdown for a specific creative name
   const getPlatformBreakdown = useCallback((adName: string): EnrichedCreative[] => {
@@ -204,18 +217,9 @@ export function useMultiPlatformCreatives() {
     for (const ad of metaAds) {
       if (ad.adName === adName) breakdown.push(ad);
     }
-    for (const ad of snapchatAds) {
-      if (ad.adName === adName) breakdown.push(ad);
-    }
-    for (const ad of tiktokAds) {
-      if (ad.adName === adName) breakdown.push(ad);
-    }
-    for (const ad of googleAds) {
-      if (ad.adName === adName) breakdown.push(ad);
-    }
     
     return breakdown.sort((a, b) => b.spend - a.spend);
-  }, [metaAds, snapchatAds, tiktokAds, googleAds]);
+  }, [metaAds]);
 
   // Get filtered/processed creatives based on active platform
   const data = useMemo((): EnrichedCreative[] => {
@@ -225,42 +229,27 @@ export function useMultiPlatformCreatives() {
       case "meta":
         result = metaAds;
         break;
-      case "snapchat":
-        result = snapchatAds;
-        break;
-      case "tiktok":
-        result = tiktokAds;
-        break;
-      case "google":
-        result = googleAds;
-        break;
       case "blended":
       default:
-        const all = [...metaAds, ...snapchatAds, ...tiktokAds, ...googleAds];
+        const all = [...metaAds];
         result = blendCreatives(all);
         break;
     }
 
     // Sort by spend descending and limit to top 50
     return result.sort((a, b) => b.spend - a.spend).slice(0, 50);
-  }, [metaAds, snapchatAds, tiktokAds, googleAds, activePlatform]);
+  }, [metaAds, activePlatform]);
 
-  const isLoading = meta.isLoading || snapchat.isLoading || tiktok.isLoading || google.isLoading;
+  const isLoading = meta.isLoading;
 
   // Check if a specific platform has ad-level data available
   const hasAdData = {
     meta: meta.ads.length > 0,
-    snapchat: snapchat.ads.length > 0,
-    tiktok: tiktok.ads.length > 0,
-    google: google.ads.length > 0,
   };
 
   // Get errors from any platform
   const errors: string[] = [
     meta.error,
-    snapchat.error,
-    tiktok.error,
-    google.error,
   ].filter((e): e is string => e !== null);
 
   return {
@@ -274,9 +263,6 @@ export function useMultiPlatformCreatives() {
     hasAdData,
     platformCounts: {
       meta: meta.ads.length,
-      snapchat: snapchat.ads.length,
-      tiktok: tiktok.ads.length,
-      google: google.ads.length,
     },
     getPlatformBreakdown,
     allEnrichedByPlatform,
