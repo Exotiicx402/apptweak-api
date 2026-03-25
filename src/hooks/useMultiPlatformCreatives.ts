@@ -227,11 +227,13 @@ export function useMultiPlatformCreatives() {
 
   // Memoize enriched ads to prevent recalculation on every render
   const metaAds = useMemo(() => enrichAds(meta.ads, "meta"), [meta.ads, enrichAds]);
+  const molocoAds = useMemo(() => enrichAds(moloco.ads, "moloco"), [moloco.ads, enrichAds]);
 
   // All enriched ads by platform (for drill-down)
   const allEnrichedByPlatform = useMemo(() => ({
     meta: metaAds,
-  }), [metaAds]);
+    moloco: molocoAds,
+  }), [metaAds, molocoAds]);
 
   // Get platform breakdown for a specific creative name
   const getPlatformBreakdown = useCallback((adName: string): EnrichedCreative[] => {
