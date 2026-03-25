@@ -40,6 +40,7 @@ export interface EnrichedCreative {
   adName: string;
   spend: number;
   impressions: number;
+  clicks: number;
   installs: number;
   ctr: number;
   cpi: number;
@@ -153,19 +154,23 @@ export function useMultiPlatformCreatives() {
     setMoloco({ ads: [], isLoading: false, error: null });
   }, []);
 
+  const normalizeCreativeName = (name: string): string => name.trim().toLowerCase();
+
   // Enrich ads with parsed naming convention data
   const enrichAds = useCallback((ads: AdMetric[], platform: string): EnrichedCreative[] => {
     return ads.map((ad) => {
       const asset = assetMap.get(ad.ad_name);
       const impressions = ad.impressions || 0;
+      const clicks = ad.clicks || 0;
       const video3sViews = ad.video3sViews || 0;
       return {
       adId: ad.ad_id || ad.ad_name,
       adName: ad.ad_name,
       spend: ad.spend,
       impressions,
+      clicks,
       installs: ad.installs,
-      ctr: ad.ctr,
+      ctr: impressions > 0 ? clicks / impressions : ad.ctr,
       cpi: ad.cpi,
       registrations: ad.registrations || 0,
       ftds: ad.ftds || 0,
@@ -188,18 +193,31 @@ export function useMultiPlatformCreatives() {
     });
   }, [assetMap]);
 
-  // Blend creatives with the same name across platforms
-  const blendCreatives = (creatives: EnrichedCreative[]): EnrichedCreative[] => {
+  // Aggregate creatives with the same ad name (including cross-adset rollups)
+  const aggregateCreativesByName = (creatives: EnrichedCreative[]): EnrichedCreative[] => {
     const grouped = new Map<string, EnrichedCreative>();
+    const watchTimeSums = new Map<string, { weightedSum: number; weight: number }>();
+    const platformSets = new Map<string, Set<string>>();
 
     for (const creative of creatives) {
-      const key = creative.adName;
+      const key = normalizeCreativeName(creative.adName);
       const existing = grouped.get(key);
 
-    if (existing) {
+      const weight = Math.max(creative.video3sViews, creative.impressions, 1);
+      const existingWatch = watchTimeSums.get(key) || { weightedSum: 0, weight: 0 };
+      existingWatch.weightedSum += creative.avgWatchTime * weight;
+      existingWatch.weight += weight;
+      watchTimeSums.set(key, existingWatch);
+
+      const existingPlatforms = platformSets.get(key) || new Set<string>();
+      existingPlatforms.add(creative.platform);
+      platformSets.set(key, existingPlatforms);
+
+      if (existing) {
         // Aggregate metrics
         existing.spend += creative.spend;
         existing.impressions += creative.impressions;
+        existing.clicks += creative.clicks;
         existing.installs += creative.installs;
         existing.registrations += creative.registrations;
         existing.ftds += creative.ftds;
@@ -207,28 +225,30 @@ export function useMultiPlatformCreatives() {
         existing.ftdValue += creative.ftdValue;
         existing.tradeValue += creative.tradeValue;
         existing.video3sViews += creative.video3sViews;
+        existing.ctr = existing.impressions > 0 ? existing.clicks / existing.impressions : 0;
         existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
         existing.cps = existing.registrations > 0 ? existing.spend / existing.registrations : 0;
         existing.cftd = existing.ftds > 0 ? existing.spend / existing.ftds : 0;
         existing.thumbstopRate = existing.impressions > 0 ? existing.video3sViews / existing.impressions : 0;
-        // Weighted avg watch time
-        existing.avgWatchTime = (existing.avgWatchTime + creative.avgWatchTime) / 2;
-        // Weighted CTR (by impressions would be ideal, but we use spend as proxy)
-        existing.ctr = (existing.ctr + creative.ctr) / 2;
-        // Mark as truly blended only when multiple platforms contribute
-        existing.platform = "blended";
       } else {
-        // Keep original platform — only mark as "blended" if aggregated later
         grouped.set(key, { ...creative });
       }
     }
 
-    return Array.from(grouped.values());
+    return Array.from(grouped.entries()).map(([key, creative]) => {
+      const watch = watchTimeSums.get(key);
+      const platforms = platformSets.get(key);
+      return {
+        ...creative,
+        avgWatchTime: watch && watch.weight > 0 ? watch.weightedSum / watch.weight : 0,
+        platform: platforms && platforms.size > 1 ? "blended" : creative.platform,
+      };
+    });
   };
 
-  // Memoize enriched ads to prevent recalculation on every render
-  const metaAds = useMemo(() => enrichAds(meta.ads, "meta"), [meta.ads, enrichAds]);
-  const molocoAds = useMemo(() => enrichAds(moloco.ads, "moloco"), [moloco.ads, enrichAds]);
+  // Memoize enriched + aggregated ads to prevent recalculation on every render
+  const metaAds = useMemo(() => aggregateCreativesByName(enrichAds(meta.ads, "meta")), [meta.ads, enrichAds]);
+  const molocoAds = useMemo(() => aggregateCreativesByName(enrichAds(moloco.ads, "moloco")), [moloco.ads, enrichAds]);
 
   // All enriched ads by platform (for drill-down)
   const allEnrichedByPlatform = useMemo(() => ({
@@ -264,7 +284,7 @@ export function useMultiPlatformCreatives() {
       case "blended":
       default:
         const all = [...metaAds, ...molocoAds];
-        result = blendCreatives(all);
+        result = aggregateCreativesByName(all);
         break;
     }
 
@@ -296,8 +316,8 @@ export function useMultiPlatformCreatives() {
     clearData,
     hasAdData,
     platformCounts: {
-      meta: meta.ads.length,
-      moloco: moloco.ads.length,
+      meta: metaAds.length,
+      moloco: molocoAds.length,
     },
     getPlatformBreakdown,
     allEnrichedByPlatform,
