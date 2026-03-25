@@ -114,8 +114,8 @@ export function useReportingData() {
         registrations: parseInt(d.registrations) || 0,
         ftds: parseInt(d.ftds) || 0,
         trades: parseInt(d.trades) || 0,
-        ftdValue: 0,
-        tradeValue: 0,
+        ftdValue: parseFloat(d.ftdValue) || 0,
+        tradeValue: parseFloat(d.tradeValue) || 0,
       }));
 
       return {
