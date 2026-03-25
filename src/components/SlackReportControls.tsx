@@ -246,7 +246,7 @@ function CumulativeReportPreview({ data }: { data: CumulativePreviewData }) {
   return (
     <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
       <div className="bg-primary/10 border-b border-border px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">📊 Cumulative Performance — {formatShortDate(startDate)} to {formatDisplayDate(endDate)}</p>
+        <p className="text-sm font-semibold text-foreground">Cumulative Performance — {formatShortDate(startDate)} to {formatDisplayDate(endDate)}</p>
       </div>
       <div className="flex items-center px-4 py-2 bg-muted/50 border-b border-border">
         <span className="text-xs font-medium text-muted-foreground w-36">Metric</span>
