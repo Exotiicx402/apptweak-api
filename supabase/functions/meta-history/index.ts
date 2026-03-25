@@ -282,6 +282,7 @@ function transformLiveData(liveData: any[], date: string): {
   let totalInstalls = 0;
   let totalRegistrations = 0;
   let totalFtds = 0;
+  let totalTrades = 0;
 
   const campaigns = liveData.map((row) => {
     const spend = parseFloat(row.spend) || 0;
@@ -292,6 +293,7 @@ function transformLiveData(liveData: any[], date: string): {
     const installs = extractActionCount(row.actions, ['mobile_app_install']);
     const registrations = extractActionCount(row.actions, REGISTRATION_ACTION_TYPES);
     const ftds = extractActionCount(row.actions, FTD_ACTION_TYPES);
+    const trades = extractActionCount(row.actions, PURCHASE_ACTION_TYPES);
 
     totalSpend += spend;
     totalImpressions += impressions;
@@ -300,6 +302,7 @@ function transformLiveData(liveData: any[], date: string): {
     totalInstalls += installs;
     totalRegistrations += registrations;
     totalFtds += ftds;
+    totalTrades += trades;
 
     return {
       campaign_id: row.campaign_id,
@@ -315,6 +318,7 @@ function transformLiveData(liveData: any[], date: string): {
       cpi: installs > 0 ? spend / installs : 0,
       registrations,
       ftds,
+      trades,
     };
   });
 
@@ -331,6 +335,7 @@ function transformLiveData(liveData: any[], date: string): {
     cpi: totalInstalls > 0 ? totalSpend / totalInstalls : 0,
     registrations: totalRegistrations,
     ftds: totalFtds,
+    trades: totalTrades,
   };
 
   return { daily, campaigns };
