@@ -153,6 +153,66 @@ function VideoPlayer({ videoUrl, posterUrl }: { videoUrl: string; posterUrl: str
   );
 }
 
+// Meta Ad Preview iframe component
+function MetaAdPreview({ creativeId }: { creativeId: string }) {
+  const [iframeSrc, setIframeSrc] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const { data, error: invokeError } = await supabase.functions.invoke('meta-ad-preview', {
+          body: { creativeId },
+        });
+
+        if (cancelled) return;
+
+        if (invokeError) throw new Error(invokeError.message);
+        if (!data?.success) throw new Error(data?.error || 'Failed to load preview');
+
+        setIframeSrc(data.data.iframeSrc);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load preview');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [creativeId]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-muted/50">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !iframeSrc) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-muted/50">
+        <p className="text-sm text-muted-foreground">{error || 'No preview available'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      src={iframeSrc}
+      className="w-full h-full border-0"
+      sandbox="allow-scripts allow-same-origin"
+      title="Meta Ad Preview"
+    />
+  );
+
  export function CreativePreviewDialog({
    open,
    onOpenChange,
