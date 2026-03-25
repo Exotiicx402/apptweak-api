@@ -79,6 +79,7 @@ function truncateName(name: string, maxLength: number = 50): string {
 function getPlatformLabel(platform: string): string {
   switch (platform) {
     case "meta": return "Meta";
+    case "moloco": return "Moloco";
     case "snapchat": return "Snapchat";
     case "tiktok": return "TikTok";
     case "google": return "Google";
@@ -90,6 +91,7 @@ function getPlatformLabel(platform: string): string {
 function getPlatformBadgeVariant(platform: string): "default" | "secondary" | "outline" | "destructive" {
   switch (platform) {
     case "meta": return "default";
+    case "moloco": return "secondary";
     case "snapchat": return "secondary";
     case "tiktok": return "outline";
     case "google": return "outline";

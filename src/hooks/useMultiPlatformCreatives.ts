@@ -32,7 +32,7 @@ interface CreativeAsset {
   updated_at: string | null;
 }
 
-export type Platform = "meta" | "blended";
+export type Platform = "meta" | "moloco" | "blended";
 
 export interface EnrichedCreative {
   adId: string;
@@ -69,6 +69,7 @@ interface PlatformData {
 
 export function useMultiPlatformCreatives() {
   const [meta, setMeta] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
+  const [moloco, setMoloco] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [assetMap, setAssetMap] = useState<Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null }>>(new Map());
   const [activePlatform, setActivePlatform] = useState<Platform>("meta");
 
@@ -142,12 +143,14 @@ export function useMultiPlatformCreatives() {
     // Fetch all platforms and assets in parallel
     await Promise.all([
       fetchPlatform("meta", "meta-history", startDate, endDate, setMeta),
+      fetchPlatform("moloco", "moloco-history", startDate, endDate, setMoloco),
       fetchCreativeAssets(),
     ]);
   }, []);
 
   const clearData = useCallback(() => {
     setMeta({ ads: [], isLoading: false, error: null });
+    setMoloco({ ads: [], isLoading: false, error: null });
   }, []);
 
   // Enrich ads with parsed naming convention data
@@ -224,11 +227,13 @@ export function useMultiPlatformCreatives() {
 
   // Memoize enriched ads to prevent recalculation on every render
   const metaAds = useMemo(() => enrichAds(meta.ads, "meta"), [meta.ads, enrichAds]);
+  const molocoAds = useMemo(() => enrichAds(moloco.ads, "moloco"), [moloco.ads, enrichAds]);
 
   // All enriched ads by platform (for drill-down)
   const allEnrichedByPlatform = useMemo(() => ({
     meta: metaAds,
-  }), [metaAds]);
+    moloco: molocoAds,
+  }), [metaAds, molocoAds]);
 
   // Get platform breakdown for a specific creative name
   const getPlatformBreakdown = useCallback((adName: string): EnrichedCreative[] => {
@@ -237,9 +242,12 @@ export function useMultiPlatformCreatives() {
     for (const ad of metaAds) {
       if (ad.adName === adName) breakdown.push(ad);
     }
+    for (const ad of molocoAds) {
+      if (ad.adName === adName) breakdown.push(ad);
+    }
     
     return breakdown.sort((a, b) => b.spend - a.spend);
-  }, [metaAds]);
+  }, [metaAds, molocoAds]);
 
   // Get filtered/processed creatives based on active platform
   const data = useMemo((): EnrichedCreative[] => {
@@ -249,27 +257,32 @@ export function useMultiPlatformCreatives() {
       case "meta":
         result = metaAds;
         break;
+      case "moloco":
+        result = molocoAds;
+        break;
       case "blended":
       default:
-        const all = [...metaAds];
+        const all = [...metaAds, ...molocoAds];
         result = blendCreatives(all);
         break;
     }
 
     // Sort by spend descending
     return result.sort((a, b) => b.spend - a.spend);
-  }, [metaAds, activePlatform]);
+  }, [metaAds, molocoAds, activePlatform]);
 
-  const isLoading = meta.isLoading;
+  const isLoading = meta.isLoading || moloco.isLoading;
 
   // Check if a specific platform has ad-level data available
   const hasAdData = {
     meta: meta.ads.length > 0,
+    moloco: moloco.ads.length > 0,
   };
 
   // Get errors from any platform
   const errors: string[] = [
     meta.error,
+    moloco.error,
   ].filter((e): e is string => e !== null);
 
   return {
@@ -283,6 +296,7 @@ export function useMultiPlatformCreatives() {
     hasAdData,
     platformCounts: {
       meta: meta.ads.length,
+      moloco: moloco.ads.length,
     },
     getPlatformBreakdown,
     allEnrichedByPlatform,

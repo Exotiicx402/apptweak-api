@@ -59,6 +59,10 @@ interface MolocoRow {
     title: string;
     country?: string;
   };
+  ad_group?: {
+    id: string;
+    title: string;
+  };
   metric?: {
     impressions: string;
     clicks: string;
@@ -264,9 +268,10 @@ async function createReport(
   token: string,
   adAccountId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  dimensions: string[] = ['DATE', 'CAMPAIGN']
 ): Promise<string> {
-  console.log(`Creating Moloco report for ${startDate} to ${endDate}...`);
+  console.log(`Creating Moloco report for ${startDate} to ${endDate} with dimensions ${dimensions.join(',')}...`);
   
   const response = await fetch(MOLOCO_REPORTS_URL, {
     method: 'POST',
@@ -280,7 +285,7 @@ async function createReport(
         start: startDate,
         end: endDate,
       },
-      dimensions: ['DATE', 'CAMPAIGN'],
+      dimensions,
     }),
   });
 
@@ -359,7 +364,54 @@ function processRows(rows: MolocoRow[]): ProcessedRow[] {
   }));
 }
 
-// Fetch live Moloco data from API
+interface AdGroupRow {
+  date: string;
+  ad_group_id: string;
+  ad_group_name: string;
+  spend: number;
+  installs: number;
+  impressions: number;
+  clicks: number;
+}
+
+function processAdGroupRows(rows: MolocoRow[]): AdGroupRow[] {
+  return rows.map(row => ({
+    date: row.date,
+    ad_group_id: row.ad_group?.id || '',
+    ad_group_name: row.ad_group?.title || 'Unknown',
+    spend: row.metric?.spend || 0,
+    installs: parseInt(row.metric?.installs || '0', 10),
+    impressions: parseInt(row.metric?.impressions || '0', 10),
+    clicks: parseInt(row.metric?.clicks || '0', 10),
+  }));
+}
+
+function aggregateAdGroups(rows: AdGroupRow[]): any[] {
+  const map = new Map<string, any>();
+  for (const row of rows) {
+    const key = row.ad_group_name;
+    const existing = map.get(key) || {
+      ad_id: row.ad_group_id,
+      ad_name: row.ad_group_name,
+      spend: 0,
+      installs: 0,
+      impressions: 0,
+      clicks: 0,
+    };
+    existing.spend += row.spend;
+    existing.installs += row.installs;
+    existing.impressions += row.impressions;
+    existing.clicks += row.clicks;
+    map.set(key, existing);
+  }
+  return Array.from(map.values()).map(a => ({
+    ...a,
+    ctr: a.impressions > 0 ? a.clicks / a.impressions : 0,
+    cpi: a.installs > 0 ? a.spend / a.installs : 0,
+  })).sort((a, b) => b.spend - a.spend);
+}
+
+// Fetch live Moloco data from API (campaign level)
 async function fetchMolocoLiveData(startDate: string, endDate: string): Promise<ProcessedRow[]> {
   const apiKey = Deno.env.get('MOLOCO_API_KEY');
   const adAccountId = Deno.env.get('MOLOCO_AD_ACCOUNT_ID');
@@ -373,6 +425,22 @@ async function fetchMolocoLiveData(startDate: string, endDate: string): Promise<
   const jsonUrl = await waitForReport(token, reportId);
   const rawRows = await downloadReport(jsonUrl);
   return processRows(rawRows);
+}
+
+// Fetch live Moloco data from API (ad group level)
+async function fetchMolocoAdGroupData(startDate: string, endDate: string): Promise<AdGroupRow[]> {
+  const apiKey = Deno.env.get('MOLOCO_API_KEY');
+  const adAccountId = Deno.env.get('MOLOCO_AD_ACCOUNT_ID');
+
+  if (!apiKey || !adAccountId) {
+    throw new Error('Moloco credentials not configured');
+  }
+
+  const token = await getMolocoAccessToken(apiKey);
+  const reportId = await createReport(token, adAccountId, startDate, endDate);
+  const jsonUrl = await waitForReport(token, reportId);
+  const rawRows = await downloadReport(jsonUrl);
+  return processAdGroupRows(rawRows);
 }
 
 // ============ Aggregation Functions ============
@@ -661,6 +729,23 @@ serve(async (req) => {
 
     console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}`);
 
+    // Fetch ad-group level data for creative reporting (sequential to respect rate limits)
+    let ads: any[] = [];
+    try {
+      // Use the full requested range — ad-group data is always fetched live (not cached in BQ)
+      const adFetchStart = isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS);
+      const adFetchEnd = endDate > today ? today : endDate;
+      
+      if (adFetchStart <= adFetchEnd) {
+        console.log(`Fetching Moloco ad-group data from ${adFetchStart} to ${adFetchEnd}...`);
+        const adGroupRows = await fetchMolocoAdGroupData(adFetchStart, adFetchEnd);
+        ads = aggregateAdGroups(adGroupRows);
+        console.log(`Aggregated ${ads.length} ad groups from ${adGroupRows.length} rows`);
+      }
+    } catch (adErr) {
+      console.error('Failed to fetch ad-group data (non-blocking):', adErr);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true,
@@ -669,6 +754,7 @@ serve(async (req) => {
           campaigns: aggregateByCampaign(mergedRows),
           totals,
           previousTotals,
+          ads,
           dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
         },
