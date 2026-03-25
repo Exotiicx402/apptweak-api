@@ -680,11 +680,13 @@ serve(async (req) => {
       ${campaignFilter}
     ` : null;
 
-    // Query for ad-level data (top 50 by spend)
+    // Query for ad-level data with adset breakdown (no limit)
     const adsQuery = shouldQueryBigQuery ? `
       SELECT 
         ad_id,
         ad_name,
+        adset_id,
+        adset_name,
         SUM(spend) as spend,
         SUM(impressions) as impressions,
         SUM(clicks) as clicks,
@@ -763,9 +765,8 @@ serve(async (req) => {
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${hoursAppFilter}
       AND ad_id IS NOT NULL AND ad_id != ''
-      GROUP BY ad_id, ad_name
+      GROUP BY ad_id, ad_name, adset_id, adset_name
       ORDER BY spend DESC
-      LIMIT 50
     ` : null;
 
     const prevTotalsQuery = `
