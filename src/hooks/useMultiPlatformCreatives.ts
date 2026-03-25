@@ -369,6 +369,7 @@ export function useMultiPlatformCreatives() {
       moloco: molocoAds.length,
     },
     getPlatformBreakdown,
+    getAdsetBreakdown,
     allEnrichedByPlatform,
   };
 }
