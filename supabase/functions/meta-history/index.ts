@@ -608,7 +608,57 @@ serve(async (req) => {
                LIMIT 1) AS INT64
             ), 0
           )
-        ) as installs
+        ) as installs,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_complete_registration', 'complete_registration', 'fb_mobile_complete_registration')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as registrations,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as ftds,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('purchase', 'app_custom_event.fb_mobile_purchase', 'fb_mobile_purchase', 'offsite_conversion.fb_pixel_purchase')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as trades,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS FLOAT64
+            ), 0
+          )
+        ) as ftd_value,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('purchase', 'app_custom_event.fb_mobile_purchase', 'fb_mobile_purchase', 'offsite_conversion.fb_pixel_purchase')
+               LIMIT 1) AS FLOAT64
+            ), 0
+          )
+        ) as trade_value
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${hoursAppFilter}
@@ -751,13 +801,25 @@ serve(async (req) => {
         const impressions = parseInt(ad.impressions) || 0;
         const clicks = parseInt(ad.clicks) || 0;
 
-        // Extract installs from actions array
+        // Extract metrics from actions array
         let installs = 0;
+        let registrations = 0;
+        let ftds = 0;
+        let trades = 0;
+        let ftdValue = 0;
+        let tradeValue = 0;
         if (ad.actions && Array.isArray(ad.actions)) {
           const installAction = ad.actions.find((a: any) => a.action_type === "mobile_app_install");
           if (installAction) {
             installs = parseInt(installAction.value) || 0;
           }
+          registrations = extractActionCount(ad.actions, REGISTRATION_ACTION_TYPES);
+          ftds = extractActionCount(ad.actions, FTD_ACTION_TYPES);
+          trades = extractActionCount(ad.actions, PURCHASE_ACTION_TYPES);
+        }
+        if (ad.action_values && Array.isArray(ad.action_values)) {
+          ftdValue = extractActionValue(ad.action_values, FTD_ACTION_TYPES);
+          tradeValue = extractActionValue(ad.action_values, PURCHASE_ACTION_TYPES);
         }
 
         const existing = bqAdsData.find((a: any) => a.ad_id === adId);
@@ -766,6 +828,11 @@ serve(async (req) => {
           existing.impressions = (parseInt(existing.impressions) || 0) + impressions;
           existing.clicks = (parseInt(existing.clicks) || 0) + clicks;
           existing.installs = (parseInt(existing.installs) || 0) + installs;
+          existing.registrations = (parseInt(existing.registrations) || 0) + registrations;
+          existing.ftds = (parseInt(existing.ftds) || 0) + ftds;
+          existing.trades = (parseInt(existing.trades) || 0) + trades;
+          existing.ftd_value = (parseFloat(existing.ftd_value) || 0) + ftdValue;
+          existing.trade_value = (parseFloat(existing.trade_value) || 0) + tradeValue;
           existing.ctr = existing.impressions > 0 ? existing.clicks / existing.impressions : 0;
           existing.cpi = existing.installs > 0 ? existing.spend / existing.installs : 0;
         } else {
@@ -780,6 +847,11 @@ serve(async (req) => {
             ctr,
             installs,
             cpi,
+            registrations,
+            ftds,
+            trades,
+            ftd_value: ftdValue,
+            trade_value: tradeValue,
           });
         }
       }
@@ -1150,6 +1222,11 @@ serve(async (req) => {
     const adsData = (bqAdsData || []).map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
       const installs = parseInt(row.installs) || 0;
+      const registrations = parseInt(row.registrations) || 0;
+      const ftds = parseInt(row.ftds) || 0;
+      const trades = parseInt(row.trades) || 0;
+      const ftdValue = parseFloat(row.ftd_value) || 0;
+      const tradeValue = parseFloat(row.trade_value) || 0;
       return {
         ad_id: row.ad_id,
         ad_name: row.ad_name,
@@ -1159,6 +1236,13 @@ serve(async (req) => {
         ctr: parseFloat(row.ctr) || 0,
         installs,
         cpi: installs > 0 ? spend / installs : 0,
+        registrations,
+        ftds,
+        trades,
+        ftdValue,
+        tradeValue,
+        cps: registrations > 0 ? spend / registrations : 0,
+        cftd: ftds > 0 ? spend / ftds : 0,
       };
     });
 
