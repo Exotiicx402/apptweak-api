@@ -376,6 +376,7 @@ interface AdGroupRow {
   installs: number;
   impressions: number;
   clicks: number;
+  ftds: number;
 }
 
 function processAdGroupRows(rows: MolocoRow[]): AdGroupRow[] {
