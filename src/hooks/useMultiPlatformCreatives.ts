@@ -5,6 +5,8 @@ import { parseCreativeName, ParsedCreativeName } from "@/lib/creativeNamingParse
 interface AdMetric {
   ad_id?: string;
   ad_name: string;
+  adset_id?: string;
+  adset_name?: string;
   spend: number;
   impressions: number;
   clicks: number;
@@ -38,6 +40,8 @@ export type Platform = "meta" | "moloco" | "blended";
 export interface EnrichedCreative {
   adId: string;
   adName: string;
+  adsetId?: string;
+  adsetName?: string;
   spend: number;
   impressions: number;
   clicks: number;
@@ -190,6 +194,8 @@ export function useMultiPlatformCreatives() {
       return {
       adId,
       adName: ad.ad_name,
+      adsetId: ad.adset_id,
+      adsetName: ad.adset_name,
       spend: ad.spend,
       impressions,
       clicks,
@@ -271,9 +277,13 @@ export function useMultiPlatformCreatives() {
     });
   };
 
+  // Keep raw (per-adset) enriched ads for drill-down
+  const rawMetaAds = useMemo(() => enrichAds(meta.ads, "meta"), [meta.ads, enrichAds]);
+  const rawMolocoAds = useMemo(() => enrichAds(moloco.ads, "moloco"), [moloco.ads, enrichAds]);
+
   // Memoize enriched + aggregated ads to prevent recalculation on every render
-  const metaAds = useMemo(() => aggregateCreativesByName(enrichAds(meta.ads, "meta")), [meta.ads, enrichAds]);
-  const molocoAds = useMemo(() => aggregateCreativesByName(enrichAds(moloco.ads, "moloco")), [moloco.ads, enrichAds]);
+  const metaAds = useMemo(() => aggregateCreativesByName(rawMetaAds), [rawMetaAds]);
+  const molocoAds = useMemo(() => aggregateCreativesByName(rawMolocoAds), [rawMolocoAds]);
 
   // All enriched ads by platform (for drill-down)
   const allEnrichedByPlatform = useMemo(() => ({
@@ -294,6 +304,20 @@ export function useMultiPlatformCreatives() {
     
     return breakdown.sort((a, b) => b.spend - a.spend);
   }, [metaAds, molocoAds]);
+
+  // Get adset breakdown for a specific creative (pre-aggregation rows)
+  const getAdsetBreakdown = useCallback((adName: string): EnrichedCreative[] => {
+    const breakdown: EnrichedCreative[] = [];
+    
+    for (const ad of rawMetaAds) {
+      if (ad.adName === adName) breakdown.push(ad);
+    }
+    for (const ad of rawMolocoAds) {
+      if (ad.adName === adName) breakdown.push(ad);
+    }
+    
+    return breakdown.sort((a, b) => b.spend - a.spend);
+  }, [rawMetaAds, rawMolocoAds]);
 
   // Get filtered/processed creatives based on active platform
   const data = useMemo((): EnrichedCreative[] => {
@@ -345,6 +369,7 @@ export function useMultiPlatformCreatives() {
       moloco: molocoAds.length,
     },
     getPlatformBreakdown,
+    getAdsetBreakdown,
     allEnrichedByPlatform,
   };
 }

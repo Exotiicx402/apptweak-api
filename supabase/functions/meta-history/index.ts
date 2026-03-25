@@ -680,11 +680,13 @@ serve(async (req) => {
       ${campaignFilter}
     ` : null;
 
-    // Query for ad-level data (top 50 by spend)
+    // Query for ad-level data with adset breakdown (no limit)
     const adsQuery = shouldQueryBigQuery ? `
       SELECT 
         ad_id,
         ad_name,
+        adset_id,
+        adset_name,
         SUM(spend) as spend,
         SUM(impressions) as impressions,
         SUM(clicks) as clicks,
@@ -763,9 +765,8 @@ serve(async (req) => {
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${hoursAppFilter}
       AND ad_id IS NOT NULL AND ad_id != ''
-      GROUP BY ad_id, ad_name
+      GROUP BY ad_id, ad_name, adset_id, adset_name
       ORDER BY spend DESC
-      LIMIT 50
     ` : null;
 
     const prevTotalsQuery = `
@@ -943,7 +944,11 @@ serve(async (req) => {
           }
         }
 
-        const existing = bqAdsData.find((a: any) => a.ad_id === adId);
+        // Use composite key to preserve adset-level granularity
+        const adsetId = ad.adset_id || '';
+        const adsetName = ad.adset_name || '';
+        const compositeKey = `${adId}::${adsetId}`;
+        const existing = bqAdsData.find((a: any) => `${a.ad_id}::${a.adset_id || ''}` === compositeKey);
         if (existing) {
           existing.spend = (parseFloat(existing.spend) || 0) + spend;
           existing.impressions = (parseInt(existing.impressions) || 0) + impressions;
@@ -955,7 +960,6 @@ serve(async (req) => {
           existing.ftd_value = (parseFloat(existing.ftd_value) || 0) + ftdValue;
           existing.trade_value = (parseFloat(existing.trade_value) || 0) + tradeValue;
           existing.video_3s_views = (parseInt(existing.video_3s_views) || 0) + video3sViews;
-          // Avg watch time: weighted average by impressions
           const prevImps = existing.impressions - impressions;
           if (prevImps > 0 && impressions > 0) {
             existing.avg_watch_time = ((existing.avg_watch_time || 0) * prevImps + avgWatchTime * impressions) / existing.impressions;
@@ -970,6 +974,8 @@ serve(async (req) => {
           bqAdsData.push({
             ad_id: adId,
             ad_name: ad.ad_name,
+            adset_id: adsetId,
+            adset_name: adsetName,
             spend,
             impressions,
             clicks,
@@ -1375,6 +1381,8 @@ serve(async (req) => {
       return {
         ad_id: row.ad_id,
         ad_name: row.ad_name,
+        adset_id: row.adset_id || null,
+        adset_name: row.adset_name || null,
         spend,
         impressions,
         clicks: parseInt(row.clicks) || 0,
