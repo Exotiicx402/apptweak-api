@@ -1030,6 +1030,7 @@ serve(async (req) => {
             installs: parseInt(prevTotals.total_installs) || 0,
             registrations: parseInt(prevTotals.total_registrations) || 0,
             ftds: parseInt(prevTotals.total_ftds) || 0,
+            trades: parseInt(prevTotals.total_trades) || 0,
             cpi: parseInt(prevTotals.total_installs) > 0 ? parseFloat(prevTotals.total_spend) / parseInt(prevTotals.total_installs) : 0,
           },
           dateRange: { startDate, endDate },
