@@ -159,7 +159,7 @@ function buildSlackMessage(
     thinSep,
     ...platformBlock(molocoCurrent, molocoPrevious),
     '',
-    '📊 TOTAL',
+    'TOTAL',
     separator,
     ...platformBlock(totalCurrent, totalPrevious),
   ].join('\n');
