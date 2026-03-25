@@ -88,6 +88,8 @@ async function fetchMetaInsights(date: string): Promise<any[]> {
     "ctr",
     "actions",
     "action_values",
+    "video_play_actions",
+    "video_avg_time_watched_actions",
   ].join(",");
 
   const timeRange = JSON.stringify({
@@ -146,6 +148,8 @@ function transformData(metaData: any[], targetDate: string): any[] {
     ctr: parseFloat(row.ctr || "0"),
     actions: row.actions ? JSON.stringify(row.actions) : null,
     action_values: row.action_values ? JSON.stringify(row.action_values) : null,
+    video_play_actions: row.video_play_actions ? JSON.stringify(row.video_play_actions) : null,
+    video_avg_time_watched_actions: row.video_avg_time_watched_actions ? JSON.stringify(row.video_avg_time_watched_actions) : null,
     fetched_at: fetchedAt,
   }));
 }
