@@ -32,7 +32,7 @@ interface CreativeAsset {
   updated_at: string | null;
 }
 
-export type Platform = "meta" | "blended";
+export type Platform = "meta" | "moloco" | "blended";
 
 export interface EnrichedCreative {
   adId: string;
