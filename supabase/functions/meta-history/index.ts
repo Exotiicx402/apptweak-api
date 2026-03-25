@@ -1032,6 +1032,8 @@ serve(async (req) => {
       registrations: parseInt(bqTotals.total_registrations) || 0,
       ftds: parseInt(bqTotals.total_ftds) || 0,
       trades: parseInt(bqTotals.total_trades) || 0,
+      ftdValue: parseFloat(bqTotals.total_ftd_value) || 0,
+      tradeValue: parseFloat(bqTotals.total_trade_value) || 0,
       cpi: 0,
     };
     totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
