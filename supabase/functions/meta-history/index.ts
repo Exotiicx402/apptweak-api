@@ -776,6 +776,8 @@ serve(async (req) => {
             cpc: transformed.daily.cpc,
             ctr: transformed.daily.ctr,
             installs: transformed.daily.installs,
+            registrations: transformed.daily.registrations,
+            ftds: transformed.daily.ftds,
           });
 
           // Add to campaign data
