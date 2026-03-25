@@ -667,9 +667,15 @@ serve(async (req) => {
     
     // Determine which dates are missing and backfillable (within 14 days)
     const missingDates = getMissingDates(requestedDates, existingDates);
-    const backfillableDates = getBackfillableDates(missingDates);
+    
+    // Also check for dates where ftds=0 (need re-fetch to populate ftds column)
+    const datesWithMissingFtds = currentRows
+      .filter(r => r.ftds === 0)
+      .map(r => r.date);
+    const allDatesToFetch = [...new Set([...missingDates, ...datesWithMissingFtds])];
+    const backfillableDates = getBackfillableDates(allDatesToFetch);
 
-    console.log(`Missing dates: ${missingDates.length}, Backfillable (within ${BACKFILL_WINDOW_DAYS} days): ${backfillableDates.length}`);
+    console.log(`Missing dates: ${missingDates.length}, Missing FTDs: ${datesWithMissingFtds.length}, Backfillable: ${backfillableDates.length}`);
 
     // Also check previous period for missing dates
     const prevRequestedDates = getDatesBetween(prevStartStr, prevEndStr);
