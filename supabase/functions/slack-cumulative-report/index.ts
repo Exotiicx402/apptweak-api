@@ -163,7 +163,7 @@ function buildCumulativeSlackMessage(
 
   const totalBlock = [
     '',
-    `📊 TOTAL`,
+    `TOTAL`,
     separator,
     ...metricsBlock(data.totals),
   ];
