@@ -154,10 +154,13 @@ export function useMultiPlatformCreatives() {
   const enrichAds = useCallback((ads: AdMetric[], platform: string): EnrichedCreative[] => {
     return ads.map((ad) => {
       const asset = assetMap.get(ad.ad_name);
+      const impressions = ad.impressions || 0;
+      const video3sViews = ad.video3sViews || 0;
       return {
-      adId: ad.ad_id || ad.ad_name, // Use ad_name as fallback ID if ad_id not available
+      adId: ad.ad_id || ad.ad_name,
       adName: ad.ad_name,
       spend: ad.spend,
+      impressions,
       installs: ad.installs,
       ctr: ad.ctr,
       cpi: ad.cpi,
@@ -168,6 +171,9 @@ export function useMultiPlatformCreatives() {
       tradeValue: ad.tradeValue || 0,
       cps: ad.cps || 0,
       cftd: ad.cftd || 0,
+      video3sViews,
+      avgWatchTime: ad.avgWatchTime || 0,
+      thumbstopRate: ad.thumbstopRate || (impressions > 0 ? video3sViews / impressions : 0),
       platform,
       parsed: parseCreativeName(ad.ad_name),
         assetUrl: asset?.url || null,
