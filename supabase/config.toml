@@ -112,3 +112,12 @@ verify_jwt = false
 [functions.push-to-slack-list]
 verify_jwt = false
 
+[functions.fetch-ad-creatives]
+verify_jwt = false
+
+[functions.fetch-creative-media]
+verify_jwt = false
+
+[functions.backfill-creative-assets]
+verify_jwt = false
+
