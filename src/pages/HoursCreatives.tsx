@@ -296,6 +296,13 @@ export default function HoursCreatives() {
             fullAssetUrl: selectedCreative.fullAssetUrl,
             posterUrl: selectedCreative.posterUrl,
             originalUrl: selectedCreative.originalUrl,
+            registrations: 0,
+            ftds: 0,
+            trades: 0,
+            ftdValue: 0,
+            tradeValue: 0,
+            cps: 0,
+            cftd: 0,
           }}
         />
       )}
