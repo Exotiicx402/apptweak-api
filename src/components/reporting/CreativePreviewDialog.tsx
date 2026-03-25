@@ -221,6 +221,8 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
   platformBreakdown = [],
    isBlended = false,
  }: CreativePreviewDialogProps) {
+  const [showAdPreview, setShowAdPreview] = useState(false);
+
   // Calculate totals for platform breakdown
   const { totals, ranges } = useMemo(() => {
     if (!platformBreakdown || platformBreakdown.length === 0) {
