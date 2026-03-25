@@ -60,6 +60,7 @@ export interface EnrichedCreative {
   fullAssetUrl: string | null;
   posterUrl: string | null;
   originalUrl?: string | null;
+  platformCreativeId?: string | null;
 }
 
 interface PlatformData {
