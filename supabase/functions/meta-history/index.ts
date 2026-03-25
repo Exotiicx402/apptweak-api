@@ -267,6 +267,8 @@ const REGISTRATION_ACTION_TYPES = [
 ];
 
 const FTD_ACTION_TYPES = [
+  'first_time_deposit',
+  'app_custom_event.first_time_deposit',
   'app_custom_event.fb_mobile_add_payment_info',
   'add_payment_info',
   'fb_mobile_add_payment_info',
