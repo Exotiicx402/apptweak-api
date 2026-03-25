@@ -13,6 +13,7 @@ import metaLogo from "@/assets/logos/meta.png";
 import snapchatLogo from "@/assets/logos/snapchat.png";
 import googleAdsLogo from "@/assets/logos/google-ads.png";
 import tiktokLogo from "@/assets/logos/tiktok.png";
+import molocoLogo from "@/assets/logos/moloco.webp";
 
 export default function Reporting() {
   const [startDate, setStartDate] = useState(getLocalDaysAgo(8));
