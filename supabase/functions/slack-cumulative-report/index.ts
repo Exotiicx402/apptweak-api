@@ -181,7 +181,7 @@ function buildCumulativeSlackMessage(
         type: 'header',
         text: {
           type: 'plain_text',
-          text: `📊 Cumulative Performance Report — ${displayStart} to ${displayEnd}`,
+          text: `Cumulative Performance Report — ${displayStart} to ${displayEnd}`,
           emoji: true,
         },
       },
