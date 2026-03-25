@@ -59,6 +59,10 @@ interface MolocoRow {
     title: string;
     country?: string;
   };
+  ad_group?: {
+    id: string;
+    title: string;
+  };
   metric?: {
     impressions: string;
     clicks: string;
