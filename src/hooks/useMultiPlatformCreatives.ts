@@ -150,6 +150,7 @@ export function useMultiPlatformCreatives() {
 
   const clearData = useCallback(() => {
     setMeta({ ads: [], isLoading: false, error: null });
+    setMoloco({ ads: [], isLoading: false, error: null });
   }, []);
 
   // Enrich ads with parsed naming convention data
