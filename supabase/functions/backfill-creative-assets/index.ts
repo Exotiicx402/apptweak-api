@@ -100,7 +100,7 @@ serve(async (req) => {
 
     for (const [adId, adData] of toProcess) {
       const creative = adData?.creative;
-      if (!creative) { skipped++; continue; }
+      if (!creative) { console.log(`Skip ${adId}: no creative`); skipped++; continue; }
 
       const imageHash = creative.image_hash ||
         creative.object_story_spec?.link_data?.image_hash ||
