@@ -67,6 +67,7 @@ serve(async (req) => {
       success: true,
       totalRows: lines.length - 1,
       eventCounts: Object.fromEntries(eventCounts),
+      mediaSources: Object.fromEntries(mediaSources),
       sampleHeaders: headers.slice(0, 15),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
