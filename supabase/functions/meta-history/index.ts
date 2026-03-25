@@ -1381,6 +1381,8 @@ serve(async (req) => {
       return {
         ad_id: row.ad_id,
         ad_name: row.ad_name,
+        adset_id: row.adset_id || null,
+        adset_name: row.adset_name || null,
         spend,
         impressions,
         clicks: parseInt(row.clicks) || 0,
