@@ -15,6 +15,8 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useFetchHdMedia } from "@/hooks/useFetchHdMedia";
+import { extractImageHash, extractVideoId } from "@/lib/creativeDataTransformers";
  
  interface CreativePreviewDialogProps {
    open: boolean;
