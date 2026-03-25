@@ -224,6 +224,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
    onOpenChange,
    creative,
   platformBreakdown = [],
+  adsetBreakdown = [],
    isBlended = false,
  }: CreativePreviewDialogProps) {
   const [showAdPreview, setShowAdPreview] = useState(false);
