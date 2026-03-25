@@ -641,7 +641,7 @@ serve(async (req) => {
       installs: parseInt(row.installs) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
-      ftds: 0, // BQ cache doesn't have FTDs yet — live API backfill provides them
+      ftds: parseInt(row.ftds) || 0,
     }));
 
     let prevRows: ProcessedRow[] = bqPrevRows.map((row: any) => ({
@@ -654,7 +654,7 @@ serve(async (req) => {
       installs: parseInt(row.installs) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
-      ftds: 0,
+      ftds: parseInt(row.ftds) || 0,
     }));
 
     // Identify which dates we have from BigQuery
