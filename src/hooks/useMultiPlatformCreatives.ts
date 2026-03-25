@@ -296,6 +296,7 @@ export function useMultiPlatformCreatives() {
     hasAdData,
     platformCounts: {
       meta: meta.ads.length,
+      moloco: moloco.ads.length,
     },
     getPlatformBreakdown,
     allEnrichedByPlatform,

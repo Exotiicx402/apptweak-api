@@ -729,6 +729,23 @@ serve(async (req) => {
 
     console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}`);
 
+    // Fetch ad-group level data for creative reporting (sequential to respect rate limits)
+    let ads: any[] = [];
+    try {
+      // Use the full requested range — ad-group data is always fetched live (not cached in BQ)
+      const adFetchStart = isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS);
+      const adFetchEnd = endDate > today ? today : endDate;
+      
+      if (adFetchStart <= adFetchEnd) {
+        console.log(`Fetching Moloco ad-group data from ${adFetchStart} to ${adFetchEnd}...`);
+        const adGroupRows = await fetchMolocoAdGroupData(adFetchStart, adFetchEnd);
+        ads = aggregateAdGroups(adGroupRows);
+        console.log(`Aggregated ${ads.length} ad groups from ${adGroupRows.length} rows`);
+      }
+    } catch (adErr) {
+      console.error('Failed to fetch ad-group data (non-blocking):', adErr);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true,
@@ -737,6 +754,7 @@ serve(async (req) => {
           campaigns: aggregateByCampaign(mergedRows),
           totals,
           previousTotals,
+          ads,
           dateRange: { startDate, endDate },
           previousDateRange: { startDate: prevStartStr, endDate: prevEndStr },
         },

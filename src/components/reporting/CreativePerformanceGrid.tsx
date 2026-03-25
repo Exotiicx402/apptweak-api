@@ -91,6 +91,7 @@ function getPlatformLabel(platform: string): string {
 function getPlatformBadgeVariant(platform: string): "default" | "secondary" | "outline" | "destructive" {
   switch (platform) {
     case "meta": return "default";
+    case "moloco": return "secondary";
     case "snapchat": return "secondary";
     case "tiktok": return "outline";
     case "google": return "outline";
