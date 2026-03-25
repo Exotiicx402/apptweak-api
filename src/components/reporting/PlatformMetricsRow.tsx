@@ -186,7 +186,7 @@ export function PlatformMetricsRow({
               CFTD
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cftd)}</div>
-            <PercentChange current={cftd} previous={previousCftd} className="mt-1" />
+            <PercentChange current={cftd} previous={previousCftd} invertColor className="mt-1" />
           </CardContent>
         </Card>
       </div>

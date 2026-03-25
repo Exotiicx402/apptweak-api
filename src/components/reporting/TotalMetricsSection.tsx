@@ -63,7 +63,7 @@ export function TotalMetricsSection({
     <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg p-6 mb-8">
       <h2 className="text-lg font-semibold mb-4 text-foreground">Total (All Channels)</h2>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {metrics.map(({ icon: Icon, label, value, current, previous }) => (
+        {metrics.map(({ icon: Icon, label, value, current, previous, invertColor }) => (
           <Card key={label} className="bg-background/80 backdrop-blur">
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
@@ -71,7 +71,7 @@ export function TotalMetricsSection({
                 {label}
               </div>
               <div className="text-2xl font-bold text-foreground">{value}</div>
-              <PercentChange current={current} previous={previous} className="mt-1.5" />
+              <PercentChange current={current} previous={previous} invertColor={invertColor} className="mt-1.5" />
             </CardContent>
           </Card>
         ))}
