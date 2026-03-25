@@ -244,6 +244,25 @@ function filterHoursAppCampaigns(campaigns: any[]): any[] {
   );
 }
 
+// Extract action count by type from Meta actions array
+function extractActionCount(actions: any[], actionTypes: string[]): number {
+  if (!actions || !Array.isArray(actions)) return 0;
+  const found = actions.find((a: any) => actionTypes.includes(a.action_type));
+  return found ? parseInt(found.value) || 0 : 0;
+}
+
+const REGISTRATION_ACTION_TYPES = [
+  'app_custom_event.fb_mobile_complete_registration',
+  'complete_registration',
+  'fb_mobile_complete_registration',
+];
+
+const FTD_ACTION_TYPES = [
+  'app_custom_event.fb_mobile_add_payment_info',
+  'add_payment_info',
+  'fb_mobile_add_payment_info',
+];
+
 // Transform live Meta data to match BigQuery format
 function transformLiveData(liveData: any[], date: string): {
   daily: any;
@@ -254,6 +273,8 @@ function transformLiveData(liveData: any[], date: string): {
   let totalClicks = 0;
   let totalReach = 0;
   let totalInstalls = 0;
+  let totalRegistrations = 0;
+  let totalFtds = 0;
 
   const campaigns = liveData.map((row) => {
     const spend = parseFloat(row.spend) || 0;
@@ -261,22 +282,17 @@ function transformLiveData(liveData: any[], date: string): {
     const clicks = parseInt(row.clicks) || 0;
     const reach = parseInt(row.reach) || 0;
     
-    // Extract installs from actions array
-    let installs = 0;
-    if (row.actions && Array.isArray(row.actions)) {
-      const installAction = row.actions.find(
-        (a: any) => a.action_type === "mobile_app_install"
-      );
-      if (installAction) {
-        installs = parseInt(installAction.value) || 0;
-      }
-    }
+    const installs = extractActionCount(row.actions, ['mobile_app_install']);
+    const registrations = extractActionCount(row.actions, REGISTRATION_ACTION_TYPES);
+    const ftds = extractActionCount(row.actions, FTD_ACTION_TYPES);
 
     totalSpend += spend;
     totalImpressions += impressions;
     totalClicks += clicks;
     totalReach += reach;
     totalInstalls += installs;
+    totalRegistrations += registrations;
+    totalFtds += ftds;
 
     return {
       campaign_id: row.campaign_id,
@@ -290,6 +306,8 @@ function transformLiveData(liveData: any[], date: string): {
       ctr: parseFloat(row.ctr) || 0,
       installs,
       cpi: installs > 0 ? spend / installs : 0,
+      registrations,
+      ftds,
     };
   });
 
@@ -304,6 +322,8 @@ function transformLiveData(liveData: any[], date: string): {
     ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
     installs: totalInstalls,
     cpi: totalInstalls > 0 ? totalSpend / totalInstalls : 0,
+    registrations: totalRegistrations,
+    ftds: totalFtds,
   };
 
   return { daily, campaigns };
