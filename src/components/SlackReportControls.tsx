@@ -256,7 +256,7 @@ function CumulativeReportPreview({ data }: { data: CumulativePreviewData }) {
       {(campaigns || []).map((camp) => (
         <div key={camp.campaign_name}>
           <div className="px-4 py-2 bg-muted/40 border-y border-border">
-            <span className="text-xs font-semibold text-foreground">📌 {campaignLabel(camp.campaign_name)}</span>
+            <span className="text-xs font-semibold text-foreground">{campaignLabel(camp.campaign_name)}</span>
           </div>
           <div className="divide-y divide-border">
             <CumulativeMetricsRows totals={camp} />
