@@ -291,6 +291,7 @@ async function createReport(
         end: endDate,
       },
       dimensions,
+      metrics: ['impressions', 'clicks', 'installs', 'spend', 'target_actions', 'revenue'],
     }),
   });
 
@@ -358,6 +359,15 @@ async function downloadReport(jsonUrl: string): Promise<MolocoRow[]> {
   if (rows.length > 0) {
     console.log('Sample metric keys:', JSON.stringify(Object.keys(rows[0].metric || {})));
     console.log('Sample metric values:', JSON.stringify(rows[0].metric));
+    console.log('Sample full row keys:', JSON.stringify(Object.keys(rows[0])));
+    // Log all rows' metrics to find any with non-zero action/conversion values
+    const nonRevenueRows = rows.filter((r: any) => {
+      const m = r.metric || {};
+      return Object.keys(m).some(k => k !== 'revenue' && k !== 'spend');
+    });
+    if (nonRevenueRows.length > 0) {
+      console.log('Rows with non-revenue metrics:', JSON.stringify(nonRevenueRows[0]));
+    }
   }
   return rows;
 }
