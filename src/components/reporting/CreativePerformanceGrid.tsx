@@ -196,6 +196,18 @@ function CreativeCard({ creative, showPlatform, columnConfig, onClick, isClickab
               <span className="font-medium">{formatPercent(creative.ctr)}</span>
             </div>
           )}
+          {metrics.installs && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Installs</span>
+              <span className="font-medium">{creative.installs > 0 ? formatNumber(creative.installs) : '-'}</span>
+            </div>
+          )}
+          {metrics.cpi && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">CPI</span>
+              <span className="font-medium">{creative.cpi > 0 ? formatCurrency(creative.cpi) : '-'}</span>
+            </div>
+          )}
         </div>
 
         {/* Metadata badges - styled like reference */}
