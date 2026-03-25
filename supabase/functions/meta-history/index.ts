@@ -457,7 +457,27 @@ serve(async (req) => {
                LIMIT 1) AS INT64
             ), 0
           )
-        ) as trades
+        ) as trades,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS FLOAT64
+            ), 0
+          )
+        ) as ftd_value,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('purchase', 'app_custom_event.fb_mobile_purchase', 'fb_mobile_purchase', 'offsite_conversion.fb_pixel_purchase')
+               LIMIT 1) AS FLOAT64
+            ), 0
+          )
+        ) as trade_value
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${hoursAppFilter}
