@@ -107,16 +107,15 @@ function campaignLabel(name: string): string {
   return name.length > 20 ? name.substring(0, 20) + '…' : name;
 }
 
-/* ─── Shared metric row helpers ─── */
+/* ─── Platform metric row helpers ─── */
 
-function MetricsRows({ current, previous }: { current: FTDTotals; previous: FTDTotals }) {
+function PlatformMetricsRows({ current, previous }: { current: PlatformMetrics; previous: PlatformMetrics }) {
   const metrics = [
-    { label: 'Amount Spent', current: formatCurrency(current.spend), prev: formatCurrency(previous.spend), change: pct(current.spend, previous.spend) },
-    { label: 'Results (FTDs)', current: formatNumber(current.ftd_count), prev: formatNumber(previous.ftd_count), change: pct(current.ftd_count, previous.ftd_count) },
-    { label: 'Cost per Result', current: current.ftd_count > 0 ? formatCurrency(current.cost_per_ftd, 2) : '—', prev: previous.ftd_count > 0 ? formatCurrency(previous.cost_per_ftd, 2) : '—', change: pct(current.cost_per_ftd, previous.cost_per_ftd), lowerIsBetter: true },
-    { label: 'Results Value', current: current.results_value > 0 ? formatCurrency(current.results_value) : '—', prev: previous.results_value > 0 ? formatCurrency(previous.results_value) : '—', change: pct(current.results_value, previous.results_value) },
-    { label: 'Results ROAS', current: current.roas > 0 ? `${current.roas.toFixed(2)}x` : '—', prev: previous.roas > 0 ? `${previous.roas.toFixed(2)}x` : '—', change: pct(current.roas, previous.roas) },
-    { label: 'Avg. FTD Value', current: current.avg_ftd_value > 0 ? formatCurrency(current.avg_ftd_value, 2) : '—', prev: previous.avg_ftd_value > 0 ? formatCurrency(previous.avg_ftd_value, 2) : '—', change: pct(current.avg_ftd_value, previous.avg_ftd_value) },
+    { label: 'Spend', current: formatCurrency(current.spend), prev: formatCurrency(previous.spend), change: pct(current.spend, previous.spend) },
+    { label: 'Installs', current: formatNumber(current.installs), prev: formatNumber(previous.installs), change: pct(current.installs, previous.installs) },
+    { label: 'FTD', current: formatNumber(current.ftds), prev: formatNumber(previous.ftds), change: pct(current.ftds, previous.ftds) },
+    { label: 'CPI', current: current.cpi > 0 ? formatCurrency(current.cpi, 2) : '—', prev: previous.cpi > 0 ? formatCurrency(previous.cpi, 2) : '—', change: pct(current.cpi, previous.cpi), lowerIsBetter: true },
+    { label: 'CFTD', current: current.cftd > 0 ? formatCurrency(current.cftd, 2) : '—', prev: previous.cftd > 0 ? formatCurrency(previous.cftd, 2) : '—', change: pct(current.cftd, previous.cftd), lowerIsBetter: true },
   ];
 
   return (
@@ -166,7 +165,11 @@ function CumulativeMetricsRows({ totals }: { totals: FTDTotals }) {
 /* ─── Preview components ─── */
 
 function ReportPreview({ data }: { data: PreviewData }) {
-  const { current, previous, date, previousDate, campaigns, previousCampaigns } = data;
+  const { date, previousDate, meta, moloco } = data;
+
+  const emptyMetrics: PlatformMetrics = { spend: 0, installs: 0, ftds: 0, cpi: 0, cftd: 0 };
+  const safeMeta = meta || { current: emptyMetrics, previous: emptyMetrics };
+  const safeMoloco = moloco || { current: emptyMetrics, previous: emptyMetrics };
 
   const formatShortDate = (d: string) =>
     new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -176,6 +179,24 @@ function ReportPreview({ data }: { data: PreviewData }) {
 
   const reportLabel = formatShortDate(date);
   const prevLabel = formatShortDate(previousDate);
+
+  const totalCurrent: PlatformMetrics = {
+    spend: safeMeta.current.spend + safeMoloco.current.spend,
+    installs: safeMeta.current.installs + safeMoloco.current.installs,
+    ftds: safeMeta.current.ftds + safeMoloco.current.ftds,
+    cpi: 0, cftd: 0,
+  };
+  totalCurrent.cpi = totalCurrent.installs > 0 ? totalCurrent.spend / totalCurrent.installs : 0;
+  totalCurrent.cftd = totalCurrent.ftds > 0 ? totalCurrent.spend / totalCurrent.ftds : 0;
+
+  const totalPrevious: PlatformMetrics = {
+    spend: safeMeta.previous.spend + safeMoloco.previous.spend,
+    installs: safeMeta.previous.installs + safeMoloco.previous.installs,
+    ftds: safeMeta.previous.ftds + safeMoloco.previous.ftds,
+    cpi: 0, cftd: 0,
+  };
+  totalPrevious.cpi = totalPrevious.installs > 0 ? totalPrevious.spend / totalPrevious.installs : 0;
+  totalPrevious.cftd = totalPrevious.ftds > 0 ? totalPrevious.spend / totalPrevious.ftds : 0;
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
@@ -189,26 +210,25 @@ function ReportPreview({ data }: { data: PreviewData }) {
         <span className="text-xs font-medium text-muted-foreground w-20 text-right">Change</span>
       </div>
 
-      {(campaigns || []).map((camp) => {
-        const prevCamp = (previousCampaigns || []).find(p => p.campaign_name === camp.campaign_name)
-          || { spend: 0, ftd_count: 0, cost_per_ftd: 0, results_value: 0, roas: 0, avg_ftd_value: 0 };
-        return (
-          <div key={camp.campaign_name}>
-            <div className="px-4 py-2 bg-muted/40 border-y border-border">
-              <span className="text-xs font-semibold text-foreground">📌 {campaignLabel(camp.campaign_name)}</span>
-            </div>
-            <div className="divide-y divide-border">
-              <MetricsRows current={camp} previous={prevCamp as FTDTotals} />
-            </div>
-          </div>
-        );
-      })}
+      <div className="px-4 py-2 bg-muted/40 border-y border-border">
+        <span className="text-xs font-semibold text-foreground">📱 Meta</span>
+      </div>
+      <div className="divide-y divide-border">
+        <PlatformMetricsRows current={safeMeta.current} previous={safeMeta.previous} />
+      </div>
+
+      <div className="px-4 py-2 bg-muted/40 border-y border-border">
+        <span className="text-xs font-semibold text-foreground">🟣 Moloco</span>
+      </div>
+      <div className="divide-y divide-border">
+        <PlatformMetricsRows current={safeMoloco.current} previous={safeMoloco.previous} />
+      </div>
 
       <div className="px-4 py-2 bg-primary/10 border-y border-border">
         <span className="text-xs font-semibold text-foreground">📊 TOTAL</span>
       </div>
       <div className="divide-y divide-border">
-        <MetricsRows current={current} previous={previous} />
+        <PlatformMetricsRows current={totalCurrent} previous={totalPrevious} />
       </div>
     </div>
   );
