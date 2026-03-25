@@ -47,6 +47,7 @@ export function useReportingData() {
     snapchat: { ...emptyMetrics },
     googleAds: { ...emptyMetrics },
     tiktok: { ...emptyMetrics },
+    moloco: { ...emptyMetrics },
     totals: { spend: 0, installs: 0, cpi: 0, previousSpend: 0, previousInstalls: 0, previousCpi: 0 },
   });
   const [isLoading, setIsLoading] = useState(false);
