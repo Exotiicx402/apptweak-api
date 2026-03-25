@@ -109,7 +109,7 @@ export function useMultiPlatformCreatives() {
     try {
       const { data, error } = await supabase
         .from('creative_assets')
-        .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at');
+        .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at, platform_creative_id');
 
       if (error) {
         console.error('Error fetching creative assets:', error);
