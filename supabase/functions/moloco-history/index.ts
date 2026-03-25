@@ -426,6 +426,22 @@ async function fetchMolocoLiveData(startDate: string, endDate: string): Promise<
   return processRows(rawRows);
 }
 
+// Fetch live Moloco data from API (ad group level)
+async function fetchMolocoAdGroupData(startDate: string, endDate: string): Promise<AdGroupRow[]> {
+  const apiKey = Deno.env.get('MOLOCO_API_KEY');
+  const adAccountId = Deno.env.get('MOLOCO_AD_ACCOUNT_ID');
+
+  if (!apiKey || !adAccountId) {
+    throw new Error('Moloco credentials not configured');
+  }
+
+  const token = await getMolocoAccessToken(apiKey);
+  const reportId = await createReport(token, adAccountId, startDate, endDate);
+  const jsonUrl = await waitForReport(token, reportId);
+  const rawRows = await downloadReport(jsonUrl);
+  return processAdGroupRows(rawRows);
+}
+
 // ============ Aggregation Functions ============
 
 function aggregateByDate(rows: ProcessedRow[]): any[] {
