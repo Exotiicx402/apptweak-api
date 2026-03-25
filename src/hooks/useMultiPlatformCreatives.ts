@@ -242,9 +242,12 @@ export function useMultiPlatformCreatives() {
     for (const ad of metaAds) {
       if (ad.adName === adName) breakdown.push(ad);
     }
+    for (const ad of molocoAds) {
+      if (ad.adName === adName) breakdown.push(ad);
+    }
     
     return breakdown.sort((a, b) => b.spend - a.spend);
-  }, [metaAds]);
+  }, [metaAds, molocoAds]);
 
   // Get filtered/processed creatives based on active platform
   const data = useMemo((): EnrichedCreative[] => {
