@@ -244,6 +244,25 @@ function filterHoursAppCampaigns(campaigns: any[]): any[] {
   );
 }
 
+// Extract action count by type from Meta actions array
+function extractActionCount(actions: any[], actionTypes: string[]): number {
+  if (!actions || !Array.isArray(actions)) return 0;
+  const found = actions.find((a: any) => actionTypes.includes(a.action_type));
+  return found ? parseInt(found.value) || 0 : 0;
+}
+
+const REGISTRATION_ACTION_TYPES = [
+  'app_custom_event.fb_mobile_complete_registration',
+  'complete_registration',
+  'fb_mobile_complete_registration',
+];
+
+const FTD_ACTION_TYPES = [
+  'app_custom_event.fb_mobile_add_payment_info',
+  'add_payment_info',
+  'fb_mobile_add_payment_info',
+];
+
 // Transform live Meta data to match BigQuery format
 function transformLiveData(liveData: any[], date: string): {
   daily: any;
@@ -254,6 +273,8 @@ function transformLiveData(liveData: any[], date: string): {
   let totalClicks = 0;
   let totalReach = 0;
   let totalInstalls = 0;
+  let totalRegistrations = 0;
+  let totalFtds = 0;
 
   const campaigns = liveData.map((row) => {
     const spend = parseFloat(row.spend) || 0;
@@ -261,22 +282,17 @@ function transformLiveData(liveData: any[], date: string): {
     const clicks = parseInt(row.clicks) || 0;
     const reach = parseInt(row.reach) || 0;
     
-    // Extract installs from actions array
-    let installs = 0;
-    if (row.actions && Array.isArray(row.actions)) {
-      const installAction = row.actions.find(
-        (a: any) => a.action_type === "mobile_app_install"
-      );
-      if (installAction) {
-        installs = parseInt(installAction.value) || 0;
-      }
-    }
+    const installs = extractActionCount(row.actions, ['mobile_app_install']);
+    const registrations = extractActionCount(row.actions, REGISTRATION_ACTION_TYPES);
+    const ftds = extractActionCount(row.actions, FTD_ACTION_TYPES);
 
     totalSpend += spend;
     totalImpressions += impressions;
     totalClicks += clicks;
     totalReach += reach;
     totalInstalls += installs;
+    totalRegistrations += registrations;
+    totalFtds += ftds;
 
     return {
       campaign_id: row.campaign_id,
@@ -290,6 +306,8 @@ function transformLiveData(liveData: any[], date: string): {
       ctr: parseFloat(row.ctr) || 0,
       installs,
       cpi: installs > 0 ? spend / installs : 0,
+      registrations,
+      ftds,
     };
   });
 
@@ -304,6 +322,8 @@ function transformLiveData(liveData: any[], date: string): {
     ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
     installs: totalInstalls,
     cpi: totalInstalls > 0 ? totalSpend / totalInstalls : 0,
+    registrations: totalRegistrations,
+    ftds: totalFtds,
   };
 
   return { daily, campaigns };
@@ -376,7 +396,27 @@ serve(async (req) => {
                LIMIT 1) AS INT64
             ), 0
           )
-        ) as installs
+        ) as installs,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_complete_registration', 'complete_registration', 'fb_mobile_complete_registration')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as registrations,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as ftds
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${hoursAppFilter}
@@ -432,7 +472,27 @@ serve(async (req) => {
                LIMIT 1) AS INT64
             ), 0
           )
-        ) as total_installs
+        ) as total_installs,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_complete_registration', 'complete_registration', 'fb_mobile_complete_registration')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as total_registrations,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as total_ftds
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
       ${hoursAppFilter}
@@ -485,7 +545,27 @@ serve(async (req) => {
                LIMIT 1) AS INT64
             ), 0
           )
-        ) as total_installs
+        ) as total_installs,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_complete_registration', 'complete_registration', 'fb_mobile_complete_registration')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as total_registrations,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as total_ftds
       FROM ${fullTable}
       WHERE DATE(timestamp) BETWEEN '${prevStartStr}' AND '${prevEndStr}'
       ${hoursAppFilter}
@@ -620,6 +700,8 @@ serve(async (req) => {
               total_clicks: 0,
               total_reach: 0,
               total_installs: 0,
+              total_registrations: 0,
+              total_ftds: 0,
               avg_cpm: 0,
               avg_cpc: 0,
               avg_ctr: 0,
@@ -631,6 +713,8 @@ serve(async (req) => {
           prevTotalsData[0].total_clicks = (parseInt(prevTotalsData[0].total_clicks) || 0) + transformed.daily.clicks;
           prevTotalsData[0].total_reach = (parseInt(prevTotalsData[0].total_reach) || 0) + transformed.daily.reach;
           prevTotalsData[0].total_installs = (parseInt(prevTotalsData[0].total_installs) || 0) + transformed.daily.installs;
+          prevTotalsData[0].total_registrations = (parseInt(prevTotalsData[0].total_registrations) || 0) + transformed.daily.registrations;
+          prevTotalsData[0].total_ftds = (parseInt(prevTotalsData[0].total_ftds) || 0) + transformed.daily.ftds;
 
           console.log(`Added previous period live data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
         }
@@ -692,6 +776,8 @@ serve(async (req) => {
             cpc: transformed.daily.cpc,
             ctr: transformed.daily.ctr,
             installs: transformed.daily.installs,
+            registrations: transformed.daily.registrations,
+            ftds: transformed.daily.ftds,
           });
 
           // Add to campaign data
@@ -727,6 +813,8 @@ serve(async (req) => {
               total_clicks: 0,
               total_reach: 0,
               total_installs: 0,
+              total_registrations: 0,
+              total_ftds: 0,
             };
           }
           bqTotalsData[0].total_spend = (parseFloat(bqTotalsData[0].total_spend) || 0) + transformed.daily.spend;
@@ -734,6 +822,8 @@ serve(async (req) => {
           bqTotalsData[0].total_clicks = (parseInt(bqTotalsData[0].total_clicks) || 0) + transformed.daily.clicks;
           bqTotalsData[0].total_reach = (parseInt(bqTotalsData[0].total_reach) || 0) + transformed.daily.reach;
           bqTotalsData[0].total_installs = (parseInt(bqTotalsData[0].total_installs) || 0) + transformed.daily.installs;
+          bqTotalsData[0].total_registrations = (parseInt(bqTotalsData[0].total_registrations) || 0) + transformed.daily.registrations;
+          bqTotalsData[0].total_ftds = (parseInt(bqTotalsData[0].total_ftds) || 0) + transformed.daily.ftds;
 
           console.log(`Added live fallback data for ${date}: spend=${transformed.daily.spend}, installs=${transformed.daily.installs}`);
         }
@@ -756,6 +846,8 @@ serve(async (req) => {
     let dailyData = bqDailyData.map((row: any) => {
       const spend = parseFloat(row.spend) || 0;
       const installs = parseInt(row.installs) || 0;
+      const registrations = parseInt(row.registrations) || 0;
+      const ftds = parseInt(row.ftds) || 0;
       return {
         date: row.date?.split("T")[0] || row.date,
         spend,
@@ -767,6 +859,8 @@ serve(async (req) => {
         ctr: parseFloat(row.ctr) || 0,
         installs,
         cpi: installs > 0 ? spend / installs : 0,
+        registrations,
+        ftds,
       };
     });
 
@@ -798,6 +892,8 @@ serve(async (req) => {
       cpc: parseFloat(bqTotals.avg_cpc) || 0,
       ctr: parseFloat(bqTotals.calculated_ctr) || 0,
       installs: parseInt(bqTotals.total_installs) || 0,
+      registrations: parseInt(bqTotals.total_registrations) || 0,
+      ftds: parseInt(bqTotals.total_ftds) || 0,
       cpi: 0,
     };
     totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
@@ -832,6 +928,8 @@ serve(async (req) => {
       totals.clicks += liveTransformed.daily.clicks;
       totals.reach += liveTransformed.daily.reach;
       totals.installs += liveTransformed.daily.installs;
+      totals.registrations += liveTransformed.daily.registrations;
+      totals.ftds += liveTransformed.daily.ftds;
       totals.cpi = totals.installs > 0 ? totals.spend / totals.installs : 0;
       totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
       totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
@@ -881,6 +979,8 @@ serve(async (req) => {
             cpc: parseFloat(prevTotals.avg_cpc) || 0,
             ctr: parseFloat(prevTotals.avg_ctr) || 0,
             installs: parseInt(prevTotals.total_installs) || 0,
+            registrations: parseInt(prevTotals.total_registrations) || 0,
+            ftds: parseInt(prevTotals.total_ftds) || 0,
             cpi: parseInt(prevTotals.total_installs) > 0 ? parseFloat(prevTotals.total_spend) / parseInt(prevTotals.total_installs) : 0,
           },
           dateRange: { startDate, endDate },

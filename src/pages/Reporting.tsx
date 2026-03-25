@@ -4,15 +4,13 @@ import { ArrowLeft } from "lucide-react";
 import { DateRangePicker } from "@/components/dashboard/DateRangePicker";
 import { TotalMetricsSection } from "@/components/reporting/TotalMetricsSection";
 import { PlatformMetricsRow } from "@/components/reporting/PlatformMetricsRow";
+import { DailyBreakdownTable } from "@/components/reporting/DailyBreakdownTable";
 import { RankingSection } from "@/components/reporting/RankingSection";
 import { CreativePerformanceGrid } from "@/components/reporting/CreativePerformanceGrid";
 import { useReportingData } from "@/hooks/useReportingData";
 import { getLocalDaysAgo, getLocalYesterday } from "@/lib/dateUtils";
 
 import metaLogo from "@/assets/logos/meta.png";
-import snapchatLogo from "@/assets/logos/snapchat.png";
-import googleAdsLogo from "@/assets/logos/google-ads.png";
-import tiktokLogo from "@/assets/logos/tiktok.png";
 import molocoLogo from "@/assets/logos/moloco.webp";
 
 export default function Reporting() {
@@ -30,12 +28,8 @@ export default function Reporting() {
     setCreativeRefreshKey((prev) => prev + 1);
   };
 
-  const anyPlatformLoading = 
-    data.meta?.isLoading || 
-    data.snapchat?.isLoading || 
-    data.googleAds?.isLoading ||
-    data.tiktok?.isLoading ||
-    data.moloco?.isLoading;
+  const anyPlatformLoading = data.meta?.isLoading || data.moloco?.isLoading;
+  const hasData = data.totals.spend > 0 || anyPlatformLoading;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -43,10 +37,7 @@ export default function Reporting() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <Link
-              to="/"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
+            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="h-5 w-5" />
             </Link>
             <h1 className="text-2xl font-bold text-foreground">Performance Report</h1>
@@ -65,24 +56,27 @@ export default function Reporting() {
           />
         </div>
 
-        {/* Content - only show after data is fetched */}
-        {(data.totals.spend > 0 || anyPlatformLoading) && (
+        {hasData && (
           <>
-            {/* Total Section */}
+            {/* Top KPIs */}
             <TotalMetricsSection
               spend={data.totals.spend}
-              installs={data.totals.installs}
               cpi={data.totals.cpi}
+              cps={data.totals.cps}
+              ftds={data.totals.ftds}
+              cftd={data.totals.cftd}
               previousSpend={data.totals.previousSpend}
-              previousInstalls={data.totals.previousInstalls}
               previousCpi={data.totals.previousCpi}
+              previousCps={data.totals.previousCps}
+              previousFtds={data.totals.previousFtds}
+              previousCftd={data.totals.previousCftd}
               loading={anyPlatformLoading}
             />
 
-            {/* Platform Sections */}
+            {/* Platform Rows */}
             <div className="space-y-2">
               <h2 className="text-lg font-semibold mb-4 text-foreground">By Platform</h2>
-              
+
               <PlatformMetricsRow
                 platform="Meta Ads"
                 logo={metaLogo}
@@ -110,64 +104,39 @@ export default function Reporting() {
                 dataUnavailable={data.moloco.dataUnavailable}
                 unavailableReason={data.moloco.unavailableReason}
               />
+            </div>
 
-              <PlatformMetricsRow
-                platform="Snapchat"
-                logo={snapchatLogo}
-                spend={data.snapchat.spend}
-                installs={data.snapchat.installs}
-                cpi={data.snapchat.cpi}
-                previousSpend={data.snapchat.previousSpend}
-                previousInstalls={data.snapchat.previousInstalls}
-                previousCpi={data.snapchat.previousCpi}
-                loading={data.snapchat.isLoading}
-                error={data.snapchat.error}
+            {/* Daily Breakdown Tables */}
+            <div className="mt-8">
+              <h2 className="text-lg font-semibold mb-4 text-foreground">Daily Breakdown</h2>
+
+              <DailyBreakdownTable
+                platform="Meta Ads"
+                logo={metaLogo}
+                daily={data.meta.daily}
+                loading={data.meta.isLoading}
               />
 
-              <PlatformMetricsRow
-                platform="Google Ads"
-                logo={googleAdsLogo}
-                spend={data.googleAds.spend}
-                installs={data.googleAds.installs}
-                cpi={data.googleAds.cpi}
-                previousSpend={data.googleAds.previousSpend}
-                previousInstalls={data.googleAds.previousInstalls}
-                previousCpi={data.googleAds.previousCpi}
-                loading={data.googleAds.isLoading}
-                error={data.googleAds.error}
-                dataUnavailable={data.googleAds.dataUnavailable}
-                unavailableReason={data.googleAds.unavailableReason}
+              <DailyBreakdownTable
+                platform="Moloco"
+                logo={molocoLogo}
+                daily={data.moloco.daily}
+                loading={data.moloco.isLoading}
               />
-
-              <PlatformMetricsRow
-                platform="TikTok"
-                logo={tiktokLogo}
-                spend={data.tiktok.spend}
-                installs={data.tiktok.installs}
-                cpi={data.tiktok.cpi}
-                previousSpend={data.tiktok.previousSpend}
-                previousInstalls={data.tiktok.previousInstalls}
-                previousCpi={data.tiktok.previousCpi}
-                loading={data.tiktok.isLoading}
-                error={data.tiktok.error}
-                dataUnavailable={data.tiktok.dataUnavailable}
-                unavailableReason={data.tiktok.unavailableReason}
-              />
-
             </div>
 
             {/* Ranking Section */}
-            <RankingSection 
-              startDate={appliedStartDate} 
-              endDate={appliedEndDate} 
-              dataFetched={data.totals.spend > 0 || anyPlatformLoading}
+            <RankingSection
+              startDate={appliedStartDate}
+              endDate={appliedEndDate}
+              dataFetched={hasData}
             />
 
             {/* Creative Performance Section */}
             <CreativePerformanceGrid
               startDate={appliedStartDate}
               endDate={appliedEndDate}
-              dataFetched={data.totals.spend > 0 || anyPlatformLoading}
+              dataFetched={hasData}
               refreshKey={creativeRefreshKey}
             />
           </>
@@ -177,7 +146,7 @@ export default function Reporting() {
         {!anyPlatformLoading && data.totals.spend === 0 && (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-lg mb-2">Select a date range and click Apply to view metrics</p>
-            <p className="text-sm">Data will be fetched from Meta, Snapchat, Google Ads, and TikTok</p>
+            <p className="text-sm">Data will be fetched from Meta and Moloco</p>
           </div>
         )}
       </div>
