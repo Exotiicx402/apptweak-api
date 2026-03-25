@@ -354,7 +354,12 @@ async function downloadReport(jsonUrl: string): Promise<MolocoRow[]> {
   }
 
   const data = await response.json();
-  return data.rows || [];
+  const rows = data.rows || [];
+  if (rows.length > 0) {
+    console.log('Sample metric keys:', JSON.stringify(Object.keys(rows[0].metric || {})));
+    console.log('Sample metric values:', JSON.stringify(rows[0].metric));
+  }
+  return rows;
 }
 
 function processRows(rows: MolocoRow[]): ProcessedRow[] {
