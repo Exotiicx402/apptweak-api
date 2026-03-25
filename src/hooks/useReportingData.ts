@@ -114,9 +114,10 @@ export function useReportingData() {
     const snapchat = extractMetrics(snapchatResult);
     const googleAds = extractMetrics(googleAdsResult);
     const tiktok = extractMetrics(tiktokResult);
+    const moloco = extractMetrics(molocoResult);
 
     // Calculate totals (only from platforms without errors)
-    const platforms = [meta, snapchat, googleAds, tiktok];
+    const platforms = [meta, snapchat, googleAds, tiktok, moloco];
     const validPlatforms = platforms.filter(p => !p.error);
     
     const totalSpend = validPlatforms.reduce((sum, p) => sum + p.spend, 0);
