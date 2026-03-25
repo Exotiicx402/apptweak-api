@@ -123,7 +123,7 @@ export function PlatformMetricsRow({
           </TooltipProvider>
         )}
       </h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
@@ -153,7 +153,40 @@ export function PlatformMetricsRow({
               CPI
             </div>
             <div className="text-xl font-semibold text-foreground">{formatCurrency(cpi)}</div>
-            <PercentChange current={cpi} previous={previousCpi} className="mt-1" />
+            <PercentChange current={cpi} previous={previousCpi} className="mt-1" invertColor />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+              <TrendingUp className="h-3 w-3" />
+              CPS
+            </div>
+            <div className="text-xl font-semibold text-foreground">{formatCurrency(cps)}</div>
+            <PercentChange current={cps} previous={previousCps} className="mt-1" invertColor />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+              <CreditCard className="h-3 w-3" />
+              FTDs
+            </div>
+            <div className="text-xl font-semibold text-foreground">{formatNumber(ftds)}</div>
+            <PercentChange current={ftds} previous={previousFtds} className="mt-1" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+              <TrendingUp className="h-3 w-3" />
+              CFTD
+            </div>
+            <div className="text-xl font-semibold text-foreground">{formatCurrency(cftd)}</div>
+            <PercentChange current={cftd} previous={previousCftd} className="mt-1" invertColor />
           </CardContent>
         </Card>
       </div>
