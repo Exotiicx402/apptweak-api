@@ -19,6 +19,7 @@ interface ReportingData {
   snapchat: PlatformMetrics;
   googleAds: PlatformMetrics;
   tiktok: PlatformMetrics;
+  moloco: PlatformMetrics;
   totals: {
     spend: number;
     installs: number;
