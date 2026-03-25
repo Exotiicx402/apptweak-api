@@ -185,7 +185,7 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<numb
   const valueRows = rows
     .map(
       (r) =>
-        `(TIMESTAMP '${r.timestamp}', '${r.campaign_id}', '${r.campaign_name.replace(/'/g, "\\'")}', '${r.ad_id}', '${r.ad_name.replace(/'/g, "\\'")}', ${r.impressions}, ${r.clicks}, ${r.spend}, ${r.reach}, ${r.cpm}, ${r.cpc}, ${r.ctr}, ${r.actions ? `'${r.actions.replace(/'/g, "\\'")}'` : "NULL"}, TIMESTAMP '${r.fetched_at}')`
+        `(TIMESTAMP '${r.timestamp}', '${r.campaign_id}', '${r.campaign_name.replace(/'/g, "\\'")}', '${r.ad_id}', '${r.ad_name.replace(/'/g, "\\'")}', ${r.impressions}, ${r.clicks}, ${r.spend}, ${r.reach}, ${r.cpm}, ${r.cpc}, ${r.ctr}, ${r.actions ? `'${r.actions.replace(/'/g, "\\'")}'` : "NULL"}, ${r.action_values ? `'${r.action_values.replace(/'/g, "\\'")}'` : "NULL"}, TIMESTAMP '${r.fetched_at}')`
     )
     .join(",\n");
 
@@ -193,7 +193,7 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<numb
     MERGE ${fullTableRef} AS target
     USING (
       SELECT * FROM UNNEST([
-        STRUCT<timestamp TIMESTAMP, campaign_id STRING, campaign_name STRING, ad_id STRING, ad_name STRING, impressions INT64, clicks INT64, spend FLOAT64, reach INT64, cpm FLOAT64, cpc FLOAT64, ctr FLOAT64, actions STRING, fetched_at TIMESTAMP>
+        STRUCT<timestamp TIMESTAMP, campaign_id STRING, campaign_name STRING, ad_id STRING, ad_name STRING, impressions INT64, clicks INT64, spend FLOAT64, reach INT64, cpm FLOAT64, cpc FLOAT64, ctr FLOAT64, actions STRING, action_values STRING, fetched_at TIMESTAMP>
         ${valueRows}
       ])
     ) AS source
@@ -210,9 +210,10 @@ async function mergeIntoBigQuery(rows: any[], accessToken: string): Promise<numb
       cpc = source.cpc,
       ctr = source.ctr,
       actions = source.actions,
+      action_values = source.action_values,
       fetched_at = source.fetched_at
-    WHEN NOT MATCHED THEN INSERT (timestamp, campaign_id, campaign_name, ad_id, ad_name, impressions, clicks, spend, reach, cpm, cpc, ctr, actions, fetched_at)
-    VALUES (source.timestamp, source.campaign_id, source.campaign_name, source.ad_id, source.ad_name, source.impressions, source.clicks, source.spend, source.reach, source.cpm, source.cpc, source.ctr, source.actions, source.fetched_at)
+    WHEN NOT MATCHED THEN INSERT (timestamp, campaign_id, campaign_name, ad_id, ad_name, impressions, clicks, spend, reach, cpm, cpc, ctr, actions, action_values, fetched_at)
+    VALUES (source.timestamp, source.campaign_id, source.campaign_name, source.ad_id, source.ad_name, source.impressions, source.clicks, source.spend, source.reach, source.cpm, source.cpc, source.ctr, source.actions, source.action_values, source.fetched_at)
   `;
 
   const response = await fetch(
