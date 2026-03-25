@@ -218,7 +218,7 @@ function ReportPreview({ data }: { data: PreviewData }) {
       </div>
 
       <div className="px-4 py-2 bg-muted/40 border-y border-border">
-        <span className="text-xs font-semibold text-foreground">🟣 Moloco</span>
+        <span className="text-xs font-semibold text-foreground">Moloco</span>
       </div>
       <div className="divide-y divide-border">
         <PlatformMetricsRows current={safeMoloco.current} previous={safeMoloco.previous} />
