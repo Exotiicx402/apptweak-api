@@ -423,12 +423,14 @@ function aggregateAdGroups(rows: AdGroupRow[]): any[] {
       installs: 0,
       impressions: 0,
       clicks: 0,
+      registrations: 0,
       ftds: 0,
     };
     existing.spend += row.spend;
     existing.installs += row.installs;
     existing.impressions += row.impressions;
     existing.clicks += row.clicks;
+    existing.registrations += row.registrations;
     existing.ftds += row.ftds;
     map.set(key, existing);
   }
@@ -436,6 +438,7 @@ function aggregateAdGroups(rows: AdGroupRow[]): any[] {
     ...a,
     ctr: a.impressions > 0 ? a.clicks / a.impressions : 0,
     cpi: a.installs > 0 ? a.spend / a.installs : 0,
+    cps: a.registrations > 0 ? a.spend / a.registrations : 0,
     cftd: a.ftds > 0 ? a.spend / a.ftds : 0,
   })).sort((a, b) => b.spend - a.spend);
 }
