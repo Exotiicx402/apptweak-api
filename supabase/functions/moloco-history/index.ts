@@ -443,7 +443,7 @@ function aggregateAdGroups(rows: AdGroupRow[]): any[] {
   })).sort((a, b) => b.spend - a.spend);
 }
 
-// ============ AppsFlyer Event Fetch ============
+// ============ AppsFlyer Event Fetch with Caching ============
 
 interface AppsFlyerEventData {
   byDate: Map<string, number>;        // date -> event count
@@ -451,7 +451,58 @@ interface AppsFlyerEventData {
   total: number;
 }
 
-async function fetchAppsFlyerEvents(startDate: string, endDate: string, eventName: string, label: string): Promise<AppsFlyerEventData> {
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+async function getCachedEvents(startDate: string, endDate: string, mediaSource: string, eventName: string): Promise<Map<string, number>> {
+  const url = `${SUPABASE_URL}/rest/v1/appsflyer_event_cache?date=gte.${startDate}&date=lte.${endDate}&media_source=eq.${mediaSource}&event_name=eq.${eventName}&select=date,event_count`;
+  const resp = await fetch(url, {
+    headers: {
+      'apikey': SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+  });
+  if (!resp.ok) {
+    console.error('Cache read failed:', await resp.text());
+    return new Map();
+  }
+  const rows = await resp.json();
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    map.set(row.date, row.event_count);
+  }
+  return map;
+}
+
+async function cacheEvents(entries: { date: string; mediaSource: string; eventName: string; count: number }[]): Promise<void> {
+  if (entries.length === 0) return;
+  const rows = entries.map(e => ({
+    date: e.date,
+    media_source: e.mediaSource,
+    event_name: e.eventName,
+    event_count: e.count,
+    updated_at: new Date().toISOString(),
+  }));
+
+  const url = `${SUPABASE_URL}/rest/v1/appsflyer_event_cache?on_conflict=date,media_source,event_name`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates',
+    },
+    body: JSON.stringify(rows),
+  });
+  if (!resp.ok) {
+    console.error('Cache write failed:', await resp.text());
+  } else {
+    console.log(`Cached ${entries.length} AppsFlyer event rows`);
+  }
+}
+
+async function fetchAppsFlyerEventsLive(startDate: string, endDate: string, eventName: string, label: string): Promise<AppsFlyerEventData> {
   const token = Deno.env.get("APPSFLYER_API_TOKEN");
   const appId = Deno.env.get("APPSFLYER_APP_ID");
   
@@ -526,17 +577,68 @@ async function fetchAppsFlyerEvents(startDate: string, endDate: string, eventNam
   }
 }
 
+// Fetch with cache: check DB first, call AppsFlyer only for missing dates, cache results
+async function fetchAppsFlyerEventsWithCache(
+  startDate: string, endDate: string, eventName: string, label: string, mediaSource = 'moloco_int'
+): Promise<AppsFlyerEventData> {
+  const empty: AppsFlyerEventData = { byDate: new Map(), byCampaign: new Map(), total: 0 };
+  
+  // 1. Check cache
+  const cached = await getCachedEvents(startDate, endDate, mediaSource, eventName);
+  console.log(`Cache hit for ${label}: ${cached.size} dates`);
+
+  // 2. Determine missing dates
+  const allDates = getDatesBetween(startDate, endDate);
+  const missingDates = allDates.filter(d => !cached.has(d));
+
+  if (missingDates.length === 0) {
+    // All dates cached
+    let total = 0;
+    for (const count of cached.values()) total += count;
+    console.log(`${label}: fully cached, total=${total}`);
+    return { byDate: cached, byCampaign: new Map(), total };
+  }
+
+  console.log(`${label}: ${missingDates.length} dates missing from cache, fetching from AppsFlyer...`);
+
+  // 3. Fetch missing from AppsFlyer (use full range to minimize API calls)
+  const fetchStart = missingDates.sort()[0];
+  const fetchEnd = missingDates.sort().slice(-1)[0];
+  const liveData = await fetchAppsFlyerEventsLive(fetchStart, fetchEnd, eventName, label);
+
+  // 4. Cache new results (including zero-count dates so we don't re-fetch)
+  if (liveData.total > 0 || missingDates.length > 0) {
+    const cacheEntries = missingDates.map(date => ({
+      date,
+      mediaSource,
+      eventName,
+      count: liveData.byDate.get(date) || 0,
+    }));
+    // Only cache if we got a successful response (not rate-limited)
+    if (liveData.total > 0 || liveData.byDate.size === 0) {
+      await cacheEvents(cacheEntries).catch(err => console.error('Cache write error:', err));
+    }
+  }
+
+  // 5. Merge cached + live data
+  const merged = new Map(cached);
+  for (const [date, count] of liveData.byDate) {
+    merged.set(date, count);
+  }
+
+  let total = 0;
+  for (const count of merged.values()) total += count;
+
+  return { byDate: merged, byCampaign: liveData.byCampaign, total };
+}
+
 // Convenience wrappers
 async function fetchAppsFlyerFtds(startDate: string, endDate: string): Promise<AppsFlyerEventData> {
-  return fetchAppsFlyerEvents(startDate, endDate, 'first_time_deposit', 'FTDs');
+  return fetchAppsFlyerEventsWithCache(startDate, endDate, 'first_time_deposit', 'FTDs');
 }
 
 async function fetchAppsFlyerRegistrations(startDate: string, endDate: string): Promise<AppsFlyerEventData> {
-  return fetchAppsFlyerEvents(startDate, endDate, 'af_complete_registration', 'Registrations');
-}
-    console.error("AppsFlyer FTD fetch error:", err instanceof Error ? err.message : err);
-    return empty;
-  }
+  return fetchAppsFlyerEventsWithCache(startDate, endDate, 'af_complete_registration', 'Registrations');
 }
 
 function mergeAppsFlyerEvents(rows: ProcessedRow[], eventData: AppsFlyerEventData, field: 'ftds' | 'registrations'): void {

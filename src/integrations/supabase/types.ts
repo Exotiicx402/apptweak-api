@@ -137,6 +137,36 @@ export type Database = {
         }
         Relationships: []
       }
+      appsflyer_event_cache: {
+        Row: {
+          created_at: string | null
+          date: string
+          event_count: number
+          event_name: string
+          id: string
+          media_source: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date: string
+          event_count?: number
+          event_name: string
+          id?: string
+          media_source: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date?: string
+          event_count?: number
+          event_name?: string
+          id?: string
+          media_source?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       competitor_watchlist: {
         Row: {
           active: boolean
