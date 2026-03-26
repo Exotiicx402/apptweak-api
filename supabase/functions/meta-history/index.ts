@@ -261,7 +261,6 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
     fields,
     time_range: timeRange,
     level: "ad",
-    filtering: JSON.stringify([{ field: "campaign.name", operator: "CONTAIN", value: "HOURS" }]),
     access_token: accessToken,
     limit: "500",
   });
