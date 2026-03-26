@@ -819,6 +819,7 @@ serve(async (req) => {
       installs: parseInt(row.installs) || 0,
       impressions: parseInt(row.impressions) || 0,
       clicks: parseInt(row.clicks) || 0,
+      registrations: parseInt(row.registrations) || 0,
       ftds: parseInt(row.ftds) || 0,
     }));
 
