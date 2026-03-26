@@ -22,7 +22,7 @@ export function DateRangePicker({
   loading = false,
 }: DateRangePickerProps) {
   const setPreset = (days: number) => {
-    onStartDateChange(getLocalDaysAgo(days));
+    onStartDateChange(getLocalDaysAgo(days + 1));
     onEndDateChange(getLocalYesterday());
   };
 
