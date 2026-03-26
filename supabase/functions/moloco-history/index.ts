@@ -679,14 +679,16 @@ function calculateTotals(rows: ProcessedRow[]): any {
       installs: acc.installs + row.installs,
       impressions: acc.impressions + row.impressions,
       clicks: acc.clicks + row.clicks,
+      registrations: acc.registrations + row.registrations,
       ftds: acc.ftds + row.ftds,
     }),
-    { spend: 0, installs: 0, impressions: 0, clicks: 0, ftds: 0 }
+    { spend: 0, installs: 0, impressions: 0, clicks: 0, registrations: 0, ftds: 0 }
   );
 
   return {
     ...totals,
     cpi: totals.installs > 0 ? totals.spend / totals.installs : 0,
+    cps: totals.registrations > 0 ? totals.spend / totals.registrations : 0,
     cftd: totals.ftds > 0 ? totals.spend / totals.ftds : 0,
   };
 }
