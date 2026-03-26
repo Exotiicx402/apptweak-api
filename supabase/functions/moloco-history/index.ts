@@ -394,6 +394,7 @@ interface AdGroupRow {
   installs: number;
   impressions: number;
   clicks: number;
+  registrations: number;
   ftds: number;
 }
 
@@ -406,6 +407,7 @@ function processAdGroupRows(rows: MolocoRow[]): AdGroupRow[] {
     installs: parseInt(row.metric?.installs || '0', 10),
     impressions: parseInt(row.metric?.impressions || '0', 10),
     clicks: parseInt(row.metric?.clicks || '0', 10),
+    registrations: parseInt(row.metric?.conversions || '0', 10),
     ftds: parseInt(row.metric?.target_actions || '0', 10),
   }));
 }
