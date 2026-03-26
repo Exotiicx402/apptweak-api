@@ -273,7 +273,7 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
     let fetchUrl: string | null = `${baseUrl}?${params.toString()}`;
     let pageCount = 0;
 
-    while (fetchUrl && pageCount < 5) {
+    while (fetchUrl && pageCount < 20) {
       pageCount++;
       const response = await fetch(fetchUrl);
 
