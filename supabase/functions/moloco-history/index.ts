@@ -539,10 +539,9 @@ async function fetchAppsFlyerRegistrations(startDate: string, endDate: string): 
   }
 }
 
-function mergeAppsFlyerFtds(rows: ProcessedRow[], ftdData: AppsFlyerFtdData): void {
-  if (ftdData.total === 0) return;
+function mergeAppsFlyerEvents(rows: ProcessedRow[], eventData: AppsFlyerEventData, field: 'ftds' | 'registrations'): void {
+  if (eventData.total === 0) return;
   
-  // Group rows by date to distribute FTDs proportionally by spend
   const dateGroups = new Map<string, ProcessedRow[]>();
   for (const row of rows) {
     const group = dateGroups.get(row.date) || [];
@@ -551,33 +550,30 @@ function mergeAppsFlyerFtds(rows: ProcessedRow[], ftdData: AppsFlyerFtdData): vo
   }
 
   for (const [date, groupRows] of dateGroups) {
-    const dateFtds = ftdData.byDate.get(date) || 0;
-    if (dateFtds === 0) continue;
+    const count = eventData.byDate.get(date) || 0;
+    if (count === 0) continue;
     
-    // If only one campaign, assign all FTDs to it
     if (groupRows.length === 1) {
-      groupRows[0].ftds = dateFtds;
+      groupRows[0][field] = count;
       continue;
     }
     
-    // Distribute FTDs proportionally by spend
     const totalSpend = groupRows.reduce((s, r) => s + r.spend, 0);
     if (totalSpend === 0) {
-      // Equal distribution
-      const each = Math.floor(dateFtds / groupRows.length);
-      let remainder = dateFtds - each * groupRows.length;
+      const each = Math.floor(count / groupRows.length);
+      let remainder = count - each * groupRows.length;
       for (const row of groupRows) {
-        row.ftds = each + (remainder > 0 ? 1 : 0);
+        row[field] = each + (remainder > 0 ? 1 : 0);
         remainder--;
       }
     } else {
       let assigned = 0;
       for (let i = 0; i < groupRows.length; i++) {
         if (i === groupRows.length - 1) {
-          groupRows[i].ftds = dateFtds - assigned;
+          groupRows[i][field] = count - assigned;
         } else {
-          const share = Math.round(dateFtds * (groupRows[i].spend / totalSpend));
-          groupRows[i].ftds = share;
+          const share = Math.round(count * (groupRows[i].spend / totalSpend));
+          groupRows[i][field] = share;
           assigned += share;
         }
       }
