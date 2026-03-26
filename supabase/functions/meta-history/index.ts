@@ -284,8 +284,6 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
 
       const data = await response.json();
       for (const ad of data.data || []) {
-        const campaignName = ad.campaign_name?.toUpperCase() || "";
-        if (!campaignName.includes("HOURS") || !campaignName.includes("APP")) continue;
 
         const adId = ad.ad_id;
         if (!adId) continue;
