@@ -443,29 +443,29 @@ function aggregateAdGroups(rows: AdGroupRow[]): any[] {
   })).sort((a, b) => b.spend - a.spend);
 }
 
-// ============ AppsFlyer FTD Fetch ============
+// ============ AppsFlyer Event Fetch ============
 
-interface AppsFlyerFtdData {
-  byDate: Map<string, number>;        // date -> ftd count
-  byCampaign: Map<string, number>;    // campaign_name -> ftd count
+interface AppsFlyerEventData {
+  byDate: Map<string, number>;        // date -> event count
+  byCampaign: Map<string, number>;    // campaign_name -> event count
   total: number;
 }
 
-async function fetchAppsFlyerFtds(startDate: string, endDate: string): Promise<AppsFlyerFtdData> {
+async function fetchAppsFlyerEvents(startDate: string, endDate: string, eventName: string, label: string): Promise<AppsFlyerEventData> {
   const token = Deno.env.get("APPSFLYER_API_TOKEN");
   const appId = Deno.env.get("APPSFLYER_APP_ID");
   
-  const empty: AppsFlyerFtdData = { byDate: new Map(), byCampaign: new Map(), total: 0 };
+  const empty: AppsFlyerEventData = { byDate: new Map(), byCampaign: new Map(), total: 0 };
   
   if (!token || !appId) {
-    console.log("AppsFlyer credentials not configured, skipping FTD fetch");
+    console.log(`AppsFlyer credentials not configured, skipping ${label} fetch`);
     return empty;
   }
 
   try {
-    const url = `https://hq1.appsflyer.com/api/raw-data/export/app/${appId}/in_app_events_report/v5?from=${startDate}&to=${endDate}&timezone=America%2FNew_York&media_source=moloco_int&event_name=first_time_deposit&additional_fields=keyword_id`;
+    const url = `https://hq1.appsflyer.com/api/raw-data/export/app/${appId}/in_app_events_report/v5?from=${startDate}&to=${endDate}&timezone=America%2FNew_York&media_source=moloco_int&event_name=${eventName}&additional_fields=keyword_id`;
     
-    console.log(`Fetching AppsFlyer FTDs for Moloco: ${startDate} to ${endDate}`);
+    console.log(`Fetching AppsFlyer ${label} for Moloco: ${startDate} to ${endDate}`);
     
     const response = await fetch(url, {
       headers: {
@@ -476,42 +476,35 @@ async function fetchAppsFlyerFtds(startDate: string, endDate: string): Promise<A
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`AppsFlyer API error [${response.status}]:`, errorText.substring(0, 200));
+      console.error(`AppsFlyer ${label} API error [${response.status}]:`, errorText.substring(0, 200));
       return empty;
     }
 
     const csvText = await response.text();
     if (!csvText.trim()) {
-      console.log("AppsFlyer returned empty response");
+      console.log(`AppsFlyer ${label} returned empty response`);
       return empty;
     }
 
     const lines = csvText.trim().split('\n');
     const headers = lines[0]?.split(',').map(h => h.trim().replace(/"/g, '')) || [];
-    
-    console.log(`AppsFlyer FTD headers: ${headers.join(', ')}`);
 
-    // Find column indices - raw data has one row per event
     const dateIdx = headers.findIndex(h => h.toLowerCase() === 'event time' || h.toLowerCase() === 'event_time');
     const dateAltIdx = dateIdx >= 0 ? dateIdx : headers.findIndex(h => h.toLowerCase().includes('date'));
     const actualDateIdx = dateIdx >= 0 ? dateIdx : dateAltIdx;
     const campaignIdx = headers.findIndex(h => h.toLowerCase() === 'campaign' || h.toLowerCase() === 'campaign_name');
     
     if (actualDateIdx < 0) {
-      console.error("Could not find date column in AppsFlyer response. Headers:", headers.join(', '));
+      console.error(`Could not find date column in AppsFlyer ${label} response.`);
       return empty;
     }
-
-    console.log(`Using date column index ${actualDateIdx} (${headers[actualDateIdx]}), campaign index ${campaignIdx}`);
 
     const byDate = new Map<string, number>();
     const byCampaign = new Map<string, number>();
     let total = 0;
 
-    // Each row = one FTD event in raw data
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-      // Extract just the date part (YYYY-MM-DD) from event time
       const rawDate = values[actualDateIdx] || '';
       const date = rawDate.substring(0, 10);
       const campaign = campaignIdx >= 0 ? (values[campaignIdx] || '') : '';
@@ -525,9 +518,22 @@ async function fetchAppsFlyerFtds(startDate: string, endDate: string): Promise<A
       }
     }
 
-    console.log(`AppsFlyer FTDs: ${total} total across ${byDate.size} dates, ${byCampaign.size} campaigns`);
+    console.log(`AppsFlyer ${label}: ${total} total across ${byDate.size} dates, ${byCampaign.size} campaigns`);
     return { byDate, byCampaign, total };
   } catch (err) {
+    console.error(`AppsFlyer ${label} fetch error:`, err instanceof Error ? err.message : err);
+    return empty;
+  }
+}
+
+// Convenience wrappers
+async function fetchAppsFlyerFtds(startDate: string, endDate: string): Promise<AppsFlyerEventData> {
+  return fetchAppsFlyerEvents(startDate, endDate, 'first_time_deposit', 'FTDs');
+}
+
+async function fetchAppsFlyerRegistrations(startDate: string, endDate: string): Promise<AppsFlyerEventData> {
+  return fetchAppsFlyerEvents(startDate, endDate, 'af_complete_registration', 'Registrations');
+}
     console.error("AppsFlyer FTD fetch error:", err instanceof Error ? err.message : err);
     return empty;
   }
