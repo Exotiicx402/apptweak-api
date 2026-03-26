@@ -914,27 +914,38 @@ serve(async (req) => {
     console.log(`Final merged rows: ${mergedRows.length} (${filteredBqRows.length} from BQ + ${liveRows.length} from live)`);
     console.log(`Final merged previous rows: ${mergedPrevRows.length}`);
 
-    // Fetch AppsFlyer FTD data for both periods in parallel
-    let [currentFtds, prevFtds] = await Promise.all([
+    // Fetch AppsFlyer FTD and Registration data for both periods in parallel
+    const emptyEvents: AppsFlyerEventData = { byDate: new Map(), byCampaign: new Map(), total: 0 };
+    const [currentFtds, prevFtds, currentRegs, prevRegs] = await Promise.all([
       fetchAppsFlyerFtds(startDate, endDate).catch(err => {
         console.error('AppsFlyer current FTD fetch failed (non-blocking):', err);
-        return { byDate: new Map(), byCampaign: new Map(), total: 0 } as AppsFlyerFtdData;
+        return emptyEvents;
       }),
       fetchAppsFlyerFtds(prevStartStr, prevEndStr).catch(err => {
         console.error('AppsFlyer prev FTD fetch failed (non-blocking):', err);
-        return { byDate: new Map(), byCampaign: new Map(), total: 0 } as AppsFlyerFtdData;
+        return emptyEvents;
+      }),
+      fetchAppsFlyerRegistrations(startDate, endDate).catch(err => {
+        console.error('AppsFlyer current registrations fetch failed (non-blocking):', err);
+        return emptyEvents;
+      }),
+      fetchAppsFlyerRegistrations(prevStartStr, prevEndStr).catch(err => {
+        console.error('AppsFlyer prev registrations fetch failed (non-blocking):', err);
+        return emptyEvents;
       }),
     ]);
 
-    // Merge AppsFlyer FTDs into Moloco rows
-    mergeAppsFlyerFtds(mergedRows, currentFtds);
-    mergeAppsFlyerFtds(mergedPrevRows, prevFtds);
+    // Merge AppsFlyer events into Moloco rows
+    mergeAppsFlyerEvents(mergedRows, currentFtds, 'ftds');
+    mergeAppsFlyerEvents(mergedPrevRows, prevFtds, 'ftds');
+    mergeAppsFlyerEvents(mergedRows, currentRegs, 'registrations');
+    mergeAppsFlyerEvents(mergedPrevRows, prevRegs, 'registrations');
 
     // Calculate results
     const totals = calculateTotals(mergedRows);
     const previousTotals = calculateTotals(mergedPrevRows);
 
-    console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}, ftds=${totals.ftds}`);
+    console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}, regs=${totals.registrations}, ftds=${totals.ftds}`);
 
     // Fetch ad-group level data for creative reporting (sequential to respect rate limits)
     let ads: any[] = [];
