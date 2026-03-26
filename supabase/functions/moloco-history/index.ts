@@ -81,6 +81,7 @@ interface ProcessedRow {
   installs: number;
   impressions: number;
   clicks: number;
+  registrations: number;
   ftds: number;
 }
 
