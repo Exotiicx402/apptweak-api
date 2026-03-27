@@ -614,9 +614,11 @@ async function fetchAppsFlyerEventsWithCache(
       eventName,
       count: liveData.byDate.get(date) || 0,
     }));
-    // Only cache if we got a successful response (not rate-limited)
-    if (liveData.total > 0 || liveData.byDate.size === 0) {
+    // Only cache if the API actually returned data rows (prevent poisoning cache with zeros during quota/errors)
+    if (liveData.byDate.size > 0) {
       await cacheEvents(cacheEntries).catch(err => console.error('Cache write error:', err));
+    } else {
+      console.log(`${label}: API returned no data rows — skipping cache write to avoid poisoning`);
     }
   }
 
