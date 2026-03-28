@@ -766,6 +766,95 @@ serve(async (req) => {
       ORDER BY spend DESC
     ` : null;
 
+    // Fallback for legacy tables that don't have adset_id/adset_name
+    const adsQueryWithoutAdset = shouldQueryBigQuery ? `
+      SELECT 
+        ad_id,
+        ad_name,
+        NULL as adset_id,
+        NULL as adset_name,
+        SUM(spend) as spend,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SAFE_DIVIDE(SUM(clicks), SUM(impressions)) as ctr,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'mobile_app_install'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as installs,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_complete_registration', 'complete_registration', 'fb_mobile_complete_registration')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as registrations,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('first_time_deposit', 'app_custom_event.first_time_deposit', 'app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as ftds,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('purchase', 'app_custom_event.fb_mobile_purchase', 'fb_mobile_purchase', 'offsite_conversion.fb_pixel_purchase')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as trades,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('first_time_deposit', 'app_custom_event.first_time_deposit', 'app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS FLOAT64
+            ), 0
+          )
+        ) as ftd_value,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('purchase', 'app_custom_event.fb_mobile_purchase', 'fb_mobile_purchase', 'offsite_conversion.fb_pixel_purchase')
+               LIMIT 1) AS FLOAT64
+            ), 0
+          )
+        ) as trade_value,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'video_view'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as video_3s_views
+      FROM ${fullTable}
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+      ${hoursAppFilter}
+      AND ad_id IS NOT NULL AND ad_id != ''
+      GROUP BY ad_id, ad_name
+      ORDER BY spend DESC
+    ` : null;
+
     const prevTotalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
