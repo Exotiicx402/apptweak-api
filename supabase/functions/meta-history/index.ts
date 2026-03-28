@@ -933,11 +933,11 @@ serve(async (req) => {
             avgWatchTime = parseFloat(totalAction.value) || 0;
           }
         }
-        // Also try video_3_sec_watched_actions for 3s views if not found in actions
-        if (video3sViews === 0 && ad.video_3_sec_watched_actions && Array.isArray(ad.video_3_sec_watched_actions)) {
-          const viewAction = ad.video_3_sec_watched_actions.find((a: any) => a.action_type === "video_view");
-          if (viewAction) {
-            video3sViews = parseInt(viewAction.value) || 0;
+        // Also try video_play_actions for 3s views if not found in actions
+        if (video3sViews === 0 && ad.video_play_actions && Array.isArray(ad.video_play_actions)) {
+          const playAction = ad.video_play_actions.find((a: any) => a.action_type === "video_view");
+          if (playAction) {
+            video3sViews = parseInt(playAction.value) || 0;
           }
         }
 
