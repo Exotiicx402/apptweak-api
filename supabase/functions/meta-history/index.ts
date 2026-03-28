@@ -291,8 +291,8 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
         let video3sViews = 0;
         let avgWatchTime = 0;
 
-        if (ad.video_3_sec_watched_actions && Array.isArray(ad.video_3_sec_watched_actions)) {
-          const viewAction = ad.video_3_sec_watched_actions.find((a: any) => a.action_type === "video_view");
+        if (ad.actions && Array.isArray(ad.actions)) {
+          const viewAction = ad.actions.find((a: any) => a.action_type === "video_view");
           if (viewAction) video3sViews = parseInt(viewAction.value) || 0;
         }
 
