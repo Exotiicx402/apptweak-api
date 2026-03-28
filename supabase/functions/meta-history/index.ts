@@ -195,7 +195,7 @@ async function fetchMetaAdInsights(date: string): Promise<any[]> {
     "ctr",
     "actions",
     "action_values",
-    "video_3_sec_watched_actions",
+    "video_play_actions",
     "video_avg_time_watched_actions",
   ].join(",");
 
@@ -252,7 +252,7 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
     adAccountId = `act_${adAccountId}`;
   }
 
-  const fields = "ad_id,ad_name,campaign_name,impressions,video_3_sec_watched_actions,video_avg_time_watched_actions";
+  const fields = "ad_id,ad_name,campaign_name,impressions,actions,video_avg_time_watched_actions";
 
   const timeRange = JSON.stringify({ since: startDate, until: endDate });
 
@@ -291,8 +291,8 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
         let video3sViews = 0;
         let avgWatchTime = 0;
 
-        if (ad.video_3_sec_watched_actions && Array.isArray(ad.video_3_sec_watched_actions)) {
-          const viewAction = ad.video_3_sec_watched_actions.find((a: any) => a.action_type === "video_view");
+        if (ad.actions && Array.isArray(ad.actions)) {
+          const viewAction = ad.actions.find((a: any) => a.action_type === "video_view");
           if (viewAction) video3sViews = parseInt(viewAction.value) || 0;
         }
 
@@ -766,6 +766,95 @@ serve(async (req) => {
       ORDER BY spend DESC
     ` : null;
 
+    // Fallback for legacy tables that don't have adset_id/adset_name
+    const adsQueryWithoutAdset = shouldQueryBigQuery ? `
+      SELECT 
+        ad_id,
+        ad_name,
+        NULL as adset_id,
+        NULL as adset_name,
+        SUM(spend) as spend,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SAFE_DIVIDE(SUM(clicks), SUM(impressions)) as ctr,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'mobile_app_install'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as installs,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('app_custom_event.fb_mobile_complete_registration', 'complete_registration', 'fb_mobile_complete_registration')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as registrations,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('first_time_deposit', 'app_custom_event.first_time_deposit', 'app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as ftds,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') IN ('purchase', 'app_custom_event.fb_mobile_purchase', 'fb_mobile_purchase', 'offsite_conversion.fb_pixel_purchase')
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as trades,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('first_time_deposit', 'app_custom_event.first_time_deposit', 'app_custom_event.fb_mobile_add_payment_info', 'add_payment_info', 'fb_mobile_add_payment_info')
+               LIMIT 1) AS FLOAT64
+            ), 0
+          )
+        ) as ftd_value,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(av, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(action_values)) AS av 
+               WHERE JSON_EXTRACT_SCALAR(av, '$.action_type') IN ('purchase', 'app_custom_event.fb_mobile_purchase', 'fb_mobile_purchase', 'offsite_conversion.fb_pixel_purchase')
+               LIMIT 1) AS FLOAT64
+            ), 0
+          )
+        ) as trade_value,
+        SUM(
+          IFNULL(
+            CAST(
+              (SELECT JSON_EXTRACT_SCALAR(action, '$.value') 
+               FROM UNNEST(JSON_EXTRACT_ARRAY(actions)) AS action 
+               WHERE JSON_EXTRACT_SCALAR(action, '$.action_type') = 'video_view'
+               LIMIT 1) AS INT64
+            ), 0
+          )
+        ) as video_3s_views
+      FROM ${fullTable}
+      WHERE DATE(timestamp) BETWEEN '${startDate}' AND '${bqEndDate}'
+      ${hoursAppFilter}
+      AND ad_id IS NOT NULL AND ad_id != ''
+      GROUP BY ad_id, ad_name
+      ORDER BY spend DESC
+    ` : null;
+
     const prevTotalsQuery = `
       SELECT 
         SUM(spend) as total_spend,
@@ -878,15 +967,23 @@ serve(async (req) => {
 
     let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, prevDatesData, liveData, liveAdData] = await Promise.all(promises);
 
-    // Try ads query separately - non-blocking if schema doesn't support ad_id/ad_name yet
+    // Try ads query separately with fallback for legacy schemas
     let bqAdsData: any[] = [];
     if (shouldQueryBigQuery && adsQuery) {
       try {
         bqAdsData = await queryBigQuery(adsQuery, googleAccessToken);
         console.log(`Ads query returned ${bqAdsData.length} results`);
       } catch (adsError: any) {
-        console.warn("Ads query failed (columns may not exist yet):", adsError.message);
-        // Continue without ads data - the creative grid will just be empty
+        console.warn("Ads query with adset fields failed, retrying without adset fields:", adsError.message);
+        if (adsQueryWithoutAdset) {
+          try {
+            bqAdsData = await queryBigQuery(adsQueryWithoutAdset, googleAccessToken);
+            console.log(`Ads fallback query returned ${bqAdsData.length} results`);
+          } catch (fallbackAdsError: any) {
+            console.warn("Ads fallback query failed:", fallbackAdsError.message);
+            // Continue without ads data - the creative grid will just be empty
+          }
+        }
       }
     }
 
@@ -933,11 +1030,11 @@ serve(async (req) => {
             avgWatchTime = parseFloat(totalAction.value) || 0;
           }
         }
-        // Also try video_3_sec_watched_actions for 3s views if not found in actions
-        if (video3sViews === 0 && ad.video_3_sec_watched_actions && Array.isArray(ad.video_3_sec_watched_actions)) {
-          const viewAction = ad.video_3_sec_watched_actions.find((a: any) => a.action_type === "video_view");
-          if (viewAction) {
-            video3sViews = parseInt(viewAction.value) || 0;
+        // Also try video_play_actions for 3s views if not found in actions
+        if (video3sViews === 0 && ad.video_play_actions && Array.isArray(ad.video_play_actions)) {
+          const playAction = ad.video_play_actions.find((a: any) => a.action_type === "video_view");
+          if (playAction) {
+            video3sViews = parseInt(playAction.value) || 0;
           }
         }
 
@@ -1352,7 +1449,7 @@ serve(async (req) => {
     // Sort campaign data by spend desc
     campaignData.sort((a: any, b: any) => b.spend - a.spend);
 
-    // Fetch video metrics from live Meta API (BQ doesn't store video_3_sec_watched_actions)
+    // Fetch video metrics from live Meta API (3s views from actions.video_view)
     let videoMetricsMap = new Map<string, { video3sViews: number; avgWatchTime: number }>();
     try {
       videoMetricsMap = await fetchMetaAdVideoMetrics(startDate, endDate);
