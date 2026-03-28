@@ -104,11 +104,15 @@ export default function Reporting() {
                 spend={data.moloco.spend}
                 installs={data.moloco.installs}
                 cpi={data.moloco.cpi}
+                registrations={data.moloco.registrations}
+                cps={data.moloco.registrations > 0 ? data.moloco.spend / data.moloco.registrations : 0}
                 ftds={data.moloco.ftds}
                 cftd={data.moloco.ftds > 0 ? data.moloco.spend / data.moloco.ftds : 0}
                 previousSpend={data.moloco.previousSpend}
                 previousInstalls={data.moloco.previousInstalls}
                 previousCpi={data.moloco.previousCpi}
+                previousRegistrations={data.moloco.previousRegistrations}
+                previousCps={data.moloco.previousRegistrations > 0 ? data.moloco.previousSpend / data.moloco.previousRegistrations : 0}
                 previousFtds={data.moloco.previousFtds}
                 previousCftd={data.moloco.previousFtds > 0 ? data.moloco.previousSpend / data.moloco.previousFtds : 0}
                 loading={data.moloco.isLoading}
