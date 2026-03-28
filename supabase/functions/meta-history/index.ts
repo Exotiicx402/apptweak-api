@@ -195,7 +195,7 @@ async function fetchMetaAdInsights(date: string): Promise<any[]> {
     "ctr",
     "actions",
     "action_values",
-    "video_play_actions",
+    "video_3_sec_watched_actions",
     "video_avg_time_watched_actions",
   ].join(",");
 
@@ -252,7 +252,7 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
     adAccountId = `act_${adAccountId}`;
   }
 
-  const fields = "ad_id,ad_name,campaign_name,impressions,video_play_actions,video_avg_time_watched_actions";
+  const fields = "ad_id,ad_name,campaign_name,impressions,video_3_sec_watched_actions,video_avg_time_watched_actions";
 
   const timeRange = JSON.stringify({ since: startDate, until: endDate });
 
@@ -291,9 +291,9 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
         let video3sViews = 0;
         let avgWatchTime = 0;
 
-        if (ad.video_play_actions && Array.isArray(ad.video_play_actions)) {
-          const playAction = ad.video_play_actions.find((a: any) => a.action_type === "video_view");
-          if (playAction) video3sViews = parseInt(playAction.value) || 0;
+        if (ad.video_3_sec_watched_actions && Array.isArray(ad.video_3_sec_watched_actions)) {
+          const viewAction = ad.video_3_sec_watched_actions.find((a: any) => a.action_type === "video_view");
+          if (viewAction) video3sViews = parseInt(viewAction.value) || 0;
         }
 
         if (ad.video_avg_time_watched_actions && Array.isArray(ad.video_avg_time_watched_actions)) {
@@ -933,11 +933,11 @@ serve(async (req) => {
             avgWatchTime = parseFloat(totalAction.value) || 0;
           }
         }
-        // Also try video_play_actions for 3s views if not found in actions
-        if (video3sViews === 0 && ad.video_play_actions && Array.isArray(ad.video_play_actions)) {
-          const playAction = ad.video_play_actions.find((a: any) => a.action_type === "video_view");
-          if (playAction) {
-            video3sViews = parseInt(playAction.value) || 0;
+        // Also try video_3_sec_watched_actions for 3s views if not found in actions
+        if (video3sViews === 0 && ad.video_3_sec_watched_actions && Array.isArray(ad.video_3_sec_watched_actions)) {
+          const viewAction = ad.video_3_sec_watched_actions.find((a: any) => a.action_type === "video_view");
+          if (viewAction) {
+            video3sViews = parseInt(viewAction.value) || 0;
           }
         }
 
@@ -1352,7 +1352,7 @@ serve(async (req) => {
     // Sort campaign data by spend desc
     campaignData.sort((a: any, b: any) => b.spend - a.spend);
 
-    // Fetch video metrics from live Meta API (BQ doesn't store video_play_actions)
+    // Fetch video metrics from live Meta API (BQ doesn't store video_3_sec_watched_actions)
     let videoMetricsMap = new Map<string, { video3sViews: number; avgWatchTime: number }>();
     try {
       videoMetricsMap = await fetchMetaAdVideoMetrics(startDate, endDate);
