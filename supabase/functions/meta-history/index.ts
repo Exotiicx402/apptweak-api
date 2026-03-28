@@ -1352,7 +1352,7 @@ serve(async (req) => {
     // Sort campaign data by spend desc
     campaignData.sort((a: any, b: any) => b.spend - a.spend);
 
-    // Fetch video metrics from live Meta API (BQ doesn't store video_play_actions)
+    // Fetch video metrics from live Meta API (BQ doesn't store video_3_sec_watched_actions)
     let videoMetricsMap = new Map<string, { video3sViews: number; avgWatchTime: number }>();
     try {
       videoMetricsMap = await fetchMetaAdVideoMetrics(startDate, endDate);
