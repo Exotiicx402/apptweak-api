@@ -967,15 +967,23 @@ serve(async (req) => {
 
     let [bqDailyData, bqCampaignData, bqTotalsData, prevTotalsData, prevDatesData, liveData, liveAdData] = await Promise.all(promises);
 
-    // Try ads query separately - non-blocking if schema doesn't support ad_id/ad_name yet
+    // Try ads query separately with fallback for legacy schemas
     let bqAdsData: any[] = [];
     if (shouldQueryBigQuery && adsQuery) {
       try {
         bqAdsData = await queryBigQuery(adsQuery, googleAccessToken);
         console.log(`Ads query returned ${bqAdsData.length} results`);
       } catch (adsError: any) {
-        console.warn("Ads query failed (columns may not exist yet):", adsError.message);
-        // Continue without ads data - the creative grid will just be empty
+        console.warn("Ads query with adset fields failed, retrying without adset fields:", adsError.message);
+        if (adsQueryWithoutAdset) {
+          try {
+            bqAdsData = await queryBigQuery(adsQueryWithoutAdset, googleAccessToken);
+            console.log(`Ads fallback query returned ${bqAdsData.length} results`);
+          } catch (fallbackAdsError: any) {
+            console.warn("Ads fallback query failed:", fallbackAdsError.message);
+            // Continue without ads data - the creative grid will just be empty
+          }
+        }
       }
     }
 
