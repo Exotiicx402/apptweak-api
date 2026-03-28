@@ -252,7 +252,7 @@ async function fetchMetaAdVideoMetrics(startDate: string, endDate: string): Prom
     adAccountId = `act_${adAccountId}`;
   }
 
-  const fields = "ad_id,ad_name,campaign_name,impressions,video_play_actions,video_avg_time_watched_actions";
+  const fields = "ad_id,ad_name,campaign_name,impressions,video_3_sec_watched_actions,video_avg_time_watched_actions";
 
   const timeRange = JSON.stringify({ since: startDate, until: endDate });
 
