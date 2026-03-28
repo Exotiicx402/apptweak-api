@@ -195,7 +195,7 @@ async function fetchMetaAdInsights(date: string): Promise<any[]> {
     "ctr",
     "actions",
     "action_values",
-    "video_3_sec_watched_actions",
+    "video_play_actions",
     "video_avg_time_watched_actions",
   ].join(",");
 
