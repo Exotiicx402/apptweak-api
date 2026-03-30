@@ -10,7 +10,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
  import { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play, Download, Eye } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Layers, BarChart3, Play, Download, Eye, Globe, User, Target, MapPin, Calendar, Zap, BookOpen, Hash } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { downloadAsset, getDownloadUrl, getDownloadFilename } from "@/lib/downloadAsset";
 import { toast } from "sonner";
