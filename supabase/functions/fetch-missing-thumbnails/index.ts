@@ -110,9 +110,9 @@ serve(async (req) => {
     const creativeIds = Array.from(uniqueCreatives.keys());
     const creativeDetails = new Map<string, any>();
 
-    for (let i = 0; i < creativeIds.length; i += 50) {
-      const batch = creativeIds.slice(i, i + 50);
-      const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(',')}&fields=id,object_type,image_url,image_hash,video_id&access_token=${accessToken}`;
+    for (let i = 0; i < creativeIds.length; i += 25) {
+      const batch = creativeIds.slice(i, i + 25);
+      const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(',')}&fields=id,object_type,image_url,image_hash,video_id,thumbnail_url,object_story_spec&access_token=${accessToken}`;
       try {
         const res = await fetch(url);
         if (res.ok) {
@@ -120,6 +120,8 @@ serve(async (req) => {
           for (const [id, detail] of Object.entries(data)) {
             creativeDetails.set(id, detail);
           }
+        } else {
+          console.warn(`Batch fetch status ${res.status}: ${await res.text()}`);
         }
       } catch (e) { console.warn(`Batch fetch error: ${e}`); }
     }
@@ -211,11 +213,11 @@ serve(async (req) => {
       let posterUrl: string | null = null;
 
       if (isVideo) {
-        console.log(`Video creative ${creativeId}: poster=${detail.videoPosterUrl}, source=${detail.videoSourceUrl}`);
         // Store video poster as thumbnail
-        if (detail.videoPosterUrl) {
+        const videoPoster = detail.videoPosterUrl || detail.thumbnail_url;
+        if (videoPoster) {
           const path = `meta/${safeConcept}/${safeUnique}_poster.jpg`;
-          const stored = await downloadAndStore(supabase, detail.videoPosterUrl, path, 'image/jpeg');
+          const stored = await downloadAndStore(supabase, videoPoster, path, 'image/jpeg');
           if (stored) { posterUrl = stored; thumbnailUrl = stored; }
         }
         if (detail.videoSourceUrl) {
@@ -224,8 +226,18 @@ serve(async (req) => {
           if (stored) fullAssetUrl = stored;
         }
       } else {
-        const imageUrl = detail.resolvedImageUrl || detail.image_url;
-        console.log(`Image creative ${creativeId}: resolvedImageUrl=${detail.resolvedImageUrl}, image_url=${detail.image_url}, image_hash=${detail.image_hash}`);
+        // For SHARE creatives, extract image from object_story_spec or use thumbnail_url
+        let imageUrl = detail.resolvedImageUrl || detail.image_url;
+        if (!imageUrl && detail.object_story_spec) {
+          const spec = detail.object_story_spec;
+          imageUrl = spec.link_data?.image_url || spec.link_data?.picture 
+            || spec.photo_data?.url || spec.photo_data?.images?.[0]?.url
+            || null;
+        }
+        if (!imageUrl && detail.thumbnail_url) {
+          imageUrl = detail.thumbnail_url;
+        }
+        console.log(`Image creative ${creativeId}: resolved=${!!imageUrl}, object_type=${detail.object_type}`);
         if (imageUrl) {
           const ext = getExtension(imageUrl);
           const path = `meta/${safeConcept}/${safeUnique}.${ext}`;
