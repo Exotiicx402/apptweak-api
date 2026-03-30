@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon, RefreshCw } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon, RefreshCw, ArrowUpDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useMultiPlatformCreatives, EnrichedCreative, Platform } from "@/hooks/useMultiPlatformCreatives";
@@ -15,9 +15,13 @@ import { ColumnSettingsPopover, ColumnConfig, defaultColumnConfig } from "./Colu
 import { CreativeBreakdownDialog } from "./CreativeBreakdownDialog";
 import { CreativePreviewDialog } from "./CreativePreviewDialog";
 import { AttributeFilterBar, AttributeFilters } from "./AttributeFilterBar";
+import { AttributeLeaderboard } from "./AttributeLeaderboard";
+import { CreativeSummaryBar } from "./CreativeSummaryBar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type ViewMode = "cards" | "table";
 type AssetTypeFilter = "all" | "image" | "video";
+type SortKey = "spend" | "ftds" | "cftd" | "cpi" | "ctr" | "installs";
 
 function isVideoCreative(creative: EnrichedCreative): boolean {
   // Primary: use asset_type from creative_assets table ("image" or "video")
@@ -294,6 +298,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   const [attributeFilters, setAttributeFilters] = useState<AttributeFilters>({});
   const [fetchingMissing, setFetchingMissing] = useState(false);
   const [lowResCreativeNames, setLowResCreativeNames] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>("spend");
 
   const missingCount = data.filter(c => !c.assetUrl).length;
   const fetchableMissingCreatives = data.filter(
@@ -410,11 +415,29 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   });
 
   // Filter by asset type
-  const filteredData = attributeFilteredData.filter((creative) => {
+  const assetTypeFiltered = attributeFilteredData.filter((creative) => {
     if (assetTypeFilter === "all") return true;
     if (assetTypeFilter === "video") return isVideoCreative(creative);
     return !isVideoCreative(creative);
   });
+
+  // Sort
+  const filteredData = [...assetTypeFiltered].sort((a, b) => {
+    if (sortKey === "cftd" || sortKey === "cpi") {
+      // Lower is better; push zeros to end
+      if (a[sortKey] === 0 && b[sortKey] === 0) return b.spend - a.spend;
+      if (a[sortKey] === 0) return 1;
+      if (b[sortKey] === 0) return -1;
+      return a[sortKey] - b[sortKey];
+    }
+    return b[sortKey] - a[sortKey];
+  });
+
+  const handleLeaderboardClick = (key: string, value: string) => {
+    const current = attributeFilters[key] || [];
+    if (current.includes(value)) return;
+    setAttributeFilters({ ...attributeFilters, [key]: [...current, value] });
+  };
 
   const videoCount = attributeFilteredData.filter(isVideoCreative).length;
   const imageCount = attributeFilteredData.length - videoCount;
@@ -446,6 +469,20 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
               Fetch/Upgrade {fetchableMissingCount}
             </Button>
           )}
+          <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+            <SelectTrigger className="w-[130px] h-8 text-xs">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="spend">Spend</SelectItem>
+              <SelectItem value="ftds">FTDs</SelectItem>
+              <SelectItem value="cftd">CFTD (low)</SelectItem>
+              <SelectItem value="cpi">CPI (low)</SelectItem>
+              <SelectItem value="ctr">CTR</SelectItem>
+              <SelectItem value="installs">Installs</SelectItem>
+            </SelectContent>
+          </Select>
           <ColumnSettingsPopover config={columnConfig} onChange={setColumnConfig} />
           <ToggleGroup 
             type="single" 
@@ -538,6 +575,8 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   return (
     <div className="mt-8">
       {headerContent}
+      <AttributeLeaderboard data={attributeFilteredData} onAttributeClick={handleLeaderboardClick} />
+      <CreativeSummaryBar data={filteredData} />
       {viewMode === "cards" ? (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredData.map((creative) => (
