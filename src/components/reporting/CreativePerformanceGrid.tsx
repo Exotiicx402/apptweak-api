@@ -302,10 +302,10 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
 
   const missingCount = data.filter(c => !c.assetUrl).length;
   const fetchableMissingCreatives = data.filter(
-    (creative) => !creative.assetUrl && (creative.platform === "meta" || creative.platform === "blended")
+    (creative) => !creative.assetUrl && (creative.platform === "meta" || creative.platform === "moloco" || creative.platform === "blended")
   );
   const fetchableUpgradeCreatives = data.filter(
-    (creative) => lowResCreativeNames.has(creative.adName) && (creative.platform === "meta" || creative.platform === "blended")
+    (creative) => lowResCreativeNames.has(creative.adName) && (creative.platform === "meta" || creative.platform === "moloco" || creative.platform === "blended")
   );
   const fetchableMissingCount = Array.from(new Set([
     ...fetchableMissingCreatives.map((creative) => creative.adName),
@@ -316,7 +316,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
     let cancelled = false;
 
     const resolutionCandidates = data
-      .filter((creative) => !!creative.assetUrl && (creative.platform === "meta" || creative.platform === "blended"))
+      .filter((creative) => !!creative.assetUrl && (creative.platform === "meta" || creative.platform === "moloco" || creative.platform === "blended"))
       .slice(0, 200);
 
     if (resolutionCandidates.length === 0) {
@@ -354,31 +354,50 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   }, [data]);
 
   const handleFetchMissing = async () => {
-    const missingNames = Array.from(new Set([
-      ...fetchableMissingCreatives.map((creative) => creative.adName),
-      ...fetchableUpgradeCreatives.map((creative) => creative.adName),
-    ]));
+    const allMissing = [...fetchableMissingCreatives, ...fetchableUpgradeCreatives];
+    const missingNames = Array.from(new Set(allMissing.map((c) => c.adName)));
     if (missingNames.length === 0) {
       if (missingCount > 0) {
-        toast.info("Remaining missing creatives are non-Meta and can’t be fetched by this action.");
+        toast.info("Remaining missing creatives can't be fetched by this action.");
       } else {
         toast.info("All creatives already have thumbnails!");
       }
       return;
     }
+
+    const platformsNeeded = new Set(allMissing.map((c) => c.platform === "blended" ? "meta" : c.platform));
+
     setFetchingMissing(true);
-    toast.info(`Fetching/upgrading thumbnails for ${missingNames.length} Meta creatives...`);
+    toast.info(`Fetching/upgrading thumbnails for ${missingNames.length} creatives...`);
     try {
-      const { data: result, error } = await supabase.functions.invoke('fetch-missing-thumbnails', {
-        body: { missingNames },
-      });
-      if (error) throw error;
-      if (result?.processed > 0) {
-        await fetchAllPlatforms(startDate, endDate);
-        toast.success(`Fetched ${result.processed} new thumbnails and refreshed results.`);
-      } else {
-        toast.info("No new thumbnails could be fetched from Meta API.");
+      if (platformsNeeded.has("meta")) {
+        const metaNames = Array.from(new Set(
+          allMissing
+            .filter((c) => c.platform === "meta" || c.platform === "blended")
+            .map((c) => c.adName)
+        ));
+        if (metaNames.length > 0) {
+          const { data: result, error } = await supabase.functions.invoke('fetch-missing-thumbnails', {
+            body: { missingNames: metaNames },
+          });
+          if (error) console.error("Meta fetch error:", error);
+          else if (result?.processed > 0) {
+            toast.success(`Fetched ${result.processed} Meta thumbnails.`);
+          }
+        }
       }
+
+      if (platformsNeeded.has("moloco")) {
+        const { data: result, error } = await supabase.functions.invoke('fetch-creative-assets', {
+          body: { platforms: ['moloco'], forceRefresh: true },
+        });
+        if (error) console.error("Moloco fetch error:", error);
+        else if (result?.processed > 0) {
+          toast.success(`Fetched ${result.processed} Moloco assets.`);
+        }
+      }
+
+      await fetchAllPlatforms(startDate, endDate);
     } catch (err) {
       toast.error(`Failed to fetch thumbnails: ${err instanceof Error ? err.message : String(err)}`);
     } finally {

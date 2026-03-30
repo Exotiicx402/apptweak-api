@@ -94,13 +94,13 @@ const Controls = () => {
     }, 1000);
   };
 
-  const handleRepopulateAssets = async () => {
+  const handleRepopulateAssets = async (platforms: string[] = ['meta', 'moloco']) => {
     setIsRepopulatingAssets(true);
-    setAssetSyncProgress("Starting asset sync...");
+    setAssetSyncProgress(`Syncing ${platforms.join(' + ')} assets...`);
     
     try {
       const { data, error } = await supabase.functions.invoke('fetch-creative-assets', {
-        body: { platforms: ['meta'], forceRefresh: true }
+        body: { platforms, forceRefresh: true }
       });
 
       if (error) throw error;
@@ -169,7 +169,7 @@ const Controls = () => {
                 Repopulate Creative Assets
               </CardTitle>
               <CardDescription>
-                Re-download all Meta creative assets at full resolution (may take several minutes)
+                Re-download creative assets at full resolution from Meta &amp; Moloco (may take several minutes)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -179,24 +179,44 @@ const Controls = () => {
                   <Progress value={undefined} className="h-2" />
                 </div>
               )}
-              <Button 
-                onClick={handleRepopulateAssets} 
-                disabled={isRepopulatingAssets}
-                variant="outline"
-                className="w-full border-amber-500/30 hover:bg-amber-500/10"
-              >
-                {isRepopulatingAssets ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Syncing assets...
-                  </>
-                ) : (
-                  <>
-                    <ImageIcon className="w-4 h-4 mr-2" />
-                    Repopulate Meta Assets
-                  </>
-                )}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => handleRepopulateAssets(['meta', 'moloco'])} 
+                  disabled={isRepopulatingAssets}
+                  variant="outline"
+                  className="flex-1 border-amber-500/30 hover:bg-amber-500/10"
+                >
+                  {isRepopulatingAssets ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Syncing...
+                    </>
+                  ) : (
+                    <>
+                      <ImageIcon className="w-4 h-4 mr-2" />
+                      Sync All
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  onClick={() => handleRepopulateAssets(['meta'])} 
+                  disabled={isRepopulatingAssets}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                >
+                  Meta Only
+                </Button>
+                <Button 
+                  onClick={() => handleRepopulateAssets(['moloco'])} 
+                  disabled={isRepopulatingAssets}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                >
+                  Moloco Only
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

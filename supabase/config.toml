@@ -121,3 +121,6 @@ verify_jwt = false
 [functions.backfill-creative-assets]
 verify_jwt = false
 
+[functions.fetch-creative-assets]
+verify_jwt = false
+
