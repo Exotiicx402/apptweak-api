@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon, RefreshCw } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon, RefreshCw, ArrowUpDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useMultiPlatformCreatives, EnrichedCreative, Platform } from "@/hooks/useMultiPlatformCreatives";
@@ -15,6 +15,9 @@ import { ColumnSettingsPopover, ColumnConfig, defaultColumnConfig } from "./Colu
 import { CreativeBreakdownDialog } from "./CreativeBreakdownDialog";
 import { CreativePreviewDialog } from "./CreativePreviewDialog";
 import { AttributeFilterBar, AttributeFilters } from "./AttributeFilterBar";
+import { AttributeLeaderboard } from "./AttributeLeaderboard";
+import { CreativeSummaryBar } from "./CreativeSummaryBar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type ViewMode = "cards" | "table";
 type AssetTypeFilter = "all" | "image" | "video";
