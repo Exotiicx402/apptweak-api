@@ -553,7 +553,7 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    let platforms = ['meta', 'snapchat'];
+    let platforms = ['meta', 'snapchat', 'moloco'];
     let forceRefresh = false;
     
     if (req.method === "POST") {
