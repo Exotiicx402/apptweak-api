@@ -1,55 +1,79 @@
 
+Goal: add true Moloco creative asset support, separate from Meta, so Moloco creatives can show thumbnails/media in the reporting grid and detail dialog.
 
-# Creative Analytics Enhancement
+What I found
+- Moloco performance data already exists: `supabase/functions/moloco-history/index.ts` returns ad-group level rows and the UI already surfaces them as Moloco creatives.
+- The missing piece is asset ingestion, not reporting data.
+- `src/hooks/useMultiPlatformCreatives.ts` already reads creative assets from the shared `creative_assets` table for any platform, including `moloco`.
+- But `supabase/functions/fetch-creative-assets/index.ts` only processes `meta` and `snapchat`. There is no Moloco branch at all.
+- The manual sync control in `src/pages/Controls.tsx` is also hardcoded to `platforms: ['meta']`, which reinforces that Moloco assets were never wired up.
+- The current “fetch missing thumbnails” flow in `src/components/reporting/CreativePerformanceGrid.tsx` is explicitly Meta-only.
 
-## Current State
-The creative section shows individual ad cards with metrics and attribute badges (Angle, Tactic, Hook). Filtering exists but there's no **aggregated view** that answers "which Angles/Tactics/Hooks perform best overall?"
+Implementation plan
 
-## Proposed Features
+1. Add Moloco asset fetch support in the asset sync function
+- Extend `supabase/functions/fetch-creative-assets/index.ts` with a new Moloco fetch pipeline.
+- Use the existing Moloco auth flow pattern already present in `moloco-history`.
+- Query Moloco creative/creative-group endpoints to retrieve:
+  - creative or creative-group ID
+  - name/title
+  - image/video asset URL(s) or preview URL(s)
+  - asset type where available
+- Normalize the response into the same shape already used for Meta/Snapchat so the rest of the function can reuse existing download/store/upsert logic.
 
-### 1. Attribute Performance Leaderboards
-A new tabbed section above the card grid showing aggregated performance **by attribute dimension**. Each tab (Angle, Tactic, Hook, Content Type, Category) displays a ranked bar chart or mini-table:
+2. Map Moloco assets to reporting creatives reliably
+- Use the Moloco creative/ad-group naming already returned by `moloco-history` and align it with the asset records saved into `creative_assets`.
+- Prefer a stable Moloco platform creative ID for `platform_creative_id`.
+- Keep `creative_name` aligned with the ad-group title used in reporting so `useMultiPlatformCreatives` can match assets immediately without extra backend changes.
 
+3. Store Moloco assets in the existing shared asset table/bucket
+- Reuse the existing `creative-assets` bucket and `creative_assets` table.
+- Save Moloco assets with:
+  - `platform: 'moloco'`
+  - `thumbnail_url`
+  - `full_asset_url` when available
+  - `poster_url` for videos if available
+  - `original_url`
+  - `asset_type`
+  - `platform_creative_id`
+- Use a Moloco-specific storage path like `moloco/<concept>/<id>...` to keep assets organized.
+
+4. Enable Moloco asset sync from the app
+- Update `src/pages/Controls.tsx` so the repopulate action can include Moloco, instead of only Meta.
+- Update the user-facing labels so it’s clear the asset sync supports Moloco too.
+- Optionally support syncing both platforms in one run while still allowing targeted platform syncs.
+
+5. Let the reporting UI fetch missing Moloco assets too
+- Update `src/components/reporting/CreativePerformanceGrid.tsx` so the “fetch missing thumbnails” action is not Meta-only.
+- Split the missing creatives by platform and invoke the correct backend sync path for Moloco assets as well.
+- Keep Meta-specific fallback behavior only where it truly depends on Meta APIs.
+
+6. Keep the preview dialog platform-aware
+- Do not reuse the Meta ad preview iframe for Moloco.
+- For Moloco creatives, default to the stored image/video asset in `CreativePreviewDialog`.
+- If Moloco provides only image assets, show those directly; if video/poster is available, reuse the existing video player path.
+
+Technical details
 ```text
-┌─────────────────────────────────────────────────────┐
-│  [Angle] [Tactic] [Hook] [Content Type] [Category]  │
-├─────────────────────────────────────────────────────┤
-│  Angle          Spend      FTDs   CFTD    CTR       │
-│  ──────         ─────      ────   ────    ───       │
-│  Offer          $45k       114    $395    1.49%     │
-│  USP            $24k        70    $346    1.00%     │
-│  FOMO           $6k         23    $258    13.0%     │
-│  MarketOdds     $6k         23    $258    13.0%     │
-│  ░░░░░░░░░░░░░░░░░░░░░  (horizontal bar chart)     │
-└─────────────────────────────────────────────────────┘
+Current state
+Moloco reporting data -> yes
+Moloco assets in creative_assets -> no
+Moloco asset sync branch -> missing
+
+Target flow
+Moloco API -> fetch creative/creative-group assets
+          -> download to creative-assets bucket
+          -> upsert creative_assets rows (platform='moloco')
+          -> useMultiPlatformCreatives resolves assetUrl
+          -> reporting grid + dialog show Moloco media
 ```
 
-- Rows sorted by spend (or user-selectable: FTDs, CFTD, CTR)
-- Horizontal spend bar behind each row for visual weight
-- Clicking a row auto-applies that attribute as a filter on the grid below
+Files to update
+- `supabase/functions/fetch-creative-assets/index.ts`
+- `src/pages/Controls.tsx`
+- `src/components/reporting/CreativePerformanceGrid.tsx`
+- Possibly `src/components/reporting/CreativePreviewDialog.tsx` for cleaner Moloco defaults
 
-### 2. Sort Controls for Card Grid
-Add a "Sort by" dropdown to the grid header: Spend, FTDs, CFTD (low is good), CPI, CTR, Installs. Currently hardcoded to spend descending.
-
-### 3. Quick-Stat Summary Bar
-A compact row of 4-5 chips between the leaderboard and the grid showing totals for the current filter selection:
-- Total Spend, Total FTDs, Avg CFTD, Avg CTR, Creative Count
-
-### Technical Details
-
-**New component**: `src/components/reporting/AttributeLeaderboard.tsx`
-- Accepts the full `EnrichedCreative[]` array
-- Groups by selected attribute key, aggregates spend/installs/ftds/clicks/impressions
-- Computes derived metrics (CFTD, CTR, CPI) from aggregated raw totals
-- Renders a tabbed view with sortable mini-table + inline bar visualization
-- Emits `onAttributeClick(key, value)` to set filters on the parent grid
-
-**New component**: `src/components/reporting/CreativeSummaryBar.tsx`
-- Shows aggregated stats for whatever is currently filtered
-
-**Modified files**:
-- `src/components/reporting/CreativePerformanceGrid.tsx` -- add sort dropdown state, integrate leaderboard + summary bar, wire up click-to-filter from leaderboard
-- `src/hooks/useMultiPlatformCreatives.ts` -- expose raw totals for proper aggregation (if not already available)
-
-**No backend changes needed** -- all aggregation is client-side from existing data.
-
+Notes / risk
+- The biggest unknown is the exact Moloco endpoint/field combination for downloadable creative media URLs. Before implementation, I would inspect the Moloco creative/creative-group response shape and wire to the best available asset URL fields.
+- No database migration should be needed unless Moloco requires storing extra identifiers beyond the current schema.
