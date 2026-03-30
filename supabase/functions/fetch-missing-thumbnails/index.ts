@@ -221,7 +221,7 @@ serve(async (req) => {
 
     for (let i = 0; i < creativeIds.length; i += 25) {
       const batch = creativeIds.slice(i, i + 25);
-      const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(',')}&fields=id,object_type,image_url,image_hash,video_id,thumbnail_url,object_story_spec&access_token=${accessToken}`;
+      const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(',')}&fields=id,object_type,image_url,image_hash,video_id,thumbnail_url,object_story_spec,effective_object_story_id&access_token=${accessToken}`;
       try {
         const res = await fetch(url);
         if (res.ok) {
