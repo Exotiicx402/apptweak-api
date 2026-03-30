@@ -575,6 +575,8 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   return (
     <div className="mt-8">
       {headerContent}
+      <AttributeLeaderboard data={attributeFilteredData} onAttributeClick={handleLeaderboardClick} />
+      <CreativeSummaryBar data={filteredData} />
       {viewMode === "cards" ? (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredData.map((creative) => (
