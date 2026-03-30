@@ -26,6 +26,111 @@ function parseCreativeName(name: string): { conceptId: string; uniqueId: string 
   return { conceptId: parts[3] || '', uniqueId: parts[4] || '' };
 }
 
+const LOW_RES_DIMENSION_THRESHOLD = 220;
+
+function isLikelyLowResUrl(url: string | null | undefined): boolean {
+  if (!url) return true;
+  const lower = url.toLowerCase();
+
+  if (lower.includes('p64x64')) return true;
+  if (/\/s\d{1,3}x\d{1,3}\//i.test(lower)) return true;
+
+  const width = lower.match(/[?&](?:w|width)=(\d{1,4})/i)?.[1];
+  const height = lower.match(/[?&](?:h|height)=(\d{1,4})/i)?.[1];
+  if ((width && Number(width) <= LOW_RES_DIMENSION_THRESHOLD) || (height && Number(height) <= LOW_RES_DIMENSION_THRESHOLD)) {
+    return true;
+  }
+
+  return false;
+}
+
+function toNumber(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getImageArea(image: any): number {
+  const width = toNumber(image?.original_width ?? image?.width);
+  const height = toNumber(image?.original_height ?? image?.height);
+  return width * height;
+}
+
+function collectCreativeImageHashes(detail: any): string[] {
+  const hashes = new Set<string>();
+
+  if (detail?.image_hash) hashes.add(detail.image_hash);
+
+  const spec = detail?.object_story_spec;
+  const linkData = spec?.link_data;
+  const photoData = spec?.photo_data;
+
+  if (linkData?.image_hash) hashes.add(linkData.image_hash);
+  if (photoData?.image_hash) hashes.add(photoData.image_hash);
+
+  if (Array.isArray(photoData?.images)) {
+    for (const image of photoData.images) {
+      if (image?.hash) hashes.add(image.hash);
+    }
+  }
+
+  return Array.from(hashes);
+}
+
+function resolveBestImageUrl(detail: any): { url: string | null; source: string } {
+  const spec = detail?.object_story_spec;
+  const linkData = spec?.link_data;
+  const photoData = spec?.photo_data;
+  const photoImages = Array.isArray(photoData?.images)
+    ? [...photoData.images].sort((a: any, b: any) => getImageArea(b) - getImageArea(a))
+    : [];
+
+  const candidates: Array<{ url: string | null | undefined; source: string }> = [
+    { url: detail?.resolvedImageUrl, source: 'adimages(hash)' },
+    { url: linkData?.image_url, source: 'object_story_spec.link_data.image_url' },
+    { url: photoImages[0]?.url, source: 'object_story_spec.photo_data.images[0].url' },
+    { url: detail?.image_url, source: 'creative.image_url' },
+    { url: photoData?.url, source: 'object_story_spec.photo_data.url' },
+    { url: linkData?.picture, source: 'object_story_spec.link_data.picture' },
+    { url: detail?.thumbnail_url, source: 'creative.thumbnail_url' },
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate.url) continue;
+    if (isLikelyLowResUrl(candidate.url)) continue;
+    return { url: candidate.url, source: candidate.source };
+  }
+
+  return { url: null, source: 'none' };
+}
+
+function getHighResFacebookUrlCandidates(url: string): string[] {
+  const candidates = new Set<string>([url]);
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const isFacebookCdn = host.includes('fbcdn.net') || host.includes('facebook.com');
+    if (!isFacebookCdn) return Array.from(candidates);
+
+    const noResize = new URL(parsed.toString());
+    for (const key of ['stp', 'w', 'h', 'width', 'height']) {
+      noResize.searchParams.delete(key);
+    }
+    candidates.add(noResize.toString());
+
+    const pathUpscaled = new URL(noResize.toString());
+    pathUpscaled.pathname = pathUpscaled.pathname
+      .replace(/\/p64x64\//gi, '/p1080x1080/')
+      .replace(/\/s64x64\//gi, '/s1080x1080/')
+      .replace(/\/s\d{1,3}x\d{1,3}\//gi, '/s1080x1080/');
+    candidates.add(pathUpscaled.toString());
+  } catch {
+    return Array.from(candidates);
+  }
+
+  return Array.from(candidates).filter((candidate) => !isLikelyLowResUrl(candidate));
+}
+
 async function downloadAndStore(
   supabase: any, url: string, path: string, hint?: string
 ): Promise<string | null> {
@@ -137,10 +242,12 @@ serve(async (req) => {
     const hashToIds = new Map<string, string[]>();
     for (const [id, detail] of creativeDetails) {
       const d = detail as any;
-      if (d.image_hash && d.object_type !== 'VIDEO') {
-        const ids = hashToIds.get(d.image_hash) || [];
+      if (d.object_type === 'VIDEO') continue;
+      const hashes = collectCreativeImageHashes(d);
+      for (const hash of hashes) {
+        const ids = hashToIds.get(hash) || [];
         ids.push(id);
-        hashToIds.set(d.image_hash, ids);
+        hashToIds.set(hash, ids);
       }
     }
 
@@ -149,7 +256,7 @@ serve(async (req) => {
       for (let i = 0; i < hashes.length; i += 50) {
         const batch = hashes.slice(i, i + 50);
         const hashParam = batch.map(h => `'${h}'`).join(',');
-        const url = `https://graph.facebook.com/v19.0/${adAccountId}/adimages?hashes=[${hashParam}]&fields=hash,url&access_token=${accessToken}`;
+        const url = `https://graph.facebook.com/v19.0/${adAccountId}/adimages?hashes=[${hashParam}]&fields=hash,url,width,height,original_width,original_height&access_token=${accessToken}`;
         try {
           const res = await fetch(url);
           if (res.ok) {
@@ -158,7 +265,16 @@ serve(async (req) => {
               if (img.hash && img.url) {
                 for (const id of hashToIds.get(img.hash) || []) {
                   const d = creativeDetails.get(id) as any;
-                  if (d) d.resolvedImageUrl = img.url;
+                  if (!d) continue;
+                  const currentArea = getImageArea(d.resolvedImageMeta);
+                  const nextArea = getImageArea(img);
+                  if (!d.resolvedImageUrl || nextArea >= currentArea) {
+                    d.resolvedImageUrl = img.url;
+                    d.resolvedImageMeta = {
+                      width: img.original_width ?? img.width,
+                      height: img.original_height ?? img.height,
+                    };
+                  }
                 }
               }
             }
@@ -226,23 +342,25 @@ serve(async (req) => {
           if (stored) fullAssetUrl = stored;
         }
       } else {
-        // For SHARE creatives, extract image from object_story_spec or use thumbnail_url
-        let imageUrl = detail.resolvedImageUrl || detail.image_url;
-        if (!imageUrl && detail.object_story_spec) {
-          const spec = detail.object_story_spec;
-          imageUrl = spec.link_data?.image_url || spec.link_data?.picture 
-            || spec.photo_data?.url || spec.photo_data?.images?.[0]?.url
-            || null;
-        }
-        if (!imageUrl && detail.thumbnail_url) {
-          imageUrl = detail.thumbnail_url;
-        }
-        console.log(`Image creative ${creativeId}: resolved=${!!imageUrl}, object_type=${detail.object_type}`);
-        if (imageUrl) {
-          const ext = getExtension(imageUrl);
+        const resolved = resolveBestImageUrl(detail);
+        const imageCandidates = resolved.url ? getHighResFacebookUrlCandidates(resolved.url) : [];
+        console.log(`Image creative ${creativeId}: resolved=${!!resolved.url}, source=${resolved.source}, candidates=${imageCandidates.length}, object_type=${detail.object_type}`);
+        let storedAny = false;
+        for (const candidateUrl of imageCandidates) {
+          const ext = getExtension(candidateUrl);
           const path = `meta/${safeConcept}/${safeUnique}.${ext}`;
-          const stored = await downloadAndStore(supabase, imageUrl, path);
-          if (stored) { fullAssetUrl = stored; thumbnailUrl = stored; }
+          const stored = await downloadAndStore(supabase, candidateUrl, path);
+          if (stored) {
+            fullAssetUrl = stored;
+            thumbnailUrl = stored;
+            detail.resolvedImageUrl = candidateUrl;
+            storedAny = true;
+            break;
+          }
+        }
+
+        if (!storedAny) {
+          console.log(`Skipped ${creativeId}: no HD-capable image URL found (low-res-only candidates).`);
         }
       }
 
@@ -257,7 +375,7 @@ serve(async (req) => {
           thumbnail_url: thumbnailUrl,
           full_asset_url: fullAssetUrl,
           poster_url: posterUrl,
-          original_url: detail.resolvedImageUrl || detail.image_url || detail.videoSourceUrl || null,
+            original_url: detail.resolvedImageUrl || detail.image_url || detail.videoSourceUrl || null,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'platform,platform_creative_id' });
 
