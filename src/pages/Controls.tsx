@@ -94,13 +94,13 @@ const Controls = () => {
     }, 1000);
   };
 
-  const handleRepopulateAssets = async () => {
+  const handleRepopulateAssets = async (platforms: string[] = ['meta', 'moloco']) => {
     setIsRepopulatingAssets(true);
-    setAssetSyncProgress("Starting asset sync...");
+    setAssetSyncProgress(`Syncing ${platforms.join(' + ')} assets...`);
     
     try {
       const { data, error } = await supabase.functions.invoke('fetch-creative-assets', {
-        body: { platforms: ['meta'], forceRefresh: true }
+        body: { platforms, forceRefresh: true }
       });
 
       if (error) throw error;
