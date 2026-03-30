@@ -1,26 +1,39 @@
 
 
-## Fix: Clear stale zero-count cache and re-fetch AppsFlyer data
+## Problem
 
-### Problem
-When the AppsFlyer quota was hit, the caching logic wrote `event_count = 0` for all dates. Now that the quota has reset, the system reads cached zeros and never re-fetches.
+The thumbnails showing up in the grid are not 1080x1080. The issue is in how the edge function resolves and downloads images:
 
-### Plan
+1. **`adimages` endpoint returns full-res URLs** -- this is the best source and does return large images. But many SHARE creatives have no `image_hash`, so this path is skipped entirely.
 
-**1. Clear the stale cache entries (database migration)**
-- Delete all rows from `appsflyer_event_cache` where `media_source = 'moloco_int'` so the system re-fetches everything fresh.
+2. **Fallback URLs from `object_story_spec` are CDN-served** -- Meta returns URLs like `https://scontent.fbcdn.net/...` which are often pre-sized by Meta (e.g., 600x600, 400x400). The current `getHighResFacebookUrlCandidates` tries path manipulation but this only works for the `/p64x64/` pattern, not for general CDN sizing.
 
-**2. Fix the caching logic to avoid this in the future (`moloco-history/index.ts`)**
-- Update `fetchAppsFlyerEventsWithCache` so it does NOT cache zero-count results when the API returns an empty response (which signals a quota/error, not truly zero events).
-- Specifically: only write to cache when `liveData.byDate.size > 0` (meaning the API actually returned data). If the API returns nothing, skip caching and just return what we have.
+3. **No size validation on download** -- the function downloads whatever it gets without checking actual dimensions, so a 400px image gets stored and served as-is.
 
-**3. Test the reporting page**
-- After deploying, trigger a report fetch to confirm FTDs and registrations populate from fresh AppsFlyer data and get cached correctly.
+## Plan
 
-### Technical detail
-The fix on line 618 changes from:
-```
-if (liveData.total > 0 || liveData.byDate.size === 0)
-```
-to only caching when we received actual data rows back from the API, preventing empty/error responses from poisoning the cache.
+### 1. Request higher-res images from the Meta API directly
+- When fetching creative details, add `fields=...,effective_object_story_id` to the batch request
+- For SHARE creatives without an `image_hash`, use the `effective_object_story_id` to fetch the post's full attachments via `/{post_id}?fields=full_picture` -- Meta's `full_picture` field returns the largest available rendition (typically 1080+px)
+
+### 2. Add `full_picture` as the top-priority fallback for SHARE creatives
+- In `resolveBestImageUrl`, insert `detail.full_picture` right after `resolvedImageUrl` (adimages hash) and before `link_data.image_url`
+- This ensures SHARE creatives get the highest resolution available
+
+### 3. Log actual downloaded dimensions for debugging
+- After downloading an image blob, use the `Content-Length` header and log the resolved URL + size so we can verify dimensions in future runs
+- Add dimension logging: `console.log(\`Downloaded ${url}: ${blob.size} bytes\`)`
+
+### 4. Strip CDN resize parameters more aggressively
+- Expand `getHighResFacebookUrlCandidates` to also strip the `stp` query parameter (Meta uses this for server-side transforms like `stp=dst-jpg_s600x600`) and common path-based resize tokens like `/s600x600/`
+
+### Technical Details
+
+**File: `supabase/functions/fetch-missing-thumbnails/index.ts`**
+
+- Add `effective_object_story_id` to the creative details batch fetch fields (line 220)
+- After the `adimages` hash resolution block, add a new block that iterates SHARE creatives missing a `resolvedImageUrl` and fetches `/{effective_object_story_id}?fields=full_picture` in batches
+- Update `resolveBestImageUrl` to check `detail.full_picture` as priority #2
+- Update `getHighResFacebookUrlCandidates` to strip the `stp` parameter (which controls server-side resizing)
+- Add byte-size logging in `downloadAndStore`
 
