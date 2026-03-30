@@ -469,6 +469,20 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
               Fetch/Upgrade {fetchableMissingCount}
             </Button>
           )}
+          <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+            <SelectTrigger className="w-[130px] h-8 text-xs">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="spend">Spend</SelectItem>
+              <SelectItem value="ftds">FTDs</SelectItem>
+              <SelectItem value="cftd">CFTD (low)</SelectItem>
+              <SelectItem value="cpi">CPI (low)</SelectItem>
+              <SelectItem value="ctr">CTR</SelectItem>
+              <SelectItem value="installs">Installs</SelectItem>
+            </SelectContent>
+          </Select>
           <ColumnSettingsPopover config={columnConfig} onChange={setColumnConfig} />
           <ToggleGroup 
             type="single" 
