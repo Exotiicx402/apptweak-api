@@ -295,15 +295,23 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   const [fetchingMissing, setFetchingMissing] = useState(false);
 
   const missingCount = data.filter(c => !c.assetUrl).length;
+  const fetchableMissingCreatives = data.filter(
+    (creative) => !creative.assetUrl && (creative.platform === "meta" || creative.platform === "blended")
+  );
+  const fetchableMissingCount = fetchableMissingCreatives.length;
 
   const handleFetchMissing = async () => {
-    const missingNames = data.filter(c => !c.assetUrl).map(c => c.adName);
+    const missingNames = Array.from(new Set(fetchableMissingCreatives.map((creative) => creative.adName)));
     if (missingNames.length === 0) {
-      toast.info("All creatives already have thumbnails!");
+      if (missingCount > 0) {
+        toast.info("Remaining missing creatives are non-Meta and can’t be fetched by this action.");
+      } else {
+        toast.info("All creatives already have thumbnails!");
+      }
       return;
     }
     setFetchingMissing(true);
-    toast.info(`Fetching thumbnails for ${missingNames.length} creatives...`);
+    toast.info(`Fetching thumbnails for ${missingNames.length} Meta creatives...`);
     try {
       const { data: result, error } = await supabase.functions.invoke('fetch-missing-thumbnails', {
         body: { missingNames },
@@ -375,7 +383,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Top Creatives</h2>
         <div className="flex items-center gap-2">
-          {missingCount > 0 && !isLoading && (
+          {fetchableMissingCount > 0 && !isLoading && (
             <Button
               variant="outline"
               size="sm"
@@ -384,7 +392,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
               className="text-xs gap-1.5"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${fetchingMissing ? 'animate-spin' : ''}`} />
-              Fetch {missingCount} Missing
+              Fetch {fetchableMissingCount} Missing
             </Button>
           )}
           <ColumnSettingsPopover config={columnConfig} onChange={setColumnConfig} />
