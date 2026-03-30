@@ -76,6 +76,13 @@ interface PlatformData {
   error: string | null;
 }
 
+const canonicalizeCreativeName = (name: string): string =>
+  name
+    .replace(/\s*\|\s*/g, " | ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
 export function useMultiPlatformCreatives() {
   const [meta, setMeta] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
   const [moloco, setMoloco] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
@@ -126,20 +133,32 @@ export function useMultiPlatformCreatives() {
 
       const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null; platformCreativeId: string | null }>();
       for (const asset of (data as CreativeAsset[]) || []) {
+        const canonicalName = canonicalizeCreativeName(asset.creative_name);
+
         // Add cache-busting query param based on updated_at
         const cacheBust = asset.updated_at ? `?v=${new Date(asset.updated_at).getTime()}` : '';
-        
+
         const thumbnailWithCache = asset.thumbnail_url ? asset.thumbnail_url + cacheBust : null;
         const fullWithCache = asset.full_asset_url ? asset.full_asset_url + cacheBust : null;
         const posterWithCache = asset.poster_url ? asset.poster_url + cacheBust : null;
-        
-        map.set(asset.creative_name, {
+
+        const nextAsset = {
           url: thumbnailWithCache || posterWithCache,
           type: asset.asset_type,
           fullAssetUrl: fullWithCache,
           posterUrl: posterWithCache || thumbnailWithCache,
           platformCreativeId: asset.platform_creative_id,
-        });
+        };
+
+        const existing = map.get(canonicalName);
+        const shouldReplace =
+          !existing ||
+          (!existing.fullAssetUrl && !!nextAsset.fullAssetUrl) ||
+          (!existing.url && !!nextAsset.url);
+
+        if (shouldReplace) {
+          map.set(canonicalName, nextAsset);
+        }
       }
       setAssetMap(map);
     } catch (err) {
@@ -178,12 +197,11 @@ export function useMultiPlatformCreatives() {
     setMoloco({ ads: [], isLoading: false, error: null });
   }, []);
 
-  const normalizeCreativeName = (name: string): string => name.trim().toLowerCase();
-
   // Enrich ads with parsed naming convention data
   const enrichAds = useCallback((ads: AdMetric[], platform: string): EnrichedCreative[] => {
     return ads.map((ad) => {
-      const asset = assetMap.get(ad.ad_name);
+      const canonicalName = canonicalizeCreativeName(ad.ad_name);
+      const asset = assetMap.get(canonicalName);
       const adId = ad.ad_id || ad.ad_name;
       const stored = storedUrlMap.get(adId);
       const impressions = ad.impressions || 0;
@@ -231,7 +249,7 @@ export function useMultiPlatformCreatives() {
     const platformSets = new Map<string, Set<string>>();
 
     for (const creative of creatives) {
-      const key = normalizeCreativeName(creative.adName);
+      const key = canonicalizeCreativeName(creative.adName);
       const existing = grouped.get(key);
 
       const weight = Math.max(creative.video3sViews, creative.impressions, 1);
@@ -303,28 +321,28 @@ export function useMultiPlatformCreatives() {
   // Get platform breakdown for a specific creative name
   const getPlatformBreakdown = useCallback((adName: string): EnrichedCreative[] => {
     const breakdown: EnrichedCreative[] = [];
-    
+
     for (const ad of metaAds) {
       if (ad.adName === adName) breakdown.push(ad);
     }
     for (const ad of molocoAds) {
       if (ad.adName === adName) breakdown.push(ad);
     }
-    
+
     return breakdown.sort((a, b) => b.spend - a.spend);
   }, [metaAds, molocoAds]);
 
   // Get adset breakdown for a specific creative (pre-aggregation rows)
   const getAdsetBreakdown = useCallback((adName: string): EnrichedCreative[] => {
     const breakdown: EnrichedCreative[] = [];
-    
+
     for (const ad of rawMetaAds) {
       if (ad.adName === adName) breakdown.push(ad);
     }
     for (const ad of rawMolocoAds) {
       if (ad.adName === adName) breakdown.push(ad);
     }
-    
+
     return breakdown.sort((a, b) => b.spend - a.spend);
   }, [rawMetaAds, rawMolocoAds]);
 
