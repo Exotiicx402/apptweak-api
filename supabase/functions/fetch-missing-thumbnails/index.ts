@@ -110,9 +110,9 @@ serve(async (req) => {
     const creativeIds = Array.from(uniqueCreatives.keys());
     const creativeDetails = new Map<string, any>();
 
-    for (let i = 0; i < creativeIds.length; i += 50) {
-      const batch = creativeIds.slice(i, i + 50);
-      const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(',')}&fields=id,object_type,image_url,image_hash,video_id&access_token=${accessToken}`;
+    for (let i = 0; i < creativeIds.length; i += 25) {
+      const batch = creativeIds.slice(i, i + 25);
+      const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(',')}&fields=id,object_type,image_url,image_hash,video_id,thumbnail_url,object_story_spec&access_token=${accessToken}`;
       try {
         const res = await fetch(url);
         if (res.ok) {
@@ -120,6 +120,8 @@ serve(async (req) => {
           for (const [id, detail] of Object.entries(data)) {
             creativeDetails.set(id, detail);
           }
+        } else {
+          console.warn(`Batch fetch status ${res.status}: ${await res.text()}`);
         }
       } catch (e) { console.warn(`Batch fetch error: ${e}`); }
     }
