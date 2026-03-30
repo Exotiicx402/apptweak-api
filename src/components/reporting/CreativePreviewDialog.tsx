@@ -383,7 +383,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
             )}
 
             {showAdPreview && isMetaCreative ? (
-              <div className="rounded-lg overflow-hidden bg-muted" style={{ minHeight: 480 }}>
+              <div className="rounded-lg overflow-hidden bg-muted" style={{ minHeight: 700 }}>
                 <MetaAdPreview creativeId={creative.platformCreativeId!} />
               </div>
             ) : (
