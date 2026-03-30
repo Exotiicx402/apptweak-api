@@ -374,6 +374,18 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Top Creatives</h2>
         <div className="flex items-center gap-2">
+          {missingCount > 0 && !isLoading && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchMissing}
+              disabled={fetchingMissing}
+              className="text-xs gap-1.5"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${fetchingMissing ? 'animate-spin' : ''}`} />
+              Fetch {missingCount} Missing
+            </Button>
+          )}
           <ColumnSettingsPopover config={columnConfig} onChange={setColumnConfig} />
           <ToggleGroup 
             type="single" 
