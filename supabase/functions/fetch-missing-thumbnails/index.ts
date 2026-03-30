@@ -113,17 +113,20 @@ function getHighResFacebookUrlCandidates(url: string): string[] {
     const isFacebookCdn = host.includes('fbcdn.net') || host.includes('facebook.com');
     if (!isFacebookCdn) return Array.from(candidates);
 
+    // Strip all resize-related params
     const noResize = new URL(parsed.toString());
     for (const key of ['stp', 'w', 'h', 'width', 'height']) {
       noResize.searchParams.delete(key);
     }
     candidates.add(noResize.toString());
 
+    // Upscale path-based size tokens
     const pathUpscaled = new URL(noResize.toString());
     pathUpscaled.pathname = pathUpscaled.pathname
       .replace(/\/p64x64\//gi, '/p1080x1080/')
       .replace(/\/s64x64\//gi, '/s1080x1080/')
-      .replace(/\/s\d{1,3}x\d{1,3}\//gi, '/s1080x1080/');
+      .replace(/\/s\d{1,4}x\d{1,4}\//gi, '/s1080x1080/')
+      .replace(/\/p\d{1,4}x\d{1,4}\//gi, '/p1080x1080/');
     candidates.add(pathUpscaled.toString());
   } catch {
     return Array.from(candidates);
