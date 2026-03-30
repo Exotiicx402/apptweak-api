@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon, RefreshCw } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { useMultiPlatformCreatives, EnrichedCreative, Platform } from "@/hooks/useMultiPlatformCreatives";
 import { CreativePerformanceTable } from "./CreativePerformanceTable";
 import { PlatformFilterBar } from "./PlatformFilterBar";
@@ -289,6 +292,34 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [attributeFilters, setAttributeFilters] = useState<AttributeFilters>({});
+  const [fetchingMissing, setFetchingMissing] = useState(false);
+
+  const missingCount = data.filter(c => !c.assetUrl).length;
+
+  const handleFetchMissing = async () => {
+    const missingNames = data.filter(c => !c.assetUrl).map(c => c.adName);
+    if (missingNames.length === 0) {
+      toast.info("All creatives already have thumbnails!");
+      return;
+    }
+    setFetchingMissing(true);
+    toast.info(`Fetching thumbnails for ${missingNames.length} creatives...`);
+    try {
+      const { data: result, error } = await supabase.functions.invoke('fetch-missing-thumbnails', {
+        body: { missingNames },
+      });
+      if (error) throw error;
+      if (result?.processed > 0) {
+        toast.success(`Fetched ${result.processed} new thumbnails. Re-apply date range to see them.`);
+      } else {
+        toast.info("No new thumbnails could be fetched from Meta API.");
+      }
+    } catch (err) {
+      toast.error(`Failed to fetch thumbnails: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setFetchingMissing(false);
+    }
+  };
 
   const handleCreativeClick = (creative: EnrichedCreative) => {
     setSelectedCreative(creative);
@@ -343,6 +374,18 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Top Creatives</h2>
         <div className="flex items-center gap-2">
+          {missingCount > 0 && !isLoading && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchMissing}
+              disabled={fetchingMissing}
+              className="text-xs gap-1.5"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${fetchingMissing ? 'animate-spin' : ''}`} />
+              Fetch {missingCount} Missing
+            </Button>
+          )}
           <ColumnSettingsPopover config={columnConfig} onChange={setColumnConfig} />
           <ToggleGroup 
             type="single" 
