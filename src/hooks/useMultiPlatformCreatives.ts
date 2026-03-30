@@ -35,6 +35,16 @@ interface CreativeAsset {
   platform_creative_id: string | null;
 }
 
+interface AssetSelection {
+  url: string | null;
+  type: string | null;
+  fullAssetUrl: string | null;
+  posterUrl: string | null;
+  platformCreativeId: string | null;
+  updatedAtMs: number;
+  hasHostedAsset: boolean;
+}
+
 export type Platform = "meta" | "moloco" | "blended";
 
 export interface EnrichedCreative {
@@ -82,6 +92,34 @@ const canonicalizeCreativeName = (name: string): string =>
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+
+const CREATIVE_ASSET_STORAGE_MARKER = "/storage/v1/object/public/creative-assets/";
+
+const hasHostedCreativeAsset = (value: string | null | undefined): boolean =>
+  !!value && value.includes(CREATIVE_ASSET_STORAGE_MARKER);
+
+const shouldPreferAssetSelection = (
+  nextAsset: AssetSelection,
+  existingAsset: AssetSelection
+): boolean => {
+  if (nextAsset.hasHostedAsset !== existingAsset.hasHostedAsset) {
+    return nextAsset.hasHostedAsset;
+  }
+
+  if (!!nextAsset.fullAssetUrl !== !!existingAsset.fullAssetUrl) {
+    return !!nextAsset.fullAssetUrl;
+  }
+
+  if (!!nextAsset.url !== !!existingAsset.url) {
+    return !!nextAsset.url;
+  }
+
+  if (!!nextAsset.posterUrl !== !!existingAsset.posterUrl) {
+    return !!nextAsset.posterUrl;
+  }
+
+  return nextAsset.updatedAtMs > existingAsset.updatedAtMs;
+};
 
 export function useMultiPlatformCreatives() {
   const [meta, setMeta] = useState<PlatformData>({ ads: [], isLoading: false, error: null });
@@ -131,7 +169,7 @@ export function useMultiPlatformCreatives() {
         return;
       }
 
-      const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null; platformCreativeId: string | null }>();
+      const selectedAssets = new Map<string, AssetSelection>();
       for (const asset of (data as CreativeAsset[]) || []) {
         const canonicalName = canonicalizeCreativeName(asset.creative_name);
 
@@ -142,24 +180,40 @@ export function useMultiPlatformCreatives() {
         const fullWithCache = asset.full_asset_url ? asset.full_asset_url + cacheBust : null;
         const posterWithCache = asset.poster_url ? asset.poster_url + cacheBust : null;
 
-        const nextAsset = {
+        const updatedAtMs = asset.updated_at ? new Date(asset.updated_at).getTime() : 0;
+
+        const nextAsset: AssetSelection = {
           url: thumbnailWithCache || posterWithCache,
           type: asset.asset_type,
           fullAssetUrl: fullWithCache,
           posterUrl: posterWithCache || thumbnailWithCache,
           platformCreativeId: asset.platform_creative_id,
+          updatedAtMs,
+          hasHostedAsset:
+            hasHostedCreativeAsset(asset.thumbnail_url) ||
+            hasHostedCreativeAsset(asset.full_asset_url) ||
+            hasHostedCreativeAsset(asset.poster_url),
         };
 
-        const existing = map.get(canonicalName);
-        const shouldReplace =
-          !existing ||
-          (!existing.fullAssetUrl && !!nextAsset.fullAssetUrl) ||
-          (!existing.url && !!nextAsset.url);
+        const existing = selectedAssets.get(canonicalName);
+        const shouldReplace = !existing || shouldPreferAssetSelection(nextAsset, existing);
 
         if (shouldReplace) {
-          map.set(canonicalName, nextAsset);
+          selectedAssets.set(canonicalName, nextAsset);
         }
       }
+
+      const map = new Map<string, { url: string | null; type: string | null; fullAssetUrl: string | null; posterUrl: string | null; platformCreativeId: string | null }>();
+      for (const [name, selected] of selectedAssets.entries()) {
+        map.set(name, {
+          url: selected.url,
+          type: selected.type,
+          fullAssetUrl: selected.fullAssetUrl,
+          posterUrl: selected.posterUrl,
+          platformCreativeId: selected.platformCreativeId,
+        });
+      }
+
       setAssetMap(map);
     } catch (err) {
       console.error('Error fetching creative assets:', err);
