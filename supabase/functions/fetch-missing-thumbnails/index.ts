@@ -86,6 +86,7 @@ function resolveBestImageUrl(detail: any): { url: string | null; source: string 
 
   const candidates: Array<{ url: string | null | undefined; source: string }> = [
     { url: detail?.resolvedImageUrl, source: 'adimages(hash)' },
+    { url: detail?.full_picture, source: 'full_picture(post)' },
     { url: linkData?.image_url, source: 'object_story_spec.link_data.image_url' },
     { url: photoImages[0]?.url, source: 'object_story_spec.photo_data.images[0].url' },
     { url: detail?.image_url, source: 'creative.image_url' },
@@ -112,17 +113,20 @@ function getHighResFacebookUrlCandidates(url: string): string[] {
     const isFacebookCdn = host.includes('fbcdn.net') || host.includes('facebook.com');
     if (!isFacebookCdn) return Array.from(candidates);
 
+    // Strip all resize-related params
     const noResize = new URL(parsed.toString());
     for (const key of ['stp', 'w', 'h', 'width', 'height']) {
       noResize.searchParams.delete(key);
     }
     candidates.add(noResize.toString());
 
+    // Upscale path-based size tokens
     const pathUpscaled = new URL(noResize.toString());
     pathUpscaled.pathname = pathUpscaled.pathname
       .replace(/\/p64x64\//gi, '/p1080x1080/')
       .replace(/\/s64x64\//gi, '/s1080x1080/')
-      .replace(/\/s\d{1,3}x\d{1,3}\//gi, '/s1080x1080/');
+      .replace(/\/s\d{1,4}x\d{1,4}\//gi, '/s1080x1080/')
+      .replace(/\/p\d{1,4}x\d{1,4}\//gi, '/p1080x1080/');
     candidates.add(pathUpscaled.toString());
   } catch {
     return Array.from(candidates);
@@ -138,7 +142,9 @@ async function downloadAndStore(
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!res.ok) return null;
     const ct = res.headers.get('content-type') || hint || 'application/octet-stream';
-    const blob = new Blob([await res.arrayBuffer()], { type: ct });
+    const buf = await res.arrayBuffer();
+    const blob = new Blob([buf], { type: ct });
+    console.log(`Downloaded ${url.substring(0, 120)}: ${buf.byteLength} bytes, type=${ct}`);
     const { error } = await supabase.storage.from('creative-assets').upload(path, blob, {
       contentType: ct, upsert: true, cacheControl: '3600',
     });
@@ -217,7 +223,7 @@ serve(async (req) => {
 
     for (let i = 0; i < creativeIds.length; i += 25) {
       const batch = creativeIds.slice(i, i + 25);
-      const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(',')}&fields=id,object_type,image_url,image_hash,video_id,thumbnail_url,object_story_spec&access_token=${accessToken}`;
+      const url = `https://graph.facebook.com/v19.0/?ids=${batch.join(',')}&fields=id,object_type,image_url,image_hash,video_id,thumbnail_url,object_story_spec,effective_object_story_id&access_token=${accessToken}`;
       try {
         const res = await fetch(url);
         if (res.ok) {
@@ -280,6 +286,40 @@ serve(async (req) => {
             }
           }
         } catch (e) { console.warn(`Ad images error: ${e}`); }
+      }
+    }
+
+    // Resolve full_picture for SHARE creatives missing resolvedImageUrl
+    const shareCreativesNeedingFullPic = Array.from(creativeDetails.entries())
+      .filter(([_, d]) => {
+        const detail = d as any;
+        return !detail.resolvedImageUrl && detail.effective_object_story_id && detail.object_type !== 'VIDEO';
+      });
+
+    if (shareCreativesNeedingFullPic.length > 0) {
+      console.log(`Fetching full_picture for ${shareCreativesNeedingFullPic.length} SHARE creatives`);
+      for (let i = 0; i < shareCreativesNeedingFullPic.length; i += 25) {
+        const batch = shareCreativesNeedingFullPic.slice(i, i + 25);
+        const postIds = batch.map(([_, d]) => (d as any).effective_object_story_id);
+        const url = `https://graph.facebook.com/v19.0/?ids=${postIds.join(',')}&fields=id,full_picture&access_token=${accessToken}`;
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            for (const [postId, postData] of Object.entries(data)) {
+              const fullPic = (postData as any).full_picture;
+              if (!fullPic) continue;
+              for (const [cid, detail] of batch) {
+                if ((detail as any).effective_object_story_id === postId) {
+                  (detail as any).full_picture = fullPic;
+                  console.log(`Resolved full_picture for creative ${cid}: ${fullPic.substring(0, 100)}`);
+                }
+              }
+            }
+          } else {
+            console.warn(`full_picture batch status ${res.status}`);
+          }
+        } catch (e) { console.warn(`full_picture error: ${e}`); }
       }
     }
 
