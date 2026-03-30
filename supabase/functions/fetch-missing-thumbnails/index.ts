@@ -289,6 +289,40 @@ serve(async (req) => {
       }
     }
 
+    // Resolve full_picture for SHARE creatives missing resolvedImageUrl
+    const shareCreativesNeedingFullPic = Array.from(creativeDetails.entries())
+      .filter(([_, d]) => {
+        const detail = d as any;
+        return !detail.resolvedImageUrl && detail.effective_object_story_id && detail.object_type !== 'VIDEO';
+      });
+
+    if (shareCreativesNeedingFullPic.length > 0) {
+      console.log(`Fetching full_picture for ${shareCreativesNeedingFullPic.length} SHARE creatives`);
+      for (let i = 0; i < shareCreativesNeedingFullPic.length; i += 25) {
+        const batch = shareCreativesNeedingFullPic.slice(i, i + 25);
+        const postIds = batch.map(([_, d]) => (d as any).effective_object_story_id);
+        const url = `https://graph.facebook.com/v19.0/?ids=${postIds.join(',')}&fields=id,full_picture&access_token=${accessToken}`;
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            for (const [postId, postData] of Object.entries(data)) {
+              const fullPic = (postData as any).full_picture;
+              if (!fullPic) continue;
+              for (const [cid, detail] of batch) {
+                if ((detail as any).effective_object_story_id === postId) {
+                  (detail as any).full_picture = fullPic;
+                  console.log(`Resolved full_picture for creative ${cid}: ${fullPic.substring(0, 100)}`);
+                }
+              }
+            }
+          } else {
+            console.warn(`full_picture batch status ${res.status}`);
+          }
+        } catch (e) { console.warn(`full_picture error: ${e}`); }
+      }
+    }
+
     // Resolve video posters
     const videoIds = Array.from(creativeDetails.entries())
       .filter(([_, d]) => (d as any).video_id)
