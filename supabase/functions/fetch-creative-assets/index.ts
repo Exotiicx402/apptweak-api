@@ -722,6 +722,76 @@ serve(async (req) => {
       }
     }
     
+    // Process Moloco creatives
+    if (platforms.includes('moloco')) {
+      results.byPlatform.moloco = { processed: 0, skipped: 0, errors: 0 };
+
+      const molocoCreatives = await fetchMolocoCreatives();
+      console.log(`Processing ${molocoCreatives.length} Moloco creatives...`);
+
+      for (const creative of molocoCreatives) {
+        const existingKey = `moloco:${creative.platformCreativeId}`;
+
+        if (!forceRefresh && hasFullAsset.has(existingKey)) {
+          results.skipped++;
+          results.byPlatform.moloco.skipped++;
+          continue;
+        }
+
+        if (!creative.imageUrl) {
+          console.warn(`No image URL for Moloco creative: ${creative.creativeName.substring(0, 50)}`);
+          results.errors++;
+          results.byPlatform.moloco.errors++;
+          continue;
+        }
+
+        const safeName = sanitizeFilename(creative.creativeName || creative.platformCreativeId);
+        const safeId = sanitizeFilename(creative.platformCreativeId);
+        const ext = getExtension(creative.imageUrl);
+        const storagePath = `moloco/${safeName}/${safeId}.${ext}`;
+
+        const stored = await downloadAndStoreAsset(
+          supabase,
+          creative.imageUrl,
+          storagePath
+        );
+
+        if (!stored) {
+          results.errors++;
+          results.byPlatform.moloco.errors++;
+          continue;
+        }
+
+        const { error: upsertError } = await supabase
+          .from('creative_assets')
+          .upsert({
+            creative_name: creative.creativeName,
+            platform: 'moloco',
+            platform_creative_id: creative.platformCreativeId,
+            asset_type: creative.assetType,
+            thumbnail_url: stored.storedUrl,
+            full_asset_url: stored.storedUrl,
+            original_url: creative.imageUrl,
+            width: creative.width,
+            height: creative.height,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'platform,platform_creative_id',
+          });
+
+        if (upsertError) {
+          console.error(`Upsert error: ${upsertError.message}`);
+          results.errors++;
+          results.byPlatform.moloco.errors++;
+          continue;
+        }
+
+        results.processed++;
+        results.imagesDownloaded++;
+        results.byPlatform.moloco.processed++;
+      }
+    }
+
     // Process Snapchat creatives
     if (platforms.includes('snapchat')) {
       results.byPlatform.snapchat = { processed: 0, skipped: 0, errors: 0 };
