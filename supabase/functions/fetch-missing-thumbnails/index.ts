@@ -211,6 +211,7 @@ serve(async (req) => {
       let posterUrl: string | null = null;
 
       if (isVideo) {
+        console.log(`Video creative ${creativeId}: poster=${detail.videoPosterUrl}, source=${detail.videoSourceUrl}`);
         // Store video poster as thumbnail
         if (detail.videoPosterUrl) {
           const path = `meta/${safeConcept}/${safeUnique}_poster.jpg`;
@@ -224,6 +225,7 @@ serve(async (req) => {
         }
       } else {
         const imageUrl = detail.resolvedImageUrl || detail.image_url;
+        console.log(`Image creative ${creativeId}: resolvedImageUrl=${detail.resolvedImageUrl}, image_url=${detail.image_url}, image_hash=${detail.image_hash}`);
         if (imageUrl) {
           const ext = getExtension(imageUrl);
           const path = `meta/${safeConcept}/${safeUnique}.${ext}`;
