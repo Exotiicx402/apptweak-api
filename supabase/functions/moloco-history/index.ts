@@ -929,8 +929,29 @@ serve(async (req) => {
       ftds: parseInt(row.ftds) || 0,
     }));
 
-    // Identify which dates we have from BigQuery
-    const existingDates = new Set(currentRows.map(r => r.date));
+    // Identify which dates we have from BigQuery (with actual data)
+    // Treat recent dates with zero spend+impressions as stale — they need live refetch
+    const STALE_WINDOW_DAYS = 7;
+    const staleDates = new Set<string>();
+    const dateSpendMap = new Map<string, number>();
+    const dateImprMap = new Map<string, number>();
+    
+    for (const row of currentRows) {
+      dateSpendMap.set(row.date, (dateSpendMap.get(row.date) || 0) + row.spend);
+      dateImprMap.set(row.date, (dateImprMap.get(row.date) || 0) + row.impressions);
+    }
+    
+    for (const [date, spend] of dateSpendMap) {
+      const impressions = dateImprMap.get(date) || 0;
+      if (spend === 0 && impressions === 0 && isWithinLastNDays(date, STALE_WINDOW_DAYS)) {
+        staleDates.add(date);
+        console.log(`Stale data detected for ${date} (zero spend+impressions within ${STALE_WINDOW_DAYS} days)`);
+      }
+    }
+
+    const existingDates = new Set(
+      currentRows.map(r => r.date).filter(d => !staleDates.has(d))
+    );
     
     // Determine which dates are missing and backfillable (within 14 days)
     const missingDates = getMissingDates(requestedDates, existingDates);
