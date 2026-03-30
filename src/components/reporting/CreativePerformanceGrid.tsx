@@ -310,7 +310,8 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
       });
       if (error) throw error;
       if (result?.processed > 0) {
-        toast.success(`Fetched ${result.processed} new thumbnails. Re-apply date range to see them.`);
+        await fetchAllPlatforms(startDate, endDate);
+        toast.success(`Fetched ${result.processed} new thumbnails and refreshed results.`);
       } else {
         toast.info("No new thumbnails could be fetched from Meta API.");
       }
