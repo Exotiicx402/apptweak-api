@@ -316,7 +316,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
     let cancelled = false;
 
     const resolutionCandidates = data
-      .filter((creative) => !!creative.assetUrl && (creative.platform === "meta" || creative.platform === "blended"))
+      .filter((creative) => !!creative.assetUrl && (creative.platform === "meta" || creative.platform === "moloco" || creative.platform === "blended"))
       .slice(0, 200);
 
     if (resolutionCandidates.length === 0) {
