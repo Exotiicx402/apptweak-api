@@ -125,6 +125,11 @@ serve(async (req) => {
     }
 
     console.log(`Got details for ${creativeDetails.size} creatives`);
+    // Log a sample detail for debugging
+    for (const [id, detail] of creativeDetails) {
+      console.log(`Sample creative ${id}: ${JSON.stringify(detail).substring(0, 300)}`);
+      break;
+    }
 
     // Resolve image hashes to full-res URLs
     const hashToIds = new Map<string, string[]>();
