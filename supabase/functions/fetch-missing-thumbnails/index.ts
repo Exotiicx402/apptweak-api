@@ -86,6 +86,7 @@ function resolveBestImageUrl(detail: any): { url: string | null; source: string 
 
   const candidates: Array<{ url: string | null | undefined; source: string }> = [
     { url: detail?.resolvedImageUrl, source: 'adimages(hash)' },
+    { url: detail?.full_picture, source: 'full_picture(post)' },
     { url: linkData?.image_url, source: 'object_story_spec.link_data.image_url' },
     { url: photoImages[0]?.url, source: 'object_story_spec.photo_data.images[0].url' },
     { url: detail?.image_url, source: 'creative.image_url' },
