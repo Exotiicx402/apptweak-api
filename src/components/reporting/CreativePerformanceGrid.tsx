@@ -415,11 +415,29 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   });
 
   // Filter by asset type
-  const filteredData = attributeFilteredData.filter((creative) => {
+  const assetTypeFiltered = attributeFilteredData.filter((creative) => {
     if (assetTypeFilter === "all") return true;
     if (assetTypeFilter === "video") return isVideoCreative(creative);
     return !isVideoCreative(creative);
   });
+
+  // Sort
+  const filteredData = [...assetTypeFiltered].sort((a, b) => {
+    if (sortKey === "cftd" || sortKey === "cpi") {
+      // Lower is better; push zeros to end
+      if (a[sortKey] === 0 && b[sortKey] === 0) return b.spend - a.spend;
+      if (a[sortKey] === 0) return 1;
+      if (b[sortKey] === 0) return -1;
+      return a[sortKey] - b[sortKey];
+    }
+    return b[sortKey] - a[sortKey];
+  });
+
+  const handleLeaderboardClick = (key: string, value: string) => {
+    const current = attributeFilters[key] || [];
+    if (current.includes(value)) return;
+    setAttributeFilters({ ...attributeFilters, [key]: [...current, value] });
+  };
 
   const videoCount = attributeFilteredData.filter(isVideoCreative).length;
   const imageCount = attributeFilteredData.length - videoCount;
