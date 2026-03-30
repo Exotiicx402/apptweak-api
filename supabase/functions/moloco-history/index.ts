@@ -807,7 +807,7 @@ serve(async (req) => {
   }
 
   try {
-    const { startDate, endDate, forceRefresh } = await req.json();
+    const { startDate, endDate, forceRefresh, adsOnly, skipAds } = await req.json();
 
     if (!startDate || !endDate) {
       throw new Error('startDate and endDate are required');
@@ -816,6 +816,60 @@ serve(async (req) => {
     console.log(`Moloco query: ${startDate} to ${endDate}`);
 
     const today = getTodayDate();
+
+    if (adsOnly) {
+      const adFetchStart = isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS);
+      const adFetchEnd = endDate > today ? today : endDate;
+      const emptyTotals = calculateTotals([]);
+
+      if (adFetchStart > adFetchEnd) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              daily: [],
+              campaigns: [],
+              totals: emptyTotals,
+              previousTotals: emptyTotals,
+              ads: [],
+              dateRange: { startDate, endDate },
+              previousDateRange: { startDate, endDate },
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      try {
+        console.log(`Fetching Moloco ad-group data from ${adFetchStart} to ${adFetchEnd}...`);
+        const adGroupRows = await fetchMolocoAdGroupData(adFetchStart, adFetchEnd);
+        const ads = aggregateAdGroups(adGroupRows);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              daily: [],
+              campaigns: [],
+              totals: emptyTotals,
+              previousTotals: emptyTotals,
+              ads,
+              dateRange: { startDate, endDate },
+              previousDateRange: { startDate, endDate },
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (adErr) {
+        const message = adErr instanceof Error ? adErr.message : 'Failed to fetch Moloco creative data';
+        console.error('Failed to fetch ad-group data:', adErr);
+        return new Response(
+          JSON.stringify({ success: false, error: message }),
+          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     const requestedDates = getDatesBetween(startDate, endDate);
     
     // Calculate previous period for comparison
@@ -1072,21 +1126,22 @@ serve(async (req) => {
 
     console.log(`Totals: spend=${totals.spend.toFixed(2)}, installs=${totals.installs}, regs=${totals.registrations}, ftds=${totals.ftds}`);
 
-    // Fetch ad-group level data for creative reporting (sequential to respect rate limits)
+    // Fetch ad-group level data for creative reporting only when requested
     let ads: any[] = [];
-    try {
-      // Use the full requested range — ad-group data is always fetched live (not cached in BQ)
-      const adFetchStart = isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS);
-      const adFetchEnd = endDate > today ? today : endDate;
-      
-      if (adFetchStart <= adFetchEnd) {
-        console.log(`Fetching Moloco ad-group data from ${adFetchStart} to ${adFetchEnd}...`);
-        const adGroupRows = await fetchMolocoAdGroupData(adFetchStart, adFetchEnd);
-        ads = aggregateAdGroups(adGroupRows);
-        console.log(`Aggregated ${ads.length} ad groups from ${adGroupRows.length} rows`);
+    if (!skipAds) {
+      try {
+        const adFetchStart = isWithinLastNDays(startDate, BACKFILL_WINDOW_DAYS) ? startDate : addDays(today, -BACKFILL_WINDOW_DAYS);
+        const adFetchEnd = endDate > today ? today : endDate;
+        
+        if (adFetchStart <= adFetchEnd) {
+          console.log(`Fetching Moloco ad-group data from ${adFetchStart} to ${adFetchEnd}...`);
+          const adGroupRows = await fetchMolocoAdGroupData(adFetchStart, adFetchEnd);
+          ads = aggregateAdGroups(adGroupRows);
+          console.log(`Aggregated ${ads.length} ad groups from ${adGroupRows.length} rows`);
+        }
+      } catch (adErr) {
+        console.error('Failed to fetch ad-group data (non-blocking):', adErr);
       }
-    } catch (adErr) {
-      console.error('Failed to fetch ad-group data (non-blocking):', adErr);
     }
 
     return new Response(
