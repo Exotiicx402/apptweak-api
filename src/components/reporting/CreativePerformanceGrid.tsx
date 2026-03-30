@@ -298,6 +298,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   const [attributeFilters, setAttributeFilters] = useState<AttributeFilters>({});
   const [fetchingMissing, setFetchingMissing] = useState(false);
   const [lowResCreativeNames, setLowResCreativeNames] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>("spend");
 
   const missingCount = data.filter(c => !c.assetUrl).length;
   const fetchableMissingCreatives = data.filter(
