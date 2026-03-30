@@ -711,7 +711,7 @@ async function fetchMolocoAdGroupData(startDate: string, endDate: string): Promi
   }
 
   const token = await getMolocoAccessToken(apiKey);
-  const reportId = await createReport(token, adAccountId, startDate, endDate);
+  const reportId = await createReport(token, adAccountId, startDate, endDate, ['DATE', 'AD_GROUP']);
   const jsonUrl = await waitForReport(token, reportId);
   const rawRows = await downloadReport(jsonUrl);
   return processAdGroupRows(rawRows);
