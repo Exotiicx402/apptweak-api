@@ -312,6 +312,113 @@ async function fetchMetaCreatives(): Promise<MetaCreativeData[]> {
   return creatives;
 }
 
+// Fetch Moloco creatives via /cm/v1/creatives endpoint
+async function fetchMolocoCreatives(): Promise<Array<{
+  creativeName: string;
+  platformCreativeId: string;
+  imageUrl: string | null;
+  assetType: string;
+  width: number | null;
+  height: number | null;
+}>> {
+  const apiKey = Deno.env.get('MOLOCO_API_KEY');
+  const adAccountId = Deno.env.get('MOLOCO_AD_ACCOUNT_ID');
+
+  if (!apiKey || !adAccountId) {
+    console.log("Missing Moloco credentials, skipping");
+    return [];
+  }
+
+  const creatives: Array<{
+    creativeName: string;
+    platformCreativeId: string;
+    imageUrl: string | null;
+    assetType: string;
+    width: number | null;
+    height: number | null;
+  }> = [];
+
+  try {
+    // Get auth token
+    console.log("Getting Moloco access token...");
+    const authResponse = await fetch('https://api.moloco.cloud/cm/v1/auth/tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+
+    if (!authResponse.ok) {
+      console.error(`Moloco auth error: ${await authResponse.text()}`);
+      return [];
+    }
+
+    const authData = await authResponse.json();
+    const token = authData.token;
+
+    // Fetch all creatives
+    console.log("Fetching Moloco creatives...");
+    const creativesResponse = await fetch(
+      `https://api.moloco.cloud/cm/v1/creatives?ad_account_id=${adAccountId}`,
+      { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } }
+    );
+
+    if (!creativesResponse.ok) {
+      console.error(`Moloco creatives error: ${await creativesResponse.text()}`);
+      return [];
+    }
+
+    const creativesData = await creativesResponse.json();
+    const items = creativesData.creatives || [];
+    console.log(`Found ${items.length} Moloco creatives`);
+
+    // Also fetch creative groups to map creative IDs to ad group titles
+    console.log("Fetching Moloco creative groups...");
+    const groupsResponse = await fetch(
+      `https://api.moloco.cloud/cm/v1/creative-groups?ad_account_id=${adAccountId}`,
+      { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } }
+    );
+
+    const creativeIdToGroupTitle = new Map<string, string>();
+    if (groupsResponse.ok) {
+      const groupsData = await groupsResponse.json();
+      for (const group of groupsData.creative_groups || []) {
+        const groupTitle = group.title || '';
+        for (const cId of group.creative_ids || []) {
+          creativeIdToGroupTitle.set(cId, groupTitle);
+        }
+      }
+      console.log(`Mapped ${creativeIdToGroupTitle.size} creative-to-group associations`);
+    }
+
+    for (const item of items) {
+      const creativeId = item.id || '';
+      if (!creativeId) continue;
+
+      // Use group title as creative name if available, otherwise use creative title
+      const creativeName = creativeIdToGroupTitle.get(creativeId) || item.title || creativeId;
+
+      // Extract image URL from the creative
+      const imageUrl = item.image_url || item.image_src?.image_url || null;
+      const isVideo = item.type === 'VIDEO' || item.type === 'NATIVE_VIDEO';
+
+      creatives.push({
+        creativeName,
+        platformCreativeId: creativeId,
+        imageUrl,
+        assetType: isVideo ? 'video' : 'image',
+        width: item.width ? parseInt(item.width, 10) : null,
+        height: item.height ? parseInt(item.height, 10) : null,
+      });
+    }
+
+    console.log(`Extracted ${creatives.length} Moloco creatives (${creatives.filter(c => c.imageUrl).length} with image URLs)`);
+  } catch (error) {
+    console.error(`Error fetching Moloco creatives: ${error}`);
+  }
+
+  return creatives;
+}
+
 // Fetch Snapchat ad creatives
 async function fetchSnapchatCreatives(): Promise<Array<{
   creativeName: string;
