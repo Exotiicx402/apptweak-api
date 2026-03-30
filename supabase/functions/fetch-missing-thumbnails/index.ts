@@ -345,6 +345,7 @@ serve(async (req) => {
         const resolved = resolveBestImageUrl(detail);
         const imageCandidates = resolved.url ? getHighResFacebookUrlCandidates(resolved.url) : [];
         console.log(`Image creative ${creativeId}: resolved=${!!resolved.url}, source=${resolved.source}, candidates=${imageCandidates.length}, object_type=${detail.object_type}`);
+        let storedAny = false;
         for (const candidateUrl of imageCandidates) {
           const ext = getExtension(candidateUrl);
           const path = `meta/${safeConcept}/${safeUnique}.${ext}`;
@@ -353,9 +354,12 @@ serve(async (req) => {
             fullAssetUrl = stored;
             thumbnailUrl = stored;
             detail.resolvedImageUrl = candidateUrl;
+            storedAny = true;
             break;
           }
-        } else {
+        }
+
+        if (!storedAny) {
           console.log(`Skipped ${creativeId}: no HD-capable image URL found (low-res-only candidates).`);
         }
       }
