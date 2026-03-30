@@ -212,7 +212,8 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
   return (
     <iframe
       src={iframeSrc}
-      className="w-full h-full border-0"
+      className="w-full border-0"
+      style={{ minHeight: 700 }}
       sandbox="allow-scripts allow-same-origin"
       title="Meta Ad Preview"
     />
