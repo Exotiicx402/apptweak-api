@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon } from "lucide-react";
+import { ImageIcon, Film, LayoutGrid, MessageSquare, Tag, Grid3X3, TableIcon, RefreshCw } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { useMultiPlatformCreatives, EnrichedCreative, Platform } from "@/hooks/useMultiPlatformCreatives";
 import { CreativePerformanceTable } from "./CreativePerformanceTable";
 import { PlatformFilterBar } from "./PlatformFilterBar";
