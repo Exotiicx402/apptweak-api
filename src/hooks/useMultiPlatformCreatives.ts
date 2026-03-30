@@ -160,17 +160,33 @@ export function useMultiPlatformCreatives() {
 
   const fetchCreativeAssets = async () => {
     try {
-      const { data, error } = await supabase
-        .from('creative_assets')
-        .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at, platform_creative_id');
+      const allAssets: CreativeAsset[] = [];
+      const pageSize = 1000;
+      let from = 0;
 
-      if (error) {
-        console.error('Error fetching creative assets:', error);
-        return;
+      while (true) {
+        const { data, error } = await supabase
+          .from('creative_assets')
+          .select('creative_name, thumbnail_url, asset_type, full_asset_url, poster_url, updated_at, platform_creative_id')
+          .order('updated_at', { ascending: false, nullsFirst: false })
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          console.error('Error fetching creative assets:', error);
+          return;
+        }
+
+        const page = (data as CreativeAsset[]) || [];
+        if (page.length === 0) break;
+
+        allAssets.push(...page);
+
+        if (page.length < pageSize) break;
+        from += pageSize;
       }
 
       const selectedAssets = new Map<string, AssetSelection>();
-      for (const asset of (data as CreativeAsset[]) || []) {
+      for (const asset of allAssets) {
         const canonicalName = canonicalizeCreativeName(asset.creative_name);
 
         // Add cache-busting query param based on updated_at
