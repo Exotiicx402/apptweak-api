@@ -339,6 +339,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
    const hasAsset = !!creative.assetUrl || !!creative.fullAssetUrl;
    const showBreakdown = isBlended && platformBreakdown.length > 0;
    const isMetaCreative = creative.platform === 'meta' && !!creative.platformCreativeId;
+   const isMolocoCreative = creative.platform === 'moloco';
 
   // For videos: use fullAssetUrl as the MP4, posterUrl for the poster
   // For images: prefer HD URL > originalUrl > fullAssetUrl > assetUrl
