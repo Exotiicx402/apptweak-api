@@ -244,7 +244,6 @@ serve(async (req) => {
           const stored = await downloadAndStore(supabase, imageUrl, path);
           if (stored) { fullAssetUrl = stored; thumbnailUrl = stored; }
         }
-        }
       }
 
       if (thumbnailUrl || fullAssetUrl || posterUrl) {
