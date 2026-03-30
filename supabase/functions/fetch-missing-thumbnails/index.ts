@@ -142,7 +142,9 @@ async function downloadAndStore(
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!res.ok) return null;
     const ct = res.headers.get('content-type') || hint || 'application/octet-stream';
-    const blob = new Blob([await res.arrayBuffer()], { type: ct });
+    const buf = await res.arrayBuffer();
+    const blob = new Blob([buf], { type: ct });
+    console.log(`Downloaded ${url.substring(0, 120)}: ${buf.byteLength} bytes, type=${ct}`);
     const { error } = await supabase.storage.from('creative-assets').upload(path, blob, {
       contentType: ct, upsert: true, cacheControl: '3600',
     });
