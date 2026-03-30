@@ -292,6 +292,34 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [attributeFilters, setAttributeFilters] = useState<AttributeFilters>({});
+  const [fetchingMissing, setFetchingMissing] = useState(false);
+
+  const missingCount = data.filter(c => !c.assetUrl).length;
+
+  const handleFetchMissing = async () => {
+    const missingNames = data.filter(c => !c.assetUrl).map(c => c.adName);
+    if (missingNames.length === 0) {
+      toast.info("All creatives already have thumbnails!");
+      return;
+    }
+    setFetchingMissing(true);
+    toast.info(`Fetching thumbnails for ${missingNames.length} creatives...`);
+    try {
+      const { data: result, error } = await supabase.functions.invoke('fetch-missing-thumbnails', {
+        body: { missingNames },
+      });
+      if (error) throw error;
+      if (result?.processed > 0) {
+        toast.success(`Fetched ${result.processed} new thumbnails. Re-apply date range to see them.`);
+      } else {
+        toast.info("No new thumbnails could be fetched from Meta API.");
+      }
+    } catch (err) {
+      toast.error(`Failed to fetch thumbnails: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setFetchingMissing(false);
+    }
+  };
 
   const handleCreativeClick = (creative: EnrichedCreative) => {
     setSelectedCreative(creative);
