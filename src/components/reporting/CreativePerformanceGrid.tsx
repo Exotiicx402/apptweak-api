@@ -293,15 +293,66 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
   const [previewOpen, setPreviewOpen] = useState(false);
   const [attributeFilters, setAttributeFilters] = useState<AttributeFilters>({});
   const [fetchingMissing, setFetchingMissing] = useState(false);
+  const [lowResCreativeNames, setLowResCreativeNames] = useState<Set<string>>(new Set());
 
   const missingCount = data.filter(c => !c.assetUrl).length;
   const fetchableMissingCreatives = data.filter(
     (creative) => !creative.assetUrl && (creative.platform === "meta" || creative.platform === "blended")
   );
-  const fetchableMissingCount = fetchableMissingCreatives.length;
+  const fetchableUpgradeCreatives = data.filter(
+    (creative) => lowResCreativeNames.has(creative.adName) && (creative.platform === "meta" || creative.platform === "blended")
+  );
+  const fetchableMissingCount = Array.from(new Set([
+    ...fetchableMissingCreatives.map((creative) => creative.adName),
+    ...fetchableUpgradeCreatives.map((creative) => creative.adName),
+  ])).length;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolutionCandidates = data
+      .filter((creative) => !!creative.assetUrl && (creative.platform === "meta" || creative.platform === "blended"))
+      .slice(0, 200);
+
+    if (resolutionCandidates.length === 0) {
+      setLowResCreativeNames(new Set());
+      return;
+    }
+
+    const checkLowRes = (url: string): Promise<boolean> =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img.naturalWidth <= 128 || img.naturalHeight <= 128);
+        img.onerror = () => resolve(false);
+        img.src = url;
+      });
+
+    (async () => {
+      const checks = await Promise.all(
+        resolutionCandidates.map(async (creative) => ({
+          adName: creative.adName,
+          isLowRes: creative.assetUrl ? await checkLowRes(creative.assetUrl) : false,
+        }))
+      );
+
+      if (cancelled) return;
+
+      const nextLowRes = new Set(
+        checks.filter((item) => item.isLowRes).map((item) => item.adName)
+      );
+      setLowResCreativeNames(nextLowRes);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
 
   const handleFetchMissing = async () => {
-    const missingNames = Array.from(new Set(fetchableMissingCreatives.map((creative) => creative.adName)));
+    const missingNames = Array.from(new Set([
+      ...fetchableMissingCreatives.map((creative) => creative.adName),
+      ...fetchableUpgradeCreatives.map((creative) => creative.adName),
+    ]));
     if (missingNames.length === 0) {
       if (missingCount > 0) {
         toast.info("Remaining missing creatives are non-Meta and can’t be fetched by this action.");
@@ -311,7 +362,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
       return;
     }
     setFetchingMissing(true);
-    toast.info(`Fetching thumbnails for ${missingNames.length} Meta creatives...`);
+    toast.info(`Fetching/upgrading thumbnails for ${missingNames.length} Meta creatives...`);
     try {
       const { data: result, error } = await supabase.functions.invoke('fetch-missing-thumbnails', {
         body: { missingNames },
@@ -392,7 +443,7 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
               className="text-xs gap-1.5"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${fetchingMissing ? 'animate-spin' : ''}`} />
-              Fetch {fetchableMissingCount} Missing
+              Fetch/Upgrade {fetchableMissingCount}
             </Button>
           )}
           <ColumnSettingsPopover config={columnConfig} onChange={setColumnConfig} />

@@ -103,6 +103,34 @@ function resolveBestImageUrl(detail: any): { url: string | null; source: string 
   return { url: null, source: 'none' };
 }
 
+function getHighResFacebookUrlCandidates(url: string): string[] {
+  const candidates = new Set<string>([url]);
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const isFacebookCdn = host.includes('fbcdn.net') || host.includes('facebook.com');
+    if (!isFacebookCdn) return Array.from(candidates);
+
+    const noResize = new URL(parsed.toString());
+    for (const key of ['stp', 'w', 'h', 'width', 'height']) {
+      noResize.searchParams.delete(key);
+    }
+    candidates.add(noResize.toString());
+
+    const pathUpscaled = new URL(noResize.toString());
+    pathUpscaled.pathname = pathUpscaled.pathname
+      .replace(/\/p64x64\//gi, '/p1080x1080/')
+      .replace(/\/s64x64\//gi, '/s1080x1080/')
+      .replace(/\/s\d{1,3}x\d{1,3}\//gi, '/s1080x1080/');
+    candidates.add(pathUpscaled.toString());
+  } catch {
+    return Array.from(candidates);
+  }
+
+  return Array.from(candidates).filter((candidate) => !isLikelyLowResUrl(candidate));
+}
+
 async function downloadAndStore(
   supabase: any, url: string, path: string, hint?: string
 ): Promise<string | null> {
@@ -315,13 +343,18 @@ serve(async (req) => {
         }
       } else {
         const resolved = resolveBestImageUrl(detail);
-        const imageUrl = resolved.url;
-        console.log(`Image creative ${creativeId}: resolved=${!!imageUrl}, source=${resolved.source}, object_type=${detail.object_type}`);
-        if (imageUrl) {
-          const ext = getExtension(imageUrl);
+        const imageCandidates = resolved.url ? getHighResFacebookUrlCandidates(resolved.url) : [];
+        console.log(`Image creative ${creativeId}: resolved=${!!resolved.url}, source=${resolved.source}, candidates=${imageCandidates.length}, object_type=${detail.object_type}`);
+        for (const candidateUrl of imageCandidates) {
+          const ext = getExtension(candidateUrl);
           const path = `meta/${safeConcept}/${safeUnique}.${ext}`;
-          const stored = await downloadAndStore(supabase, imageUrl, path);
-          if (stored) { fullAssetUrl = stored; thumbnailUrl = stored; }
+          const stored = await downloadAndStore(supabase, candidateUrl, path);
+          if (stored) {
+            fullAssetUrl = stored;
+            thumbnailUrl = stored;
+            detail.resolvedImageUrl = candidateUrl;
+            break;
+          }
         } else {
           console.log(`Skipped ${creativeId}: no HD-capable image URL found (low-res-only candidates).`);
         }
