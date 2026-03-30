@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 type ViewMode = "cards" | "table";
 type AssetTypeFilter = "all" | "image" | "video";
+type SortKey = "spend" | "ftds" | "cftd" | "cpi" | "ctr" | "installs";
 
 function isVideoCreative(creative: EnrichedCreative): boolean {
   // Primary: use asset_type from creative_assets table ("image" or "video")
