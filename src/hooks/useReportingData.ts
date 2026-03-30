@@ -90,7 +90,7 @@ export function useReportingData() {
 
     const [metaResult, molocoResult] = await Promise.allSettled([
       supabase.functions.invoke("meta-history", { body: { startDate, endDate } }),
-      supabase.functions.invoke("moloco-history", { body: { startDate, endDate } }),
+      supabase.functions.invoke("moloco-history", { body: { startDate, endDate, skipAds: true } }),
     ]);
 
     const extractMetrics = (result: PromiseSettledResult<any>, hasFunnel = false): PlatformMetrics => {

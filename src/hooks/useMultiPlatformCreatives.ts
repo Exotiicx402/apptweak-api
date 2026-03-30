@@ -138,8 +138,13 @@ export function useMultiPlatformCreatives() {
     setData({ ads: [], isLoading: true, error: null });
 
     try {
+      const requestBody =
+        platform === "moloco" && edgeFn === "moloco-history"
+          ? { startDate, endDate, adsOnly: true }
+          : { startDate, endDate };
+
       const { data: responseData, error: invokeError } = await supabase.functions.invoke(edgeFn, {
-        body: { startDate, endDate },
+        body: requestBody,
       });
 
       if (invokeError) {
