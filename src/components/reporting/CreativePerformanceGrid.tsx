@@ -302,10 +302,10 @@ export function CreativePerformanceGrid({ startDate, endDate, dataFetched, refre
 
   const missingCount = data.filter(c => !c.assetUrl).length;
   const fetchableMissingCreatives = data.filter(
-    (creative) => !creative.assetUrl && (creative.platform === "meta" || creative.platform === "blended")
+    (creative) => !creative.assetUrl && (creative.platform === "meta" || creative.platform === "moloco" || creative.platform === "blended")
   );
   const fetchableUpgradeCreatives = data.filter(
-    (creative) => lowResCreativeNames.has(creative.adName) && (creative.platform === "meta" || creative.platform === "blended")
+    (creative) => lowResCreativeNames.has(creative.adName) && (creative.platform === "meta" || creative.platform === "moloco" || creative.platform === "blended")
   );
   const fetchableMissingCount = Array.from(new Set([
     ...fetchableMissingCreatives.map((creative) => creative.adName),
