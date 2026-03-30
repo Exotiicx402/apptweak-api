@@ -227,7 +227,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
   adsetBreakdown = [],
    isBlended = false,
  }: CreativePreviewDialogProps) {
-  const [showAdPreview, setShowAdPreview] = useState(false);
+  const [showAdPreview, setShowAdPreview] = useState(true);
   const { hdUrl, mediaType: hdMediaType, loading: hdLoading, fetchHdMedia, reset: resetHd } = useFetchHdMedia();
 
   // Lazy-load HD media when dialog opens with a creative
