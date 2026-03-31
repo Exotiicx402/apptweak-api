@@ -275,35 +275,49 @@ async function createReport(
   adAccountId: string,
   startDate: string,
   endDate: string,
-  dimensions: string[] = ['DATE', 'CAMPAIGN']
+  dimensions: string[] = ['DATE', 'CAMPAIGN'],
+  maxRetries = 3
 ): Promise<string> {
   console.log(`Creating Moloco report for ${startDate} to ${endDate} with dimensions ${dimensions.join(',')}...`);
-  
-  const response = await fetch(MOLOCO_REPORTS_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      ad_account_id: adAccountId,
-      date_range: {
-        start: startDate,
-        end: endDate,
-      },
-      dimensions,
-    }),
-  });
 
-  if (!response.ok) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch(MOLOCO_REPORTS_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ad_account_id: adAccountId,
+        date_range: {
+          start: startDate,
+          end: endDate,
+        },
+        dimensions,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('Report created:', data.id);
+      return data.id;
+    }
+
     const errorText = await response.text();
+
+    // Retry on 429 rate limit with exponential backoff
+    if (response.status === 429 && attempt < maxRetries - 1) {
+      const backoffMs = 5000 * Math.pow(2, attempt); // 5s, 10s, 20s
+      console.warn(`Rate limited (429) on createReport attempt ${attempt + 1}, retrying in ${backoffMs}ms...`);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+      continue;
+    }
+
     console.error('Create report error:', response.status, errorText);
     throw new Error(`Failed to create Moloco report: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
-  console.log('Report created:', data.id);
-  return data.id;
+  throw new Error('createReport: max retries exhausted');
 }
 
 async function waitForReport(
