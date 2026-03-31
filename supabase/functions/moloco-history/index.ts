@@ -179,6 +179,7 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
   const { projectId, datasetId, tableId } = resolveMolocoBigQueryTarget();
   const fullTableId = `${projectId}.${datasetId}.${tableId}`;
 
+
   const valuesClause = rows
     .map((row) => {
       const escapedName = row.campaign_name.replace(/'/g, "\\'");
@@ -190,6 +191,7 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
         ${row.installs},
         ${row.impressions},
         ${row.clicks},
+        ${row.registrations || 0},
         ${row.ftds},
         CURRENT_TIMESTAMP()
       )`;
@@ -200,7 +202,7 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
     MERGE \`${fullTableId}\` AS target
     USING (
       SELECT * FROM UNNEST([
-        STRUCT<date DATE, campaign_id STRING, campaign_name STRING, spend FLOAT64, installs INT64, impressions INT64, clicks INT64, ftds INT64, fetched_at TIMESTAMP>
+        STRUCT<date DATE, campaign_id STRING, campaign_name STRING, spend FLOAT64, installs INT64, impressions INT64, clicks INT64, registrations INT64, ftds INT64, fetched_at TIMESTAMP>
         ${valuesClause}
       ])
     ) AS source
@@ -212,11 +214,12 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
         installs = source.installs,
         impressions = source.impressions,
         clicks = source.clicks,
+        registrations = source.registrations,
         ftds = source.ftds,
         fetched_at = source.fetched_at
     WHEN NOT MATCHED THEN
-      INSERT (date, campaign_id, campaign_name, spend, installs, impressions, clicks, ftds, fetched_at)
-      VALUES (source.date, source.campaign_id, source.campaign_name, source.spend, source.installs, source.impressions, source.clicks, source.ftds, source.fetched_at)
+      INSERT (date, campaign_id, campaign_name, spend, installs, impressions, clicks, registrations, ftds, fetched_at)
+      VALUES (source.date, source.campaign_id, source.campaign_name, source.spend, source.installs, source.impressions, source.clicks, source.registrations, source.ftds, source.fetched_at)
   `;
 
   console.log(`Merging ${rows.length} rows into BigQuery...`);
@@ -926,6 +929,22 @@ serve(async (req) => {
     const { projectId, datasetId, tableId } = resolveMolocoBigQueryTarget();
     const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
 
+    // Ensure registrations column exists in BQ table before querying
+    try {
+      const alterQuery = `ALTER TABLE ${fullTable} ADD COLUMN IF NOT EXISTS registrations INT64 DEFAULT 0`;
+      await fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ query: alterQuery, useLegacySql: false }),
+        }
+      );
+      console.log('Ensured registrations column exists in BQ table');
+    } catch (e) {
+      console.warn('ALTER TABLE for registrations column (non-blocking):', e);
+    }
+
     // Try to query BigQuery for current and previous period
     let bqCurrentRows: any[] = [];
     let bqPrevRows: any[] = [];
@@ -941,6 +960,7 @@ serve(async (req) => {
           installs,
           impressions,
           clicks,
+          IFNULL(registrations, 0) as registrations,
           IFNULL(ftds, 0) as ftds
         FROM ${fullTable}
         WHERE date BETWEEN '${startDate}' AND '${endDate}'
@@ -956,6 +976,7 @@ serve(async (req) => {
           installs,
           impressions,
           clicks,
+          IFNULL(registrations, 0) as registrations,
           IFNULL(ftds, 0) as ftds
         FROM ${fullTable}
         WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
@@ -1122,8 +1143,7 @@ serve(async (req) => {
 
     // Fetch AppsFlyer FTD and Registration data for both periods in parallel
     const emptyEvents: AppsFlyerEventData = { byDate: new Map(), byCampaign: new Map(), total: 0 };
-    // Fetch AppsFlyer FTD data only (registrations now come from Moloco native "conversions")
-    const [currentFtds, prevFtds] = await Promise.all([
+    const [currentFtds, prevFtds, currentRegs, prevRegs] = await Promise.all([
       fetchAppsFlyerFtds(startDate, endDate).catch(err => {
         console.error('AppsFlyer current FTD fetch failed (non-blocking):', err);
         return emptyEvents;
@@ -1132,11 +1152,21 @@ serve(async (req) => {
         console.error('AppsFlyer prev FTD fetch failed (non-blocking):', err);
         return emptyEvents;
       }),
+      fetchAppsFlyerRegistrations(startDate, endDate).catch(err => {
+        console.error('AppsFlyer current registrations fetch failed (non-blocking):', err);
+        return emptyEvents;
+      }),
+      fetchAppsFlyerRegistrations(prevStartStr, prevEndStr).catch(err => {
+        console.error('AppsFlyer prev registrations fetch failed (non-blocking):', err);
+        return emptyEvents;
+      }),
     ]);
 
-    // Merge AppsFlyer FTD events into Moloco rows (registrations use Moloco native data)
+    // Merge AppsFlyer events into Moloco rows
     mergeAppsFlyerEvents(mergedRows, currentFtds, 'ftds');
     mergeAppsFlyerEvents(mergedPrevRows, prevFtds, 'ftds');
+    mergeAppsFlyerEvents(mergedRows, currentRegs, 'registrations');
+    mergeAppsFlyerEvents(mergedPrevRows, prevRegs, 'registrations');
 
     // Calculate results
     const totals = calculateTotals(mergedRows);
