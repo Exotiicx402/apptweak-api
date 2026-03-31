@@ -943,6 +943,22 @@ serve(async (req) => {
     const { projectId, datasetId, tableId } = resolveMolocoBigQueryTarget();
     const fullTable = `\`${projectId}.${datasetId}.${tableId}\``;
 
+    // Ensure registrations column exists in BQ table before querying
+    try {
+      const alterQuery = `ALTER TABLE ${fullTable} ADD COLUMN IF NOT EXISTS registrations INT64 DEFAULT 0`;
+      await fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ query: alterQuery, useLegacySql: false }),
+        }
+      );
+      console.log('Ensured registrations column exists in BQ table');
+    } catch (e) {
+      console.warn('ALTER TABLE for registrations column (non-blocking):', e);
+    }
+
     // Try to query BigQuery for current and previous period
     let bqCurrentRows: any[] = [];
     let bqPrevRows: any[] = [];
