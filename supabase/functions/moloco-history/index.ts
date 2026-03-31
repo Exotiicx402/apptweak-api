@@ -179,6 +179,21 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
   const { projectId, datasetId, tableId } = resolveMolocoBigQueryTarget();
   const fullTableId = `${projectId}.${datasetId}.${tableId}`;
 
+  // Ensure registrations column exists in BQ table (idempotent)
+  try {
+    const alterQuery = `ALTER TABLE \`${fullTableId}\` ADD COLUMN IF NOT EXISTS registrations INT64 DEFAULT 0`;
+    await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: alterQuery, useLegacySql: false }),
+      }
+    );
+  } catch (e) {
+    console.warn('ALTER TABLE for registrations column (non-blocking):', e);
+  }
+
   const valuesClause = rows
     .map((row) => {
       const escapedName = row.campaign_name.replace(/'/g, "\\'");
@@ -190,6 +205,7 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
         ${row.installs},
         ${row.impressions},
         ${row.clicks},
+        ${row.registrations || 0},
         ${row.ftds},
         CURRENT_TIMESTAMP()
       )`;
@@ -200,7 +216,7 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
     MERGE \`${fullTableId}\` AS target
     USING (
       SELECT * FROM UNNEST([
-        STRUCT<date DATE, campaign_id STRING, campaign_name STRING, spend FLOAT64, installs INT64, impressions INT64, clicks INT64, ftds INT64, fetched_at TIMESTAMP>
+        STRUCT<date DATE, campaign_id STRING, campaign_name STRING, spend FLOAT64, installs INT64, impressions INT64, clicks INT64, registrations INT64, ftds INT64, fetched_at TIMESTAMP>
         ${valuesClause}
       ])
     ) AS source
@@ -212,11 +228,12 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
         installs = source.installs,
         impressions = source.impressions,
         clicks = source.clicks,
+        registrations = source.registrations,
         ftds = source.ftds,
         fetched_at = source.fetched_at
     WHEN NOT MATCHED THEN
-      INSERT (date, campaign_id, campaign_name, spend, installs, impressions, clicks, ftds, fetched_at)
-      VALUES (source.date, source.campaign_id, source.campaign_name, source.spend, source.installs, source.impressions, source.clicks, source.ftds, source.fetched_at)
+      INSERT (date, campaign_id, campaign_name, spend, installs, impressions, clicks, registrations, ftds, fetched_at)
+      VALUES (source.date, source.campaign_id, source.campaign_name, source.spend, source.installs, source.impressions, source.clicks, source.registrations, source.ftds, source.fetched_at)
   `;
 
   console.log(`Merging ${rows.length} rows into BigQuery...`);
