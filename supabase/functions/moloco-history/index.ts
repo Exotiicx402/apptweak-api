@@ -179,20 +179,6 @@ async function mergeIntoBigQuery(rows: ProcessedRow[], accessToken: string): Pro
   const { projectId, datasetId, tableId } = resolveMolocoBigQueryTarget();
   const fullTableId = `${projectId}.${datasetId}.${tableId}`;
 
-  // Ensure registrations column exists in BQ table (idempotent)
-  try {
-    const alterQuery = `ALTER TABLE \`${fullTableId}\` ADD COLUMN IF NOT EXISTS registrations INT64 DEFAULT 0`;
-    await fetch(
-      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ query: alterQuery, useLegacySql: false }),
-      }
-    );
-  } catch (e) {
-    console.warn('ALTER TABLE for registrations column (non-blocking):', e);
-  }
 
   const valuesClause = rows
     .map((row) => {
