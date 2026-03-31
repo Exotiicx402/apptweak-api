@@ -958,6 +958,7 @@ serve(async (req) => {
           installs,
           impressions,
           clicks,
+          IFNULL(registrations, 0) as registrations,
           IFNULL(ftds, 0) as ftds
         FROM ${fullTable}
         WHERE date BETWEEN '${startDate}' AND '${endDate}'
@@ -973,6 +974,7 @@ serve(async (req) => {
           installs,
           impressions,
           clicks,
+          IFNULL(registrations, 0) as registrations,
           IFNULL(ftds, 0) as ftds
         FROM ${fullTable}
         WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
