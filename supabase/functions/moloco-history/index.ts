@@ -1122,7 +1122,8 @@ serve(async (req) => {
 
     // Fetch AppsFlyer FTD and Registration data for both periods in parallel
     const emptyEvents: AppsFlyerEventData = { byDate: new Map(), byCampaign: new Map(), total: 0 };
-    const [currentFtds, prevFtds, currentRegs, prevRegs] = await Promise.all([
+    // Fetch AppsFlyer FTD data only (registrations now come from Moloco native "conversions")
+    const [currentFtds, prevFtds] = await Promise.all([
       fetchAppsFlyerFtds(startDate, endDate).catch(err => {
         console.error('AppsFlyer current FTD fetch failed (non-blocking):', err);
         return emptyEvents;
@@ -1131,21 +1132,11 @@ serve(async (req) => {
         console.error('AppsFlyer prev FTD fetch failed (non-blocking):', err);
         return emptyEvents;
       }),
-      fetchAppsFlyerRegistrations(startDate, endDate).catch(err => {
-        console.error('AppsFlyer current registrations fetch failed (non-blocking):', err);
-        return emptyEvents;
-      }),
-      fetchAppsFlyerRegistrations(prevStartStr, prevEndStr).catch(err => {
-        console.error('AppsFlyer prev registrations fetch failed (non-blocking):', err);
-        return emptyEvents;
-      }),
     ]);
 
-    // Merge AppsFlyer events into Moloco rows
+    // Merge AppsFlyer FTD events into Moloco rows (registrations use Moloco native data)
     mergeAppsFlyerEvents(mergedRows, currentFtds, 'ftds');
     mergeAppsFlyerEvents(mergedPrevRows, prevFtds, 'ftds');
-    mergeAppsFlyerEvents(mergedRows, currentRegs, 'registrations');
-    mergeAppsFlyerEvents(mergedPrevRows, prevRegs, 'registrations');
 
     // Calculate results
     const totals = calculateTotals(mergedRows);
