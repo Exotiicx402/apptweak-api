@@ -258,13 +258,16 @@ export function useMultiPlatformCreatives() {
   };
 
   const fetchAllPlatforms = useCallback(async (startDate: string, endDate: string) => {
-    // Fetch all platforms and assets in parallel
+    // Fetch Meta + assets in parallel first, then Moloco creatives after
+    // to avoid concurrent Moloco API calls exhausting the rate limit quota
     await Promise.all([
       fetchPlatform("meta", "meta-history", startDate, endDate, setMeta),
-      fetchPlatform("moloco", "moloco-history", startDate, endDate, setMoloco),
       fetchCreativeAssets(),
       fetchStoredAssets(),
     ]);
+    // Moloco creative fetch runs after Meta to avoid overlapping with
+    // the KPI fetch from useReportingData which also hits Moloco API
+    await fetchPlatform("moloco", "moloco-history", startDate, endDate, setMoloco);
   }, []);
 
   const clearData = useCallback(() => {

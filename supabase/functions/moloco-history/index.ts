@@ -877,9 +877,22 @@ serve(async (req) => {
       } catch (adErr) {
         const message = adErr instanceof Error ? adErr.message : 'Failed to fetch Moloco creative data';
         console.error('Failed to fetch ad-group data:', adErr);
+        // Return 200 with empty ads and a warning instead of 503, so the UI degrades gracefully
         return new Response(
-          JSON.stringify({ success: false, error: message }),
-          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({
+            success: true,
+            data: {
+              daily: [],
+              campaigns: [],
+              totals: emptyTotals,
+              previousTotals: emptyTotals,
+              ads: [],
+              dateRange: { startDate, endDate },
+              previousDateRange: { startDate, endDate },
+              warning: message,
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     }
