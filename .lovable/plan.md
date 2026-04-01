@@ -1,20 +1,44 @@
 
 
-# Use Moloco Native "Actions" for Registrations Instead of AppsFlyer
+# Fix: Moloco 500 Error — BigQuery Missing `registrations` Column
 
-## Problem
+## Root Cause
 
-Moloco's API already returns `conversions` (shown as "Action" in their dashboard — 266 in your screenshot). The edge function correctly parses this into `registrations` on line 398. However, lines 1147-1148 then **overwrite** those values with AppsFlyer `af_complete_registration` data, discarding the native Moloco numbers.
+The network response confirms it: the KPI request (`skipAds: true`) returns HTTP 500 with:
 
-## Solution
+```
+"Unrecognized name: registrations at [10:18]"
+```
 
-Stop overwriting Moloco's native `registrations` with AppsFlyer data. Keep the AppsFlyer merge only for `ftds`.
+The BigQuery table `moloco-lv` does not have a `registrations` column. The `ALTER TABLE ADD COLUMN IF NOT EXISTS` on line 934 runs but the BigQuery ALTER is async — the SELECT query fires before the schema change propagates, causing the query to fail. The error then falls through to the catch block on line 992 which only handles errors containing "schema" or "does not exist" — but `"Unrecognized name"` does not match either string, so it **re-throws** instead of falling back to live API.
 
-### File: `supabase/functions/moloco-history/index.ts`
+## Fix (1 file)
 
-1. **Remove the AppsFlyer registrations fetch calls** (lines 1134-1141) — delete the two `fetchAppsFlyerRegistrations` promises from the `Promise.all`
-2. **Remove the AppsFlyer registrations merge calls** (lines 1147-1148) — delete `mergeAppsFlyerEvents(mergedRows, currentRegs, 'registrations')` and the previous-period equivalent
-3. Keep FTD merging from AppsFlyer unchanged since Moloco's `target_actions` may not map to FTDs the same way
+### `supabase/functions/moloco-history/index.ts`
 
-This means registrations will come directly from Moloco's `conversions` metric (the "Action" column you see in the Moloco dashboard), and FTDs will continue to come from AppsFlyer's `first_time_deposit` events.
+**Change 1 — Wait for ALTER TABLE result and verify success (lines 933-946)**
+
+Before running the SELECT queries, await the ALTER TABLE response properly, check that it succeeded, and if it fails, log a warning but continue.
+
+**Change 2 — Catch `Unrecognized name` as a schema error (line 997)**
+
+Expand the schema error detection on line 997 to also match `"Unrecognized name"`:
+
+```typescript
+if (errorMessage.includes('schema') || errorMessage.includes('does not exist') || errorMessage.includes('Unrecognized name')) {
+  console.log('BigQuery schema mismatch — will attempt live API fallback');
+  bqQueryFailed = true;
+} else {
+  throw err;
+}
+```
+
+This ensures that when the `registrations` column doesn't exist yet, the function falls back to the live Moloco API instead of returning a hard 500. The ALTER TABLE will add the column for future queries, and the live API data (with registrations from AppsFlyer merge) will be cached back via the MERGE statement, which will also succeed because the column will exist by then.
+
+### Summary of Changes
+
+| Line Range | Change |
+|---|---|
+| 933-946 | Await ALTER TABLE response, check for errors, add brief delay to let schema propagate |
+| 997 | Add `'Unrecognized name'` to the schema error detection condition |
 
