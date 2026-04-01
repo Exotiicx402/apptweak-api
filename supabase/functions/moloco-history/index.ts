@@ -1001,8 +1001,8 @@ serve(async (req) => {
       console.error('BigQuery query failed:', errorMessage);
       
       // Check if it's a schema error - if so, we can try live API fallback
-      if (errorMessage.includes('schema') || errorMessage.includes('does not exist')) {
-        console.log('BigQuery table may not have schema - will attempt live API fallback');
+      if (errorMessage.includes('schema') || errorMessage.includes('does not exist') || errorMessage.includes('Unrecognized name')) {
+        console.log('BigQuery schema mismatch — will attempt live API fallback');
         bqQueryFailed = true;
       } else {
         throw err;
