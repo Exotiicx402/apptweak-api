@@ -932,7 +932,7 @@ serve(async (req) => {
     // Ensure registrations column exists in BQ table before querying
     try {
       const alterQuery = `ALTER TABLE ${fullTable} ADD COLUMN IF NOT EXISTS registrations INT64 DEFAULT 0`;
-      await fetch(
+      const alterResp = await fetch(
         `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
         {
           method: "POST",
@@ -940,7 +940,14 @@ serve(async (req) => {
           body: JSON.stringify({ query: alterQuery, useLegacySql: false }),
         }
       );
-      console.log('Ensured registrations column exists in BQ table');
+      const alterResult = await alterResp.json();
+      if (alterResult.errors && alterResult.errors.length > 0) {
+        console.warn('ALTER TABLE returned errors:', JSON.stringify(alterResult.errors));
+      } else {
+        console.log('Ensured registrations column exists in BQ table');
+        // Brief delay to let schema propagate
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     } catch (e) {
       console.warn('ALTER TABLE for registrations column (non-blocking):', e);
     }
@@ -994,8 +1001,8 @@ serve(async (req) => {
       console.error('BigQuery query failed:', errorMessage);
       
       // Check if it's a schema error - if so, we can try live API fallback
-      if (errorMessage.includes('schema') || errorMessage.includes('does not exist')) {
-        console.log('BigQuery table may not have schema - will attempt live API fallback');
+      if (errorMessage.includes('schema') || errorMessage.includes('does not exist') || errorMessage.includes('Unrecognized name')) {
+        console.log('BigQuery schema mismatch — will attempt live API fallback');
         bqQueryFailed = true;
       } else {
         throw err;
