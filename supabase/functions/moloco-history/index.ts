@@ -932,7 +932,7 @@ serve(async (req) => {
     // Ensure registrations column exists in BQ table before querying
     try {
       const alterQuery = `ALTER TABLE ${fullTable} ADD COLUMN IF NOT EXISTS registrations INT64 DEFAULT 0`;
-      await fetch(
+      const alterResp = await fetch(
         `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
         {
           method: "POST",
@@ -940,7 +940,14 @@ serve(async (req) => {
           body: JSON.stringify({ query: alterQuery, useLegacySql: false }),
         }
       );
-      console.log('Ensured registrations column exists in BQ table');
+      const alterResult = await alterResp.json();
+      if (alterResult.errors && alterResult.errors.length > 0) {
+        console.warn('ALTER TABLE returned errors:', JSON.stringify(alterResult.errors));
+      } else {
+        console.log('Ensured registrations column exists in BQ table');
+        // Brief delay to let schema propagate
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     } catch (e) {
       console.warn('ALTER TABLE for registrations column (non-blocking):', e);
     }
