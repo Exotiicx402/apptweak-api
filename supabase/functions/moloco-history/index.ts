@@ -310,7 +310,7 @@ async function createReport(
 
     // Retry on 429 rate limit with exponential backoff
     if (response.status === 429 && attempt < maxRetries - 1) {
-      const backoffMs = 5000 * Math.pow(2, attempt); // 5s, 10s, 20s
+      const backoffMs = 2000 * Math.pow(2, attempt); // 2s, 4s
       console.warn(`Rate limited (429) on createReport attempt ${attempt + 1}, retrying in ${backoffMs}ms...`);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       continue;
