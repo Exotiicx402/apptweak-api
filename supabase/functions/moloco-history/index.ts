@@ -957,55 +957,45 @@ serve(async (req) => {
     let bqPrevRows: any[] = [];
     let bqQueryFailed = false;
 
-    try {
-      const currentPeriodQuery = `
-        SELECT 
-          date,
-          campaign_id,
-          campaign_name,
-          spend,
-          installs,
-          impressions,
-          clicks,
-          IFNULL(registrations, 0) as registrations,
-          IFNULL(ftds, 0) as ftds
-        FROM ${fullTable}
-        WHERE date BETWEEN '${startDate}' AND '${endDate}'
-        ORDER BY date, campaign_id
-      `;
+    const buildQuery = (start: string, end: string, includeRegistrations: boolean) => `
+      SELECT 
+        date,
+        campaign_id,
+        campaign_name,
+        spend,
+        installs,
+        impressions,
+        clicks,
+        ${includeRegistrations ? 'IFNULL(registrations, 0) as registrations,' : '0 as registrations,'}
+        IFNULL(ftds, 0) as ftds
+      FROM ${fullTable}
+      WHERE date BETWEEN '${start}' AND '${end}'
+      ORDER BY date, campaign_id
+    `;
 
-      const prevPeriodQuery = `
-        SELECT 
-          date,
-          campaign_id,
-          campaign_name,
-          spend,
-          installs,
-          impressions,
-          clicks,
-          IFNULL(registrations, 0) as registrations,
-          IFNULL(ftds, 0) as ftds
-        FROM ${fullTable}
-        WHERE date BETWEEN '${prevStartStr}' AND '${prevEndStr}'
-        ORDER BY date, campaign_id
-      `;
-
-      [bqCurrentRows, bqPrevRows] = await Promise.all([
-        queryBigQuery(currentPeriodQuery, googleAccessToken),
-        queryBigQuery(prevPeriodQuery, googleAccessToken),
-      ]);
-
-      console.log(`BigQuery returned ${bqCurrentRows.length} current rows, ${bqPrevRows.length} previous rows`);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error('BigQuery query failed:', errorMessage);
-      
-      // Check if it's a schema error - if so, we can try live API fallback
-      if (errorMessage.includes('schema') || errorMessage.includes('does not exist') || errorMessage.includes('Unrecognized name')) {
-        console.log('BigQuery schema mismatch — will attempt live API fallback');
-        bqQueryFailed = true;
-      } else {
-        throw err;
+    // Try with registrations column first, fall back to without if schema mismatch
+    for (const includeRegs of [true, false]) {
+      try {
+        [bqCurrentRows, bqPrevRows] = await Promise.all([
+          queryBigQuery(buildQuery(startDate, endDate, includeRegs), googleAccessToken),
+          queryBigQuery(buildQuery(prevStartStr, prevEndStr, includeRegs), googleAccessToken),
+        ]);
+        console.log(`BigQuery returned ${bqCurrentRows.length} current rows, ${bqPrevRows.length} previous rows (registrations col: ${includeRegs})`);
+        break;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('BigQuery query failed:', errorMessage);
+        if (includeRegs && (errorMessage.includes('Unrecognized name') || errorMessage.includes('schema') || errorMessage.includes('does not exist'))) {
+          console.log('Retrying BQ query without registrations column...');
+          continue;
+        }
+        if (!includeRegs) {
+          // Both attempts failed — fall back to live API
+          console.log('BigQuery schema mismatch on both attempts — will attempt live API fallback');
+          bqQueryFailed = true;
+        } else {
+          throw err;
+        }
       }
     }
 
