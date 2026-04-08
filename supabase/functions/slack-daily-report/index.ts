@@ -241,15 +241,28 @@ serve(async (req) => {
 
     // Send to Slack
     const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
-    if (!slackWebhookUrl) throw new Error('SLACK_WEBHOOK_URL not configured');
+    const slackBotToken = Deno.env.get('POLYMARKET_SLACK_BOT_TOKEN');
+    if (!slackWebhookUrl && !slackBotToken) throw new Error('No Slack credentials configured');
 
     const slackMessage = buildSlackMessage(reportDate, metaCurrent, metaPrevious, molocoCurrent, molocoPrevious);
 
-    const slackResponse = await fetch(slackWebhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(slackMessage),
-    });
+    let slackResponse: Response;
+    if (slackWebhookUrl) {
+      slackResponse = await fetch(slackWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(slackMessage),
+      });
+    } else {
+      slackResponse = await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${slackBotToken}`,
+        },
+        body: JSON.stringify(slackMessage),
+      });
+    }
 
     if (!slackResponse.ok) {
       const errorText = await slackResponse.text();
