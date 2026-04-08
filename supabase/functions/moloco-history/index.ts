@@ -279,7 +279,7 @@ async function createReport(
   startDate: string,
   endDate: string,
   dimensions: string[] = ['DATE', 'CAMPAIGN'],
-  maxRetries = 3
+  maxRetries = 2
 ): Promise<string> {
   console.log(`Creating Moloco report for ${startDate} to ${endDate} with dimensions ${dimensions.join(',')}...`);
 
