@@ -60,6 +60,8 @@ async function fetchPlatformData(
   endDate: string,
 ): Promise<PlatformData> {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
     const url = `${supabaseUrl}/functions/v1/${functionName}`;
     const resp = await fetch(url, {
       method: 'POST',
@@ -68,7 +70,9 @@ async function fetchPlatformData(
         'Authorization': `Bearer ${serviceRoleKey}`,
       },
       body: JSON.stringify({ startDate, endDate }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     const result = await resp.json();
     if (!result?.success) {
       console.error(`${functionName} failed:`, result?.error);
@@ -86,7 +90,7 @@ async function fetchPlatformData(
       cftd: ftds > 0 ? spend / ftds : 0,
     };
   } catch (err) {
-    console.error(`Error calling ${functionName}:`, err);
+    console.error(`Error calling ${functionName} (may have timed out):`, err);
     return { ...emptyPlatform };
   }
 }
