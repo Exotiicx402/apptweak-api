@@ -1,5 +1,7 @@
 import { format, subDays } from "date-fns";
 import type { DailyRow } from "@/hooks/useReportingData";
+import type { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
+import { parseCreativeName } from "@/lib/creativeNamingParser";
 
 // Generate dates for the last N days
 const generateDates = (days: number) =>
