@@ -152,7 +152,22 @@ export default function DemoReporting() {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-6xl mx-auto">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .demo-blur .text-2xl.font-bold,
+        .demo-blur .text-xl.font-semibold {
+          filter: blur(8px);
+          user-select: none;
+        }
+        .demo-blur td {
+          filter: blur(6px);
+          user-select: none;
+        }
+        .demo-blur .font-medium:not(h1):not(h2):not(h3):not(p):not([class*="truncate"]) {
+          filter: blur(6px);
+          user-select: none;
+        }
+      `}} />
+      <div className="max-w-6xl mx-auto demo-blur">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <Link to="/demo" className="text-muted-foreground hover:text-foreground transition-colors">
