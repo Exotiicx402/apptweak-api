@@ -1,5 +1,7 @@
 import { format, subDays } from "date-fns";
 import type { DailyRow } from "@/hooks/useReportingData";
+import type { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
+import { parseCreativeName } from "@/lib/creativeNamingParser";
 
 // Generate dates for the last N days
 const generateDates = (days: number) =>
@@ -179,3 +181,79 @@ export const demoReportingData = {
     };
   })(),
 };
+
+// --- Demo Creatives ---
+const demoCreativeNames = [
+  "PM | Polymarket | VID | C001 | V1 | Sports | Prediction Markets | Social Proof | Win Big | UGC | EN | JSmith | Install | App Store | 2026-03-15",
+  "PM | Polymarket | IMG | C002 | V1 | Politics | Real Money | FOMO | Breaking News | Static | EN | AJones | Install | App Store | 2026-03-18",
+  "PM | Polymarket | VID | C003 | V2 | Sports | Prediction Markets | Authority | Expert Pick | UGC | EN | JSmith | Install | App Store | 2026-03-20",
+  "PM | Polymarket | IMG | C004 | V1 | Crypto | Portfolio | Curiosity | What If | Graphic | EN | MWilson | Install | App Store | 2026-03-22",
+  "PM | Polymarket | VID | C005 | V1 | Sports | Real Money | Testimonial | I Made $500 | UGC | EN | AJones | Install | App Store | 2026-03-25",
+  "PM | Polymarket | IMG | C006 | V3 | Politics | Prediction Markets | Urgency | Last Chance | Static | EN | JSmith | Install | App Store | 2026-03-10",
+  "PM | Polymarket | VID | C007 | V1 | Pop Culture | Social Proof | FOMO | Everyone Knows | UGC | EN | MWilson | Install | App Store | 2026-03-28",
+  "PM | Polymarket | IMG | C008 | V2 | Sports | Real Money | Authority | Analyst Pick | Graphic | EN | AJones | Install | App Store | 2026-04-01",
+  "PM | Polymarket | VID | C001 | V3 | Sports | Prediction Markets | Social Proof | Stack Up | UGC | EN | JSmith | Install | App Store | 2026-04-02",
+  "PM | Polymarket | IMG | C009 | V1 | Finance | Portfolio | Curiosity | Smart Money | Static | EN | MWilson | Install | App Store | 2026-04-03",
+  "PM | Polymarket | VID | C010 | V1 | Politics | Real Money | Testimonial | Called It | UGC | EN | AJones | Install | App Store | 2026-04-04",
+  "PM | Polymarket | IMG | C011 | V1 | Sports | Prediction Markets | Urgency | Game Day | Graphic | EN | JSmith | Install | App Store | 2026-04-05",
+  "PM | Polymarket | VID | C012 | V2 | Crypto | Social Proof | FOMO | Trending Now | UGC | EN | MWilson | Install | App Store | 2026-04-06",
+  "PM | Polymarket | IMG | C013 | V1 | Pop Culture | Real Money | Authority | Insider Tip | Static | EN | AJones | Install | App Store | 2026-04-07",
+  "PM | Polymarket | VID | C014 | V1 | Sports | Portfolio | Social Proof | My Portfolio | UGC | EN | JSmith | Install | App Store | 2026-04-08",
+  "PM | Polymarket | IMG | C015 | V1 | Politics | Prediction Markets | Curiosity | Will They | Graphic | EN | MWilson | Install | App Store | 2026-03-12",
+];
+
+// Sample placeholder thumbnail URLs (using public stock-like placeholders)
+const demoThumbnails = [
+  "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=400&h=300&fit=crop",
+  "https://images.unsplash.com/photo-1518186285589-2f7649de83e0?w=400&h=300&fit=crop",
+  "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=400&h=300&fit=crop",
+  "https://images.unsplash.com/photo-1642790106117-e829e14a795f?w=400&h=300&fit=crop",
+  "https://images.unsplash.com/photo-1559526324-593bc073d938?w=400&h=300&fit=crop",
+  "https://images.unsplash.com/photo-1504711434969-e33886168d6c?w=400&h=300&fit=crop",
+  "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=300&fit=crop",
+  "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop",
+  null, null, null, null, null, null, null, null,
+];
+
+export const demoCreatives: EnrichedCreative[] = demoCreativeNames.map((name, i) => {
+  const parsed = parseCreativeName(name);
+  const isVideo = parsed.assetType === "VID";
+  const spend = [18500, 14200, 12800, 11500, 9800, 8900, 8200, 7600, 6900, 6200, 5800, 5100, 4700, 4200, 3800, 3200][i];
+  const installs = Math.round(spend / (2.5 + Math.random()));
+  const impressions = Math.round(installs * (38 + Math.random() * 10));
+  const clicks = Math.round(impressions * (0.012 + Math.random() * 0.008));
+  const ftds = Math.round(installs * (0.045 + Math.random() * 0.03));
+  const regs = Math.round(installs * (0.32 + Math.random() * 0.1));
+  const trades = Math.round(ftds * (2 + Math.random()));
+  const ftdValue = Math.round(ftds * (75 + Math.random() * 40));
+  const tradeValue = Math.round(trades * (28 + Math.random() * 15));
+
+  return {
+    adId: `demo_${i}`,
+    adName: name,
+    adsetId: `adset_${Math.floor(i / 3)}`,
+    adsetName: `Adset ${Math.floor(i / 3) + 1}`,
+    spend,
+    impressions,
+    clicks,
+    installs,
+    ctr: impressions > 0 ? clicks / impressions : 0,
+    cpi: installs > 0 ? spend / installs : 0,
+    registrations: regs,
+    ftds,
+    trades,
+    ftdValue,
+    tradeValue,
+    cps: regs > 0 ? spend / regs : 0,
+    cftd: ftds > 0 ? spend / ftds : 0,
+    video3sViews: isVideo ? Math.round(impressions * 0.35) : 0,
+    avgWatchTime: isVideo ? 4.2 + Math.random() * 3 : 0,
+    thumbstopRate: isVideo ? 0.28 + Math.random() * 0.15 : 0,
+    platform: i % 5 === 0 ? "moloco" : "meta",
+    parsed,
+    assetUrl: demoThumbnails[i] || null,
+    assetType: isVideo ? "video" : "image",
+    fullAssetUrl: demoThumbnails[i] || null,
+    posterUrl: null,
+  };
+});
