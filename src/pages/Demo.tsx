@@ -77,8 +77,19 @@ export default function Demo() {
 
   return (
     <div className="min-h-screen bg-background">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .demo-blur .metric-value,
+        .demo-blur .font-medium:not(h2):not(h3):not(p):not(span[class*="text-muted"]):not(a) {
+          filter: blur(7px);
+          user-select: none;
+        }
+        .demo-blur td.font-medium {
+          filter: blur(6px);
+          user-select: none;
+        }
+      `}} />
       <div className="fixed inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 80% 50% at 50% -20%, hsl(160 84% 40% / 0.1), transparent)" }} />
-      <div className="relative max-w-4xl mx-auto px-6 py-12">
+      <div className="relative max-w-4xl mx-auto px-6 py-12 demo-blur">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <div className="pulse-dot" />
