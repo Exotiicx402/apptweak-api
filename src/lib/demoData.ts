@@ -202,17 +202,24 @@ const demoCreativeNames = [
   "PM | Polymarket | IMG | C015 | V1 | Politics | Prediction Markets | Curiosity | Will They | Graphic | EN | MWilson | Install | App Store | 2026-03-12",
 ];
 
-// Sample placeholder thumbnail URLs (using public stock-like placeholders)
+// Real thumbnails from hosted creative assets + stock placeholders
 const demoThumbnails = [
-  "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=400&h=300&fit=crop",
-  "https://images.unsplash.com/photo-1518186285589-2f7649de83e0?w=400&h=300&fit=crop",
-  "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=400&h=300&fit=crop",
-  "https://images.unsplash.com/photo-1642790106117-e829e14a795f?w=400&h=300&fit=crop",
-  "https://images.unsplash.com/photo-1559526324-593bc073d938?w=400&h=300&fit=crop",
-  "https://images.unsplash.com/photo-1504711434969-e33886168d6c?w=400&h=300&fit=crop",
-  "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=300&fit=crop",
-  "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop",
-  null, null, null, null, null, null, null, null,
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/86/Sports-Soccer.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/85/Culture.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/84/Product.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/91/Culture.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/82/Product.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/928484789802584.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/958045723560075.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/952145187151420.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/762349156678258.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/695667396902876.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/994567407077956.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/948525561339659.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/724260307319279.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/883834527982764.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/791848013479983.png",
+  "https://agususzieosizftucxxq.supabase.co/storage/v1/object/public/creative-assets/meta/unknown/795356783608372.png",
 ];
 
 export const demoCreatives: EnrichedCreative[] = demoCreativeNames.map((name, i) => {
