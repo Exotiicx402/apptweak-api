@@ -40,13 +40,13 @@ function getAssetTypeLabel(t: string) {
   return "Image";
 }
 
-function DemoCreativeCard({ creative }: { creative: EnrichedCreative }) {
+function DemoCreativeCard({ creative, onClick }: { creative: EnrichedCreative; onClick?: () => void }) {
   const { parsed } = creative;
   const [imageError, setImageError] = useState(false);
   const hasImage = creative.assetUrl && !imageError;
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow">
+    <Card className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer hover:ring-2 hover:ring-primary/20" onClick={onClick}>
       <div className="relative aspect-[4/3] bg-muted overflow-hidden">
         {hasImage ? (
           <img src={creative.assetUrl!} alt={creative.adName} className="w-full h-full object-cover" onError={() => setImageError(true)} />
@@ -251,9 +251,18 @@ export default function DemoReporting() {
 
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {sorted.map((creative) => (
-              <DemoCreativeCard key={creative.adId} creative={creative} />
+              <DemoCreativeCard key={creative.adId} creative={creative} onClick={() => { setSelectedCreative(creative); setPreviewOpen(true); }} />
             ))}
           </div>
+
+          <CreativePreviewDialog
+            open={previewOpen}
+            onOpenChange={setPreviewOpen}
+            creative={selectedCreative}
+            platformBreakdown={[]}
+            adsetBreakdown={[]}
+            isBlended={false}
+          />
         </div>
       </div>
     </div>
