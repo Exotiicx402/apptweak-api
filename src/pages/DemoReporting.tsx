@@ -12,6 +12,7 @@ import { DailyBreakdownTable } from "@/components/reporting/DailyBreakdownTable"
 import { AttributeLeaderboard } from "@/components/reporting/AttributeLeaderboard";
 import { CreativeSummaryBar } from "@/components/reporting/CreativeSummaryBar";
 import { AttributeFilterBar, AttributeFilters } from "@/components/reporting/AttributeFilterBar";
+import { CreativePreviewDialog } from "@/components/reporting/CreativePreviewDialog";
 import { demoReportingData, demoCreatives } from "@/lib/demoData";
 import type { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
 
