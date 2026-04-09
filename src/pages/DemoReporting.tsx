@@ -114,7 +114,8 @@ export default function DemoReporting() {
   const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("spend");
   const [attributeFilters, setAttributeFilters] = useState<AttributeFilters>({});
-
+  const [selectedCreative, setSelectedCreative] = useState<EnrichedCreative | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   // Filter creatives
   const attributeFiltered = demoCreatives.filter((c) =>
     Object.entries(attributeFilters).every(([key, values]) => {
