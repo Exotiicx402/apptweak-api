@@ -230,6 +230,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
    isBlended = false,
    redactAttributes = false,
  }: CreativePreviewDialogProps) {
+  const rv = (v: string) => redactAttributes ? "Redacted" : v;
   const [showAdPreview, setShowAdPreview] = useState(true);
   const { hdUrl, mediaType: hdMediaType, loading: hdLoading, fetchHdMedia, reset: resetHd } = useFetchHdMedia();
 
