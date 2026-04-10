@@ -18,6 +18,9 @@ import type { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
 
 import metaLogo from "@/assets/logos/meta.png";
 import molocoLogo from "@/assets/logos/moloco.webp";
+import snapchatLogo from "@/assets/logos/snapchat.png";
+import googleAdsLogo from "@/assets/logos/google-ads.png";
+import tiktokLogo from "@/assets/logos/tiktok.png";
 
 type ViewMode = "cards" | "table";
 type AssetTypeFilter = "all" | "image" | "video";
@@ -109,7 +112,7 @@ function DemoCreativeCard({ creative, onClick }: { creative: EnrichedCreative; o
 }
 
 export default function DemoReporting() {
-  const { meta, moloco, totals } = demoReportingData;
+  const { meta, moloco, snapchat, google, tiktok, totals } = demoReportingData;
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("spend");
