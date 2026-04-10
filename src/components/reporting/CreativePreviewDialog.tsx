@@ -355,7 +355,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
          <DialogHeader>
-           <DialogTitle className="text-base font-medium pr-8 break-words">
+           <DialogTitle className={`text-base font-medium pr-8 break-words ${redactAttributes ? "blur-sm select-none" : ""}`}>
              {creative.adName}
            </DialogTitle>
          </DialogHeader>
