@@ -161,7 +161,7 @@ export default function DemoReporting() {
           filter: blur(8px);
           user-select: none;
         }
-        .demo-blur td {
+        .demo-blur td:not(:first-child) {
           filter: blur(6px);
           user-select: none;
         }
