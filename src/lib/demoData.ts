@@ -113,6 +113,9 @@ const generateDailyRows = (
 
 export const demoMetaDaily = generateDailyRows(28000, 9500, 3200, 480);
 export const demoMolocoDaily = generateDailyRows(12000, 4200, 1400, 190);
+export const demoSnapchatDaily = generateDailyRows(8500, 3100, 950, 120);
+export const demoGoogleDaily = generateDailyRows(15000, 5800, 1900, 280);
+export const demoTiktokDaily = generateDailyRows(10000, 3800, 1200, 160);
 
 function sumDaily(rows: DailyRow[]) {
   const spend = rows.reduce((s, r) => s + r.spend, 0);
@@ -126,43 +129,42 @@ function sumDaily(rows: DailyRow[]) {
 
 const metaTotals = sumDaily(demoMetaDaily);
 const molocoTotals = sumDaily(demoMolocoDaily);
+const snapchatTotals = sumDaily(demoSnapchatDaily);
+const googleTotals = sumDaily(demoGoogleDaily);
+const tiktokTotals = sumDaily(demoTiktokDaily);
+
+function buildPlatform(totals: ReturnType<typeof sumDaily>, daily: DailyRow[], prevMultipliers: { spend: number; installs: number; cpi: number; registrations: number; ftds: number; clicks: number; impressions: number }) {
+  return {
+    ...totals,
+    previousSpend: totals.spend * prevMultipliers.spend,
+    previousInstalls: totals.installs * prevMultipliers.installs,
+    previousCpi: totals.cpi * prevMultipliers.cpi,
+    previousRegistrations: totals.registrations * prevMultipliers.registrations,
+    previousFtds: totals.ftds * prevMultipliers.ftds,
+    previousClicks: totals.clicks * prevMultipliers.clicks,
+    previousImpressions: totals.impressions * prevMultipliers.impressions,
+    daily,
+    isLoading: false,
+    error: null,
+  };
+}
 
 export const demoReportingData = {
-  meta: {
-    ...metaTotals,
-    previousSpend: metaTotals.spend * 1.08,
-    previousInstalls: metaTotals.installs * 1.05,
-    previousCpi: metaTotals.cpi * 1.03,
-    previousRegistrations: metaTotals.registrations * 1.04,
-    previousFtds: metaTotals.ftds * 0.92,
-    previousClicks: metaTotals.clicks * 1.02,
-    previousImpressions: metaTotals.impressions * 1.06,
-    daily: demoMetaDaily,
-    isLoading: false,
-    error: null,
-  },
-  moloco: {
-    ...molocoTotals,
-    previousSpend: molocoTotals.spend * 0.95,
-    previousInstalls: molocoTotals.installs * 0.98,
-    previousCpi: molocoTotals.cpi * 0.97,
-    previousRegistrations: molocoTotals.registrations * 1.02,
-    previousFtds: molocoTotals.ftds * 1.06,
-    previousClicks: molocoTotals.clicks * 0.99,
-    previousImpressions: molocoTotals.impressions * 1.01,
-    daily: demoMolocoDaily,
-    isLoading: false,
-    error: null,
-  },
+  meta: buildPlatform(metaTotals, demoMetaDaily, { spend: 1.08, installs: 1.05, cpi: 1.03, registrations: 1.04, ftds: 0.92, clicks: 1.02, impressions: 1.06 }),
+  moloco: buildPlatform(molocoTotals, demoMolocoDaily, { spend: 0.95, installs: 0.98, cpi: 0.97, registrations: 1.02, ftds: 1.06, clicks: 0.99, impressions: 1.01 }),
+  snapchat: buildPlatform(snapchatTotals, demoSnapchatDaily, { spend: 1.12, installs: 1.08, cpi: 1.04, registrations: 1.06, ftds: 0.88, clicks: 1.03, impressions: 1.09 }),
+  google: buildPlatform(googleTotals, demoGoogleDaily, { spend: 0.92, installs: 0.96, cpi: 0.96, registrations: 0.98, ftds: 1.1, clicks: 0.97, impressions: 0.95 }),
+  tiktok: buildPlatform(tiktokTotals, demoTiktokDaily, { spend: 1.15, installs: 1.1, cpi: 1.05, registrations: 1.07, ftds: 0.85, clicks: 1.04, impressions: 1.12 }),
   totals: (() => {
-    const spend = metaTotals.spend + molocoTotals.spend;
-    const installs = metaTotals.installs + molocoTotals.installs;
-    const registrations = metaTotals.registrations + molocoTotals.registrations;
-    const ftds = metaTotals.ftds + molocoTotals.ftds;
-    const prevSpend = metaTotals.spend * 1.08 + molocoTotals.spend * 0.95;
-    const prevInstalls = metaTotals.installs * 1.05 + molocoTotals.installs * 0.98;
-    const prevRegs = metaTotals.registrations * 1.04 + molocoTotals.registrations * 1.02;
-    const prevFtds = metaTotals.ftds * 0.92 + molocoTotals.ftds * 1.06;
+    const allPlatforms = [metaTotals, molocoTotals, snapchatTotals, googleTotals, tiktokTotals];
+    const spend = allPlatforms.reduce((s, p) => s + p.spend, 0);
+    const installs = allPlatforms.reduce((s, p) => s + p.installs, 0);
+    const registrations = allPlatforms.reduce((s, p) => s + p.registrations, 0);
+    const ftds = allPlatforms.reduce((s, p) => s + p.ftds, 0);
+    const prevSpend = metaTotals.spend * 1.08 + molocoTotals.spend * 0.95 + snapchatTotals.spend * 1.12 + googleTotals.spend * 0.92 + tiktokTotals.spend * 1.15;
+    const prevInstalls = metaTotals.installs * 1.05 + molocoTotals.installs * 0.98 + snapchatTotals.installs * 1.08 + googleTotals.installs * 0.96 + tiktokTotals.installs * 1.1;
+    const prevRegs = metaTotals.registrations * 1.04 + molocoTotals.registrations * 1.02 + snapchatTotals.registrations * 1.06 + googleTotals.registrations * 0.98 + tiktokTotals.registrations * 1.07;
+    const prevFtds = metaTotals.ftds * 0.92 + molocoTotals.ftds * 1.06 + snapchatTotals.ftds * 0.88 + googleTotals.ftds * 1.1 + tiktokTotals.ftds * 0.85;
     return {
       spend,
       installs,

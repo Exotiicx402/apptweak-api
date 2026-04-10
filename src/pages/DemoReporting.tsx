@@ -18,6 +18,9 @@ import type { EnrichedCreative } from "@/hooks/useMultiPlatformCreatives";
 
 import metaLogo from "@/assets/logos/meta.png";
 import molocoLogo from "@/assets/logos/moloco.webp";
+import snapchatLogo from "@/assets/logos/snapchat.png";
+import googleAdsLogo from "@/assets/logos/google-ads.png";
+import tiktokLogo from "@/assets/logos/tiktok.png";
 
 type ViewMode = "cards" | "table";
 type AssetTypeFilter = "all" | "image" | "video";
@@ -109,7 +112,7 @@ function DemoCreativeCard({ creative, onClick }: { creative: EnrichedCreative; o
 }
 
 export default function DemoReporting() {
-  const { meta, moloco, totals } = demoReportingData;
+  const { meta, moloco, snapchat, google, tiktok, totals } = demoReportingData;
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("spend");
@@ -216,12 +219,45 @@ export default function DemoReporting() {
             previousCps={moloco.previousRegistrations > 0 ? moloco.previousSpend / moloco.previousRegistrations : 0}
             previousFtds={moloco.previousFtds} previousCftd={moloco.previousFtds > 0 ? moloco.previousSpend / moloco.previousFtds : 0}
           />
+          <PlatformMetricsRow
+            platform="Snapchat" logo={snapchatLogo}
+            spend={snapchat.spend} installs={snapchat.installs} cpi={snapchat.cpi}
+            registrations={snapchat.registrations} cps={snapchat.registrations > 0 ? snapchat.spend / snapchat.registrations : 0}
+            ftds={snapchat.ftds} cftd={snapchat.ftds > 0 ? snapchat.spend / snapchat.ftds : 0}
+            previousSpend={snapchat.previousSpend} previousInstalls={snapchat.previousInstalls} previousCpi={snapchat.previousCpi}
+            previousRegistrations={snapchat.previousRegistrations}
+            previousCps={snapchat.previousRegistrations > 0 ? snapchat.previousSpend / snapchat.previousRegistrations : 0}
+            previousFtds={snapchat.previousFtds} previousCftd={snapchat.previousFtds > 0 ? snapchat.previousSpend / snapchat.previousFtds : 0}
+          />
+          <PlatformMetricsRow
+            platform="Google Ads" logo={googleAdsLogo}
+            spend={google.spend} installs={google.installs} cpi={google.cpi}
+            registrations={google.registrations} cps={google.registrations > 0 ? google.spend / google.registrations : 0}
+            ftds={google.ftds} cftd={google.ftds > 0 ? google.spend / google.ftds : 0}
+            previousSpend={google.previousSpend} previousInstalls={google.previousInstalls} previousCpi={google.previousCpi}
+            previousRegistrations={google.previousRegistrations}
+            previousCps={google.previousRegistrations > 0 ? google.previousSpend / google.previousRegistrations : 0}
+            previousFtds={google.previousFtds} previousCftd={google.previousFtds > 0 ? google.previousSpend / google.previousFtds : 0}
+          />
+          <PlatformMetricsRow
+            platform="TikTok" logo={tiktokLogo}
+            spend={tiktok.spend} installs={tiktok.installs} cpi={tiktok.cpi}
+            registrations={tiktok.registrations} cps={tiktok.registrations > 0 ? tiktok.spend / tiktok.registrations : 0}
+            ftds={tiktok.ftds} cftd={tiktok.ftds > 0 ? tiktok.spend / tiktok.ftds : 0}
+            previousSpend={tiktok.previousSpend} previousInstalls={tiktok.previousInstalls} previousCpi={tiktok.previousCpi}
+            previousRegistrations={tiktok.previousRegistrations}
+            previousCps={tiktok.previousRegistrations > 0 ? tiktok.previousSpend / tiktok.previousRegistrations : 0}
+            previousFtds={tiktok.previousFtds} previousCftd={tiktok.previousFtds > 0 ? tiktok.previousSpend / tiktok.previousFtds : 0}
+          />
         </div>
 
         <div className="mt-8">
           <h2 className="text-lg font-semibold mb-4 text-foreground">Daily Breakdown</h2>
           <DailyBreakdownTable platform="Meta Ads" logo={metaLogo} daily={meta.daily} />
           <DailyBreakdownTable platform="Moloco" logo={molocoLogo} daily={moloco.daily} />
+          <DailyBreakdownTable platform="Snapchat" logo={snapchatLogo} daily={snapchat.daily} />
+          <DailyBreakdownTable platform="Google Ads" logo={googleAdsLogo} daily={google.daily} />
+          <DailyBreakdownTable platform="TikTok" logo={tiktokLogo} daily={tiktok.daily} />
         </div>
 
         {/* Creative Performance Section */}
