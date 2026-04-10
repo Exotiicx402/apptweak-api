@@ -469,103 +469,104 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
                       <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Page:</span>
                       <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.page)}</Badge>
+                    </div>
                   )}
                  {parsed.product && (
                     <div className="flex items-center gap-2">
                       <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Product:</span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">{parsed.product}</Badge>
+                      <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.product)}</Badge>
                     </div>
                   )}
                  {parsed.assetType && (
                     <div className="flex items-center gap-2">
                       <Film className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Asset Type:</span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">{parsed.assetType}</Badge>
+                      <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.assetType)}</Badge>
                     </div>
                   )}
                  {parsed.conceptId && (
                     <div className="flex items-center gap-2">
                       <Hash className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Concept ID:</span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">{parsed.conceptId}</Badge>
+                      <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.conceptId)}</Badge>
                     </div>
                   )}
                  {parsed.uniqueIdentifier && (
                     <div className="flex items-center gap-2">
                       <Zap className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Unique ID:</span>
-                      <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">{parsed.uniqueIdentifier}</Badge>
+                      <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">{rv(parsed.uniqueIdentifier)}</Badge>
                     </div>
                   )}
                  {parsed.category && (
                     <div className="flex items-center gap-2">
                       <Layers className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Category:</span>
-                      <Badge variant="outline" className="text-xs bg-violet-500/10 text-violet-700 border-violet-500/20">{parsed.category}</Badge>
+                      <Badge variant="outline" className="text-xs bg-violet-500/10 text-violet-700 border-violet-500/20">{rv(parsed.category)}</Badge>
                     </div>
                   )}
                  {parsed.angle && (
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Angle:</span>
-                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-700 border-emerald-500/20">{parsed.angle}</Badge>
+                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-700 border-emerald-500/20">{rv(parsed.angle)}</Badge>
                     </div>
                   )}
                  {parsed.tactic && (
                     <div className="flex items-center gap-2">
                       <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Tactic:</span>
-                      <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/20">{parsed.tactic}</Badge>
+                      <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/20">{rv(parsed.tactic)}</Badge>
                     </div>
                   )}
                  {parsed.hook && (
                     <div className="flex items-center gap-2">
                       <Zap className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Hook:</span>
-                      <Badge variant="outline" className="text-xs bg-rose-500/10 text-rose-700 border-rose-500/20">{parsed.hook}</Badge>
+                      <Badge variant="outline" className="text-xs bg-rose-500/10 text-rose-700 border-rose-500/20">{rv(parsed.hook)}</Badge>
                     </div>
                   )}
                  {parsed.contentType && (
                     <div className="flex items-center gap-2">
                       <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Content Type:</span>
-                      <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">{parsed.contentType}</Badge>
+                      <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">{rv(parsed.contentType)}</Badge>
                     </div>
                   )}
                  {parsed.language && (
                     <div className="flex items-center gap-2">
                       <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Language:</span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">{parsed.language}</Badge>
+                      <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.language)}</Badge>
                     </div>
                   )}
                  {parsed.creativeOwner && (
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Owner:</span>
-                      <Badge variant="outline" className="text-xs bg-sky-500/10 text-sky-700 border-sky-500/20">{parsed.creativeOwner}</Badge>
+                      <Badge variant="outline" className="text-xs bg-sky-500/10 text-sky-700 border-sky-500/20">{rv(parsed.creativeOwner)}</Badge>
                     </div>
                   )}
                  {parsed.objective && (
                     <div className="flex items-center gap-2">
                       <Target className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Objective:</span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">{parsed.objective}</Badge>
+                      <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.objective)}</Badge>
                     </div>
                   )}
                  {parsed.landingPage && (
                     <div className="flex items-center gap-2">
                       <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Landing Page:</span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">{parsed.landingPage}</Badge>
+                      <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.landingPage)}</Badge>
                     </div>
                   )}
                  {parsed.launchDate && (
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Launch Date:</span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">{parsed.launchDate}</Badge>
+                      <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.launchDate)}</Badge>
                     </div>
                   )}
                 </div>
