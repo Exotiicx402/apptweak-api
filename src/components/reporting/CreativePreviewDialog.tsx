@@ -468,8 +468,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
                     <div className="flex items-center gap-2">
                       <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm text-muted-foreground">Page:</span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">{parsed.page}</Badge>
-                    </div>
+                      <Badge variant="outline" className="text-xs bg-muted/50">{rv(parsed.page)}</Badge>
                   )}
                  {parsed.product && (
                     <div className="flex items-center gap-2">
