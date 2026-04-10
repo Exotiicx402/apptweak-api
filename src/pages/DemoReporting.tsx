@@ -316,6 +316,7 @@ export default function DemoReporting() {
             platformBreakdown={[]}
             adsetBreakdown={[]}
             isBlended={false}
+            redactAttributes={true}
           />
         </div>
       </div>
