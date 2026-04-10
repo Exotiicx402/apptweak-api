@@ -165,6 +165,9 @@ export default function DemoReporting() {
           filter: blur(6px);
           user-select: none;
         }
+        .demo-blur th {
+          filter: none !important;
+        }
         .demo-blur .font-medium:not(h1):not(h2):not(h3):not(p):not([class*="truncate"]) {
           filter: blur(6px);
           user-select: none;
