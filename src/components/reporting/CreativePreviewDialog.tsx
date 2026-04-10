@@ -25,6 +25,7 @@ import { extractImageHash, extractVideoId } from "@/lib/creativeDataTransformers
   platformBreakdown?: EnrichedCreative[];
   adsetBreakdown?: EnrichedCreative[];
    isBlended?: boolean;
+   redactAttributes?: boolean;
  }
  
  function formatCurrency(value: number): string {
