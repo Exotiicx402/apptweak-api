@@ -228,6 +228,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
   platformBreakdown = [],
   adsetBreakdown = [],
    isBlended = false,
+   redactAttributes = false,
  }: CreativePreviewDialogProps) {
   const [showAdPreview, setShowAdPreview] = useState(true);
   const { hdUrl, mediaType: hdMediaType, loading: hdLoading, fetchHdMedia, reset: resetHd } = useFetchHdMedia();
