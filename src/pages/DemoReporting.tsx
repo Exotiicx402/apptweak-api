@@ -255,6 +255,9 @@ export default function DemoReporting() {
           <h2 className="text-lg font-semibold mb-4 text-foreground">Daily Breakdown</h2>
           <DailyBreakdownTable platform="Meta Ads" logo={metaLogo} daily={meta.daily} />
           <DailyBreakdownTable platform="Moloco" logo={molocoLogo} daily={moloco.daily} />
+          <DailyBreakdownTable platform="Snapchat" logo={snapchatLogo} daily={snapchat.daily} />
+          <DailyBreakdownTable platform="Google Ads" logo={googleAdsLogo} daily={google.daily} />
+          <DailyBreakdownTable platform="TikTok" logo={tiktokLogo} daily={tiktok.daily} />
         </div>
 
         {/* Creative Performance Section */}
