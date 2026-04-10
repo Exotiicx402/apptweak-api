@@ -355,7 +355,7 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
          <DialogHeader>
-           <DialogTitle className="text-base font-medium pr-8 break-words">
+           <DialogTitle className={`text-base font-medium pr-8 break-words ${redactAttributes ? "blur-sm select-none" : ""}`}>
              {creative.adName}
            </DialogTitle>
          </DialogHeader>
@@ -436,28 +436,28 @@ function MetaAdPreview({ creativeId }: { creativeId: string }) {
              {/* Performance Metrics */}
              <div>
                <h4 className="text-sm font-medium text-muted-foreground mb-3">Performance</h4>
-               <div className="grid grid-cols-2 gap-3">
-                 <div className="bg-muted/50 rounded-lg p-3">
-                   <p className="text-xs text-muted-foreground">Spend</p>
-                   <p className="text-lg font-semibold">{formatCurrency(creative.spend)}</p>
-                 </div>
-                 <div className="bg-muted/50 rounded-lg p-3">
-                   <p className="text-xs text-muted-foreground">Installs</p>
-                   <p className="text-lg font-semibold">
-                     {creative.installs > 0 ? formatNumber(creative.installs) : '-'}
-                   </p>
-                 </div>
-                 <div className="bg-muted/50 rounded-lg p-3">
-                   <p className="text-xs text-muted-foreground">CTR (all)</p>
-                   <p className="text-lg font-semibold">{formatPercent(creative.ctr)}</p>
-                 </div>
-                 <div className="bg-muted/50 rounded-lg p-3">
-                   <p className="text-xs text-muted-foreground">CPI</p>
-                   <p className="text-lg font-semibold">
-                     {creative.cpi > 0 ? formatCurrency(creative.cpi) : '-'}
-                   </p>
-                 </div>
-               </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">Spend</p>
+                    <p className={`text-lg font-semibold ${redactAttributes ? "blur-sm select-none" : ""}`}>{formatCurrency(creative.spend)}</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">Installs</p>
+                    <p className={`text-lg font-semibold ${redactAttributes ? "blur-sm select-none" : ""}`}>
+                      {creative.installs > 0 ? formatNumber(creative.installs) : '-'}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">CTR (all)</p>
+                    <p className={`text-lg font-semibold ${redactAttributes ? "blur-sm select-none" : ""}`}>{formatPercent(creative.ctr)}</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">CPI</p>
+                    <p className={`text-lg font-semibold ${redactAttributes ? "blur-sm select-none" : ""}`}>
+                      {creative.cpi > 0 ? formatCurrency(creative.cpi) : '-'}
+                    </p>
+                  </div>
+                </div>
              </div>
  
              {/* Creative Attributes */}
